@@ -1,28 +1,29 @@
 /**
  * S104 Tests: Agent Activity Monitoring & Anomaly Detection
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import { checkProposalCount, checkRateLimit, checkDuplicates, AgentEvent } from '../core/agent-monitor';
 
 describe('S104: Agent Activity Monitoring', () => {
   // AC#1: Proposal count monitor
   describe('checkProposalCount', () => {
     it('should return null when under 150', () => {
-      expect(checkProposalCount(100)).toBeNull();
+      assert.equal(checkProposalCount(100), null);
     });
-    
+
     it('should warn at 151', () => {
       const alert = checkProposalCount(151);
-      expect(alert?.severity).toBe('warn');
+      assert.equal(alert?.severity, 'warn');
     });
-    
+
     it('should critical at 201', () => {
       const alert = checkProposalCount(201);
-      expect(alert?.severity).toBe('critical');
+      assert.equal(alert?.severity, 'critical');
     });
   });
 
-  // AC#2: Rate limiter  
+  // AC#2: Rate limiter
   describe('checkRateLimit', () => {
     it('should allow normal rate', () => {
       const events: AgentEvent[] = Array(5).fill(null).map((_, i) => ({
@@ -31,7 +32,7 @@ describe('S104: Agent Activity Monitoring', () => {
         proposal_id: `S${i}`,
         timestamp: Date.now() - i * 60000
       }));
-      expect(checkRateLimit(events, 'test-agent')).toBeNull();
+      assert.equal(checkRateLimit(events, 'test-agent'), null);
     });
 
     it('should flag rate >10/hour', () => {
@@ -42,7 +43,7 @@ describe('S104: Agent Activity Monitoring', () => {
         timestamp: Date.now() - i * 60000
       }));
       const alert = checkRateLimit(events, 'test-agent');
-      expect(alert?.type).toBe('rate_limit');
+      assert.equal(alert?.type, 'rate_limit');
     });
   });
 
@@ -53,7 +54,7 @@ describe('S104: Agent Activity Monitoring', () => {
         { title: 'Feature A', created_at: Date.now() - 1000 },
         { title: 'Feature B', created_at: Date.now() - 2000 },
       ];
-      expect(checkDuplicates(proposals, 'test')).toBeNull();
+      assert.equal(checkDuplicates(proposals, 'test'), null);
     });
 
     it('should flag 3+ duplicates', () => {
@@ -63,7 +64,7 @@ describe('S104: Agent Activity Monitoring', () => {
         { title: 'Same Feature', created_at: Date.now() - 3000 },
       ];
       const alert = checkDuplicates(proposals, 'test');
-      expect(alert?.type).toBe('duplicate');
+      assert.equal(alert?.type, 'duplicate');
     });
   });
 });

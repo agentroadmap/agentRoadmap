@@ -1,107 +1,108 @@
-import { describe, expect, test } from "bun:test";
+import { describe, test } from "node:test";
+import assert from "node:assert/strict";
 import { parseCompletionContext } from "./helper.ts";
 
 describe("parseCompletionContext", () => {
 	test("parses empty command line", () => {
 		const context = parseCompletionContext("roadmap ", 8);
-		expect(context.command).toBeNull();
-		expect(context.subcommand).toBeNull();
-		expect(context.partial).toBe("");
-		expect(context.lastFlag).toBeNull();
+		assert.equal(context.command, null);
+		assert.equal(context.subcommand, null);
+		assert.equal(context.partial, "");
+		assert.equal(context.lastFlag, null);
 	});
 
 	test("parses partial command", () => {
 		const context = parseCompletionContext("roadmap tas", 11);
-		expect(context.command).toBeNull();
-		expect(context.partial).toBe("tas");
+		assert.equal(context.command, null);
+		assert.equal(context.partial, "tas");
 	});
 
 	test("parses complete command", () => {
 		const context = parseCompletionContext("roadmap proposal ", 13);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBeNull();
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, null);
+		assert.equal(context.partial, "");
 	});
 
 	test("parses partial subcommand", () => {
 		const context = parseCompletionContext("roadmap proposal ed", 15);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBeNull();
-		expect(context.partial).toBe("ed");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, null);
+		assert.equal(context.partial, "ed");
 	});
 
 	test("parses complete subcommand", () => {
 		const context = parseCompletionContext("roadmap proposal edit ", 18);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("edit");
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "edit");
+		assert.equal(context.partial, "");
 	});
 
 	test("parses partial argument", () => {
 		const context = parseCompletionContext("roadmap proposal edit proposal-", 23);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("edit");
-		expect(context.partial).toBe("proposal-");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "edit");
+		assert.equal(context.partial, "proposal-");
 	});
 
 	test("parses flag", () => {
 		const context = parseCompletionContext("roadmap proposal create --status ", 29);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("create");
-		expect(context.lastFlag).toBe("--status");
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "create");
+		assert.equal(context.lastFlag, "--status");
+		assert.equal(context.partial, "");
 	});
 
 	test("parses partial flag value", () => {
 		const context = parseCompletionContext("roadmap proposal create --status In", 31);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("create");
-		expect(context.lastFlag).toBe("--status");
-		expect(context.partial).toBe("In");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "create");
+		assert.equal(context.lastFlag, "--status");
+		assert.equal(context.partial, "In");
 	});
 
 	test("handles quoted strings", () => {
 		const context = parseCompletionContext('roadmap proposal create "test proposal" --status ', 41);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("create");
-		expect(context.lastFlag).toBe("--status");
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "create");
+		assert.equal(context.lastFlag, "--status");
+		assert.equal(context.partial, "");
 	});
 
 	test("handles multiple flags", () => {
 		const context = parseCompletionContext("roadmap proposal create --priority high --status ", 46);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("create");
-		expect(context.lastFlag).toBe("--status");
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "create");
+		assert.equal(context.lastFlag, "--status");
+		assert.equal(context.partial, "");
 	});
 
 	test("parses completion subcommand", () => {
 		const context = parseCompletionContext("roadmap completion install ", 27);
-		expect(context.command).toBe("completion");
-		expect(context.subcommand).toBe("install");
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "completion");
+		assert.equal(context.subcommand, "install");
+		assert.equal(context.partial, "");
 	});
 
 	test("handles cursor in middle of line", () => {
 		// Cursor at position 13 is after "roadmap proposal " (space included)
 		const context = parseCompletionContext("roadmap proposal edit", 13);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBeNull();
-		expect(context.partial).toBe("");
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, null);
+		assert.equal(context.partial, "");
 	});
 
 	test("counts argument position correctly", () => {
 		const context = parseCompletionContext("roadmap proposal edit proposal-1 ", 25);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("edit");
-		expect(context.argPosition).toBe(1);
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "edit");
+		assert.equal(context.argPosition, 1);
 	});
 
 	test("does not count flag values as arguments", () => {
 		const context = parseCompletionContext("roadmap proposal create --status Reached ", 34);
-		expect(context.command).toBe("proposal");
-		expect(context.subcommand).toBe("create");
-		expect(context.argPosition).toBe(0);
+		assert.equal(context.command, "proposal");
+		assert.equal(context.subcommand, "create");
+		assert.equal(context.argPosition, 0);
 	});
 });
