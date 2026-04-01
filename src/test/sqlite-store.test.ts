@@ -75,7 +75,7 @@ describe("SqliteStore readiness filtering", () => {
 		const all = store.queryProposals({});
 		assert.strictEqual(all.length, 4);
 		
-		const readyProposalsAll = all.filter(s => s.ready);
+		const readyProposalsAll = all.filter((s: any) => s.ready);
 		assert.strictEqual(readyProposalsAll.length, 1);
 		assert.strictEqual(readyProposalsAll[0].id, "proposal-1");
 
