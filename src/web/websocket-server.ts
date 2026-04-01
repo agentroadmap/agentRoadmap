@@ -1,0 +1,155 @@
+/**
+ * WebSocket Bridge for Board ↔ SpacetimeDB
+ * Provides real-time updates and live proposal changes from SDB subscriptions!
+ * Adapting to v2.5 data model. No more polling!
+ */
+
+import { WebSocketServer, WebSocket } from 'ws';
+import { createServer } from 'http';
+import { getSdbConfigSync } from '../core/storage/sdb-client.ts';
+import { DbConnection } from '../bindings/index.ts';
+
+let wss: WebSocketServer | null = null;
+const clients = new Set<WebSocket>();
+
+// Keep track of the latest SDB connection
+let sdbConnection: DbConnection | null = null;
+
+export function startWebSocketServer(port: number = 3001): void {
+  const server = createServer();
+  wss = new WebSocketServer({ server });
+
+  wss.on('connection', (ws: WebSocket) => {
+    clients.add(ws);
+    console.log('[WS] Client connected');
+
+    ws.on('message', async (data: Buffer) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        await handleMessage(ws, msg);
+      } catch (error) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
+      }
+    });
+
+    ws.on('close', () => {
+      clients.delete(ws);
+      console.log('[WS] Client disconnected');
+    });
+
+    ws.send(JSON.stringify({ type: 'connected', message: 'Connected to SpacetimeDB Bridge' }));
+    
+    // Send initial snapshot if connected
+    if (sdbConnection) {
+        sendSnapshot(ws);
+    }
+  });
+
+  server.listen(port, () => {
+    console.log(`[WS] WebSocket server running on port ${port}`);
+  });
+
+  // Start live subscription to SDB
+  connectToSpacetimeDB();
+}
+
+function connectToSpacetimeDB() {
+    const config = getSdbConfigSync();
+    
+    sdbConnection = DbConnection.builder()
+        .withUri(`ws://${config.host}:${config.port}`)
+        .withModuleName(config.dbName)
+        .build();
+
+    sdbConnection.onConnect(() => {
+        console.log('[SDB] Connected to live SpacetimeDB module!');
+    });
+    
+    sdbConnection.onConnectError((err) => {
+        console.error('[SDB] Connection Error:', err);
+    });
+
+    // Wire SDB table events to WS broadcast
+    sdbConnection.db.proposal.onInsert((ctx, row) => {
+        broadcast({ type: 'proposalUpdated', data: row });
+    });
+    sdbConnection.db.proposal.onUpdate((ctx, oldRow, newRow) => {
+        broadcast({ type: 'proposalUpdated', data: newRow });
+    });
+    sdbConnection.db.proposal.onDelete((ctx, row) => {
+        broadcast({ type: 'proposalDeleted', data: { id: row.id } });
+    });
+    
+    sdbConnection.db.message_ledger.onInsert((ctx, row) => {
+        broadcast({ type: 'newMessage', data: row, channel: row.channel_name });
+    });
+
+    sdbConnection.subscriptionBuilder()
+        .onApplied(() => {
+            console.log('[SDB] Subscription applied! Live data active.');
+            clients.forEach(ws => sendSnapshot(ws));
+        })
+        .subscribe([
+            "SELECT * FROM proposal",
+            "SELECT * FROM message_ledger",
+            "SELECT * FROM agent_memory"
+        ]);
+}
+
+function sendSnapshot(ws: WebSocket) {
+    if (!sdbConnection) return;
+    const proposals = Array.from(sdbConnection.db.proposal.iter());
+    ws.send(JSON.stringify({ type: 'proposals', data: proposals }));
+}
+
+async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
+  switch (msg.type) {
+    case 'getProposals':
+      sendSnapshot(ws);
+      break;
+
+    case 'getProposal':
+      if (sdbConnection) {
+        const proposal = sdbConnection.db.proposal.id.find(msg.id);
+        ws.send(JSON.stringify({ type: 'proposal', data: proposal || null }));
+      }
+      break;
+
+    case 'getCubics':
+    case 'getAgents':
+    case 'getEvents':
+    case 'getChannels':
+      // Temporary stub for removed legacy models
+      ws.send(JSON.stringify({ type: msg.type.replace('get', '').toLowerCase(), data: [] }));
+      break;
+
+    case 'getMessages':
+      if (sdbConnection) {
+        const msgs = Array.from(sdbConnection.db.message_ledger.iter()).filter(m => m.channel_name === msg.channel);
+        ws.send(JSON.stringify({ type: 'messages', data: msgs, channel: msg.channel }));
+      }
+      break;
+
+    case 'createProposal':
+      if (sdbConnection) {
+        sdbConnection.reducers.createProposal(msg.data.id, msg.data.title, msg.data.body || '');
+      }
+      break;
+
+    case 'subscribe':
+      ws.send(JSON.stringify({ type: 'subscribed', channel: msg.channel }));
+      break;
+
+    default:
+      ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
+  }
+}
+
+function broadcast(data: any): void {
+  const message = JSON.stringify(data);
+  clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+}

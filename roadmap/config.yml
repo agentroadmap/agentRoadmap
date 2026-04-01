@@ -1,0 +1,17 @@
+project_name: "AgentRoadmap"
+default_status: "Potential"
+statuses: ["New", "Draft", "Review", "Active", "Accepted", "Complete","Rejected", "Abandoned"]
+labels: ["feature", "bugfix", "refactor", "docs"]
+date_format: "yyyy-mm-dd"
+max_column_width: 80
+auto_commit: true
+remote_operations: true
+check_active_branches: true
+active_branch_days: 30
+zero_padded_ids: 3
+state_prefix: "STATE"
+database:
+  provider: "spacetimedb"
+  host: "127.0.0.1"
+  port: 3000
+  name: "roadmap2"

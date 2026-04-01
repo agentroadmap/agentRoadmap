@@ -1,0 +1,380 @@
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import {
+	CallToolRequestSchema,
+	GetPromptRequestSchema,
+	ListPromptsRequestSchema,
+	ListResourcesRequestSchema,
+	ListResourceTemplatesRequestSchema,
+	ListToolsRequestSchema,
+	ReadResourceRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { Core } from "../core/roadmap.ts";
+import { RelayService } from '../core/messaging/relay.ts';
+import { getPackageName } from "../utils/app-info.ts";
+import { getVersion } from "../utils/version.ts";
+import { registerInitRequiredResource } from "./resources/init-required/index.ts";
+import { registerWorkflowResources } from "./resources/workflow/index.ts";
+import { registerAgentTools } from "./tools/agents/index.ts";
+import { registerDocumentTools } from "./tools/documents/index.ts";
+import { registerExportTools } from "./tools/export/sdb-export-mcp.ts";
+import { registerKnowledgeTools } from "./tools/knowledge/index.ts";
+import { registerMessageTools } from "./tools/messages/index.ts";
+import { registerMilestoneTools } from "./tools/milestones/index.ts";
+import { registerProtocolTools } from "./tools/protocol/index.ts";
+import { registerTeamTools } from "./tools/teams/index.ts";
+import { registerProposalTools } from "./tools/proposals/index.ts";
+import { registerNoteTools } from "./tools/notes/index.ts";
+import { registerTestingTools } from "./tools/testing/index.ts";
+import { registerWorkflowTools } from "./tools/workflow/index.ts";
+import { registerSdbMessageTools } from "./tools/messages/sdb-index.ts";
+import { registerSdbProposalTools } from "./tools/proposals/sdb-index.ts";
+import { registerSdbAgentTools } from "./tools/agents/sdb-index.ts";
+import { registerSdbWorkflowTools } from "./tools/workflow/sdb-index.ts";
+import { registerSdbMilestoneTools } from "./tools/milestones/sdb-index.ts";
+import { registerSdbTeamTools } from "./tools/teams/sdb-index.ts";
+import { registerSdbDocumentTools } from "./tools/documents/sdb-index.ts";
+import { registerSdbKnowledgeTools } from "./tools/knowledge/sdb-index.ts";
+import { registerSdbProtocolTools } from "./tools/protocol/sdb-index.ts";
+import { registerCubicTools } from "./tools/cubic/index.ts";
+import type {
+	CallToolResult,
+	GetPromptResult,
+	ListPromptsResult,
+	ListResourcesResult,
+	ListResourceTemplatesResult,
+	ListToolsResult,
+	McpPromptHandler,
+	McpResourceHandler,
+	McpToolHandler,
+	ReadResourceResult,
+} from "./types.ts";
+
+/**
+ * Minimal MCP server implementation for stdio transport.
+ *
+ * The Roadmap.md MCP server is intentionally local-only and exposes tools,
+ * resources, and prompts through the stdio transport so that desktop editors
+ * (e.g. Claude Code) can interact with a project without network exposure.
+ */
+const APP_NAME = getPackageName();
+const APP_VERSION = await getVersion();
+const INSTRUCTIONS_NORMAL =
+	"At the beginning of each session, read the roadmap://workflow/overview resource to understand when and how to use Roadmap.md for proposal management. Additional detailed guides are available as resources when needed.";
+const INSTRUCTIONS_FALLBACK =
+	"Roadmap.md is not initialized in this directory. Read the roadmap://init-required resource for setup instructions.";
+
+type ServerInitOptions = {
+	debug?: boolean;
+};
+
+export class McpServer extends Core {
+	private readonly server: Server;
+	private transport?: StdioServerTransport;
+	private stopping = false;
+
+	private readonly tools = new Map<string, McpToolHandler>();
+	private readonly resources = new Map<string, McpResourceHandler>();
+	private readonly prompts = new Map<string, McpPromptHandler>();
+
+	constructor(projectRoot: string, instructions: string) {
+		super(projectRoot, { enableWatchers: true });
+
+		this.server = new Server(
+			{
+				name: APP_NAME,
+				version: APP_VERSION,
+			},
+			{
+				capabilities: {
+					tools: { listChanged: true },
+					resources: { listChanged: true },
+					prompts: { listChanged: true },
+				},
+				instructions,
+			},
+		);
+
+		this.setupHandlers();
+	}
+
+	private setupHandlers(): void {
+		this.server.setRequestHandler(ListToolsRequestSchema, async () => this.listTools());
+		this.server.setRequestHandler(CallToolRequestSchema, async (request) => this.callTool(request));
+		this.server.setRequestHandler(ListResourcesRequestSchema, async () => this.listResources());
+		this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => this.listResourceTemplates());
+		this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => this.readResource(request));
+		this.server.setRequestHandler(ListPromptsRequestSchema, async () => this.listPrompts());
+		this.server.setRequestHandler(GetPromptRequestSchema, async (request) => this.getPrompt(request));
+	}
+
+	/**
+	 * Register a tool implementation with the server.
+	 */
+	public addTool(tool: McpToolHandler): void {
+		this.tools.set(tool.name, tool);
+	}
+
+	/**
+	 * Register a resource implementation with the server.
+	 */
+	public addResource(resource: McpResourceHandler): void {
+		this.resources.set(resource.uri, resource);
+	}
+
+	/**
+	 * Register a prompt implementation with the server.
+	 */
+	public addPrompt(prompt: McpPromptHandler): void {
+		this.prompts.set(prompt.name, prompt);
+	}
+
+	/**
+	 * Connect the server to the stdio transport.
+	 */
+	public async connect(): Promise<void> {
+		if (this.transport) {
+			return;
+		}
+
+		this.transport = new StdioServerTransport();
+		await this.server.connect(this.transport);
+	}
+
+	/**
+	 * Start the server. The stdio transport begins handling requests as soon as
+	 * it is connected, so this method exists primarily for symmetry with
+	 * callers that expect an explicit start step.
+	 */
+	public async start(): Promise<void> {
+		if (!this.transport) {
+			throw new Error("MCP server not connected. Call connect() before start().");
+		}
+	}
+
+	/**
+	 * Stop the server and release transport resources.
+	 */
+	public async stop(): Promise<void> {
+		if (this.stopping) {
+			return;
+		}
+		this.stopping = true;
+		try {
+			await this.server.close();
+		} finally {
+			this.transport = undefined;
+			this.disposeSearchService();
+			this.disposeContentStore();
+		}
+	}
+
+	public getServer(): Server {
+		return this.server;
+	}
+
+	// -- Internal handlers --------------------------------------------------
+
+	protected async listTools(): Promise<ListToolsResult> {
+		return {
+			tools: Array.from(this.tools.values()).map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				inputSchema: {
+					type: "object",
+					...tool.inputSchema,
+				},
+			})),
+		};
+	}
+
+	protected async callTool(request: {
+		params: { name: string; arguments?: Record<string, unknown> };
+	}): Promise<CallToolResult> {
+		const { name, arguments: args = {} } = request.params;
+		const tool = this.tools.get(name);
+
+		if (!tool) {
+			throw new Error(`Tool not found: ${name}`);
+		}
+
+		const result = await tool.handler(args);
+
+		// Log tool call to pulse
+		try {
+			await this.emitPulse({
+				type: "tool_called",
+				id: name,
+				title: `Tool Called: ${name}`,
+				agent: (args.agent as string) || (args.from as string) || "agent",
+				impact: JSON.stringify(args),
+				timestamp: new Date().toISOString(),
+			});
+		} catch (_err) {
+			// Ignore pulse logging errors to not block tool execution
+		}
+
+		return result;
+	}
+
+	protected async listResources(): Promise<ListResourcesResult> {
+		return {
+			resources: Array.from(this.resources.values()).map((resource) => ({
+				uri: resource.uri,
+				name: resource.name || "Unnamed Resource",
+				description: resource.description,
+				mimeType: resource.mimeType,
+			})),
+		};
+	}
+
+	protected async listResourceTemplates(): Promise<ListResourceTemplatesResult> {
+		return {
+			resourceTemplates: [],
+		};
+	}
+
+	protected async readResource(request: { params: { uri: string } }): Promise<ReadResourceResult> {
+		const { uri } = request.params;
+
+		// Exact match first
+		let resource = this.resources.get(uri);
+
+		// Fallback to base URI for parameterised resources
+		if (!resource) {
+			const baseUri = uri.split("?")[0] || uri;
+			resource = this.resources.get(baseUri);
+		}
+
+		if (!resource) {
+			throw new Error(`Resource not found: ${uri}`);
+		}
+
+		return await resource.handler(uri);
+	}
+
+	protected async listPrompts(): Promise<ListPromptsResult> {
+		return {
+			prompts: Array.from(this.prompts.values()).map((prompt) => ({
+				name: prompt.name,
+				description: prompt.description,
+				arguments: prompt.arguments,
+			})),
+		};
+	}
+
+	protected async getPrompt(request: {
+		params: { name: string; arguments?: Record<string, unknown> };
+	}): Promise<GetPromptResult> {
+		const { name, arguments: args = {} } = request.params;
+		const prompt = this.prompts.get(name);
+
+		if (!prompt) {
+			throw new Error(`Prompt not found: ${name}`);
+		}
+
+		return await prompt.handler(args);
+	}
+
+	/**
+	 * Create a new SSE transport for a connection.
+	 */
+	public async createSseTransport(endpoint: string, res?: any): Promise<SSEServerTransport> {
+		const transport = new SSEServerTransport(endpoint, res);
+		await this.server.connect(transport);
+		return transport;
+	}
+
+	/**
+	 * Handle an incoming message for an SSE transport.
+	 */
+	public async handleSseMessage(transport: SSEServerTransport, request: any): Promise<void> {
+		if (transport.handlePostMessage) {
+			await transport.handlePostMessage(request as any, {} as any);
+		}
+	}
+
+	/**
+	 * Helper exposed for tests so they can call handlers directly.
+	 */
+	public get testInterface() {
+		return {
+			listTools: () => this.listTools(),
+			callTool: (request: { params: { name: string; arguments?: Record<string, unknown> } }) => this.callTool(request),
+			listResources: () => this.listResources(),
+			listResourceTemplates: () => this.listResourceTemplates(),
+			readResource: (request: { params: { uri: string } }) => this.readResource(request),
+			listPrompts: () => this.listPrompts(),
+			getPrompt: (request: { params: { name: string; arguments?: Record<string, unknown> } }) =>
+				this.getPrompt(request),
+		};
+	}
+}
+
+/**
+ * Factory that bootstraps a fully configured MCP server instance.
+ *
+ * If roadmap is not initialized in the project directory, the server will start
+ * successfully but only provide the roadmap://init-required resource to guide
+ * users to run `roadmap init`.
+ */
+export async function createMcpServer(projectRoot: string, options: ServerInitOptions = {}): Promise<McpServer> {
+	// We need to check config first to determine which instructions to use
+	const tempCore = new Core(projectRoot);
+	await tempCore.ensureConfigLoaded();
+	const config = await tempCore.filesystem.loadConfig();
+
+	// Create server with appropriate instructions
+	const instructions = config ? INSTRUCTIONS_NORMAL : INSTRUCTIONS_FALLBACK;
+	const server = new McpServer(projectRoot, instructions);
+
+	// Graceful fallback: if config doesn't exist, provide init-required resource
+	if (!config) {
+		registerInitRequiredResource(server);
+
+		if (options.debug) {
+			console.error("MCP server initialised in fallback mode (roadmap not initialized in this directory).");
+		}
+
+		return server;
+	}
+
+	// Normal mode: full tools and resources
+	registerWorkflowResources(server);
+	registerWorkflowTools(server);
+	registerProposalTools(server, projectRoot);
+	registerSdbMessageTools(server, projectRoot);
+	registerNoteTools(server, config);
+	registerMilestoneTools(server);
+	registerDocumentTools(server, config);
+	registerMessageTools(server);
+	registerAgentTools(server);
+	registerKnowledgeTools(server);
+	registerProtocolTools(server);
+  registerExportTools(server);
+	await registerTeamTools(server);
+	registerTestingTools(server);
+
+	// Start background maintenance tasks
+	const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+	setInterval(async () => {
+		try {
+			await server.checkLeaseHealth({ autoCommit: true });
+		} catch (_err) {
+			// Silently ignore background maintenance errors
+		}
+	}, MAINTENANCE_INTERVAL_MS);
+
+	// Start Relay Service if enabled
+	if (config.relay?.enabled) {
+		const relay = new RelayService(server, config.relay);
+		void relay.start();
+	}
+
+	if (options.debug) {
+		console.error("MCP server initialised (stdio transport only).");
+	}
+
+	return server;
+}
