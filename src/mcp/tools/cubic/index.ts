@@ -31,7 +31,7 @@ export function registerCubicTools(server: McpServer, projectRoot: string): void
       type: "object", properties: { name: { type: "string" }, agents: { type: "array", items: { type: "string" } }, proposals: { type: "array", items: { type: "string" } } }, required: ["name"]
     }},
     { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
-    (input) => {
+    async (input, context) => {
       const args = input as any;
       const id = `cubic-${String(Date.now()).slice(-6)}`;
       const agents = args.agents || ["coder", "reviewer"];
@@ -46,7 +46,7 @@ export function registerCubicTools(server: McpServer, projectRoot: string): void
   server.addTool(createSimpleValidatedTool(
     { name: "cubic_list", description: "List all cubics", inputSchema: { type: "object", properties: {}, required: [] } },
     { type: "object", properties: {}, required: [] },
-    () => {
+    async (input, context) => {
       const cubics = readdirSync(CUBICS_DIR).filter(d => existsSync(join(CUBICS_DIR, d, "cubic.json"))).map(d => JSON.parse(readFileSync(join(CUBICS_DIR, d, "cubic.json"), "utf8")));
       return { content: [{ type: "text", text: JSON.stringify({ total: cubics.length, cubics }, null, 2) }] };
     }
@@ -57,7 +57,7 @@ export function registerCubicTools(server: McpServer, projectRoot: string): void
       type: "object", properties: { cubicId: { type: "string" }, agent: { type: "string" }, task: { type: "string" }, phase: { type: "string" } }, required: ["cubicId", "agent", "task"]
     }},
     { type: "object", properties: { cubicId: { type: "string" }, agent: { type: "string" }, task: { type: "string" } }, required: ["cubicId", "agent", "task"] },
-    (input) => {
+    async (input, context) => {
       const args = input as any;
       const cubic = loadCubic(args.cubicId);
       if (!cubic) return { content: [{ type: "text", text: "Cubic not found" }] };
@@ -72,7 +72,7 @@ export function registerCubicTools(server: McpServer, projectRoot: string): void
       type: "object", properties: { cubicId: { type: "string" }, toPhase: { type: "string" } }, required: ["cubicId", "toPhase"]
     }},
     { type: "object", properties: { cubicId: { type: "string" }, toPhase: { type: "string" } }, required: ["cubicId", "toPhase"] },
-    (input) => {
+    async (input, context) => {
       const args = input as any;
       const cubic = loadCubic(args.cubicId);
       if (!cubic) return { content: [{ type: "text", text: "Cubic not found" }] };
@@ -88,7 +88,7 @@ export function registerCubicTools(server: McpServer, projectRoot: string): void
       type: "object", properties: { cubicId: { type: "string" }, resetCode: { type: "boolean" } }, required: ["cubicId"]
     }},
     { type: "object", properties: { cubicId: { type: "string" } }, required: ["cubicId"] },
-    (input) => {
+    async (input, context) => {
       const args = input as any;
       const cubic = loadCubic(args.cubicId);
       if (!cubic) return { content: [{ type: "text", text: "Cubic not found" }] };

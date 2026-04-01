@@ -18,6 +18,18 @@ export const MCP_GUIDE_URL = "https://github.com/agentroadmap/agentRoadmap#-mcp-
 export type IntegrationMode = "mcp" | "cli" | "none";
 export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";
 
+/** Map MCP client name to its corresponding instruction file */
+function mcpClientToFile(client: McpClient): AgentInstructionFile {
+	const map: Record<McpClient, AgentInstructionFile> = {
+		claude: "CLAUDE.md",
+		codex: "AGENTS.md",
+		gemini: "GEMINI.md",
+		kiro: "AGENTS.md",
+		guide: "AGENTS.md",
+	};
+	return map[client];
+}
+
 export interface InitializeProjectOptions {
 	projectName: string;
 	description?: string;
@@ -300,7 +312,7 @@ ${description || "A new project managed with Roadmap.md."}
 					"start",
 				]);
 				mcpResults[client] = result;
-				await ensureMcpGuidelines(projectRoot, client);
+				await ensureMcpGuidelines(projectRoot, mcpClientToFile(client));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				mcpResults[client] = `Failed: ${message}`;
@@ -310,7 +322,7 @@ ${description || "A new project managed with Roadmap.md."}
 
 	// Handle CLI integration
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
-		await addAgentInstructions(projectRoot, agentInstructions);
+		await addAgentInstructions(projectRoot, undefined, agentInstructions);
 	}
 
 	// Install Claude Agent if requested

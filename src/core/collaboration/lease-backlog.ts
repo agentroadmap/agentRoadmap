@@ -12,7 +12,16 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
-import type { Proposal, ProposalStatus, Review, ResearchDocument } from "./proposal-workflow.ts";
+import type { Proposal, ProposalStatus } from "./proposal-workflow.ts";
+
+/** Review record for a proposal */
+export interface Review {
+	reviewer: string;
+	role: "pm" | "architect";
+	decision: "approved" | "rejected" | "changes_requested";
+	comments: string;
+	timestamp: string;
+}
 
 /** Lease status */
 export type LeaseStatus = "available" | "leased" | "expired" | "completed";

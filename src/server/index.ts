@@ -1787,12 +1787,12 @@ export class RoadmapServer {
 		// Connect MCP server's underlying Server to transport
 		// Note: connect() calls start() automatically
 		try {
-			await (this.mcpServer.server as any).connect(transport);
+			await ((this.mcpServer as any).server as any).connect(transport);
 		} catch (e: any) {
 			if (e.message?.includes("Already connected")) {
 				// Close existing and reconnect
-				await (this.mcpServer.server as any).close();
-				await (this.mcpServer.server as any).connect(transport);
+				await ((this.mcpServer as any).server as any).close();
+				await ((this.mcpServer as any).server as any).connect(transport);
 			} else {
 				throw e;
 			}

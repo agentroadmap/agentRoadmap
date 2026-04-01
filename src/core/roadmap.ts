@@ -3565,7 +3565,7 @@ export class Core {
 	/**
 	 * Resolve the shared messages directory (handles worktrees)
 	 */
-	private async getMessagesDir(): Promise<string> {
+	async getMessagesDir(): Promise<string> {
 		let sharedRoadmapDir = join(this.filesystem.rootDir, "roadmap");
 		try {
 			const { execSync } = await import("node:child_process");
