@@ -56,8 +56,8 @@ describe("proposal-47: Agent Knowledge Base", () => {
 			const results = kb.search({ keywords: ["typescript", "generic"] });
 
 			assert.strictEqual(results.length, 1);
-			assert.strictEqual(results[0].entry.id, entry.id);
-			assert.ok(results[0].matchedKeywords.includes("typescript"));
+			assert.strictEqual(results[0]!.entry.id, entry.id);
+			assert.ok(results[0]!.matchedKeywords.includes("typescript"));
 		});
 
 		it("should rank results by relevance", () => {
@@ -89,8 +89,8 @@ describe("proposal-47: Agent Knowledge Base", () => {
 
 			assert.strictEqual(results.length, 2);
 			// Both results should have matched keywords
-			assert.ok(results[0].matchedKeywords.length > 0);
-			assert.ok(results[1].matchedKeywords.length > 0);
+			assert.ok(results[0]!.matchedKeywords.length > 0);
+			assert.ok(results[1]!.matchedKeywords.length > 0);
 			// The entry with "advanced" should be ranked
 			const advancedEntry = results.find(r => r.entry.title.includes("Advanced"));
 			assert.ok(advancedEntry);
@@ -122,7 +122,7 @@ describe("proposal-47: Agent Knowledge Base", () => {
 			// Filter by type
 			const solutions = kb.search({ keywords: ["test"], type: "solution" });
 			assert.strictEqual(solutions.length, 1);
-			assert.strictEqual(solutions[0].entry.type, "solution");
+			assert.strictEqual(solutions[0]!.entry.type, "solution");
 
 			const obstacles = kb.search({ keywords: ["test"], type: "obstacle" });
 			assert.strictEqual(obstacles.length, 1);
