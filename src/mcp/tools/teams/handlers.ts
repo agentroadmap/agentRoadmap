@@ -12,7 +12,7 @@ import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { DynamicTeamBuilder } from "../../../core/collaboration/team-builder.ts";
 import { createRequirement } from "../../../core/collaboration/team-builder.ts";
-import { AgentTeamMembership } from "../../../core/collaboration/agent-team-membership.ts";
+import { AgentTeamMembership } from "../../../core/collaboration/team-membership.ts";
 import { ProposalLeaseManager, createHeartbeatProof } from "../../../core/collaboration/proposal-lease.ts";
 import { FederationServer } from '../../../core/infrastructure/federation-server.ts';
 

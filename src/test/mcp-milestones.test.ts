@@ -4,7 +4,7 @@ import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { join } from "node:path";
 import { McpServer } from "../mcp/server.ts";
-import { registerDirectiveTools } from "../mcp/tools/directives/index.ts";
+import { registerDirectiveTools } from "../mcp/tools/milestones/index.ts";
 import { registerProposalTools } from "../mcp/tools/proposals/index.ts";
 import { createUniqueTestDir, safeCleanup, execSync,
 	expect,
@@ -869,7 +869,8 @@ describe("MCP directive tools", () => {
 	});
 
 	it("allocates new directive IDs from directive frontmatter IDs before filename IDs", async () => {
-		await Bun.write(
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(
 			join(server.filesystem.directivesDir, "m-0 - mismatched-frontmatter-id.md"),
 			`---
 id: m-7
