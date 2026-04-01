@@ -19,8 +19,8 @@ RBAC middleware, assignee enforcement, phase-gate validation. Controls what each
 
 ## Old State Reference
 - **PROP-SEC-054**: Authorization & Access Control
-- **Dependencies**: STATE-038 (Daemon API), PROP-SEC-051 (identity)
-- **Blocks**: STATE-044 enforcement, STATE-046 federation
+- **Dependencies**: PROP-API-038 (Daemon API), PROP-SEC-051 (identity)
+- **Blocks**: PROP-LIMIT-044 enforcement, PROP-FED-046 federation
 
 ## Acceptance Criteria
 1. RBAC middleware for all API endpoints

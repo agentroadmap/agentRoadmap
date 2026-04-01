@@ -19,8 +19,8 @@ Certificate authority, mTLS, host registry, cert rotation. Enables secure multi-
 
 ## Old State Reference
 - **PROP-SEC-056**: Federation PKI & Host Authentication
-- **Dependencies**: PROP-SEC-051 (identity infrastructure), STATE-038
-- **Blocks**: STATE-046 (Multi-Host)
+- **Dependencies**: PROP-SEC-051 (identity infrastructure), PROP-API-038
+- **Blocks**: PROP-FED-046 (Multi-Host)
 
 ## Acceptance Criteria
 1. Certificate authority for host authentication
