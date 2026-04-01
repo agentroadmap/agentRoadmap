@@ -1,0 +1,52 @@
+# .gitlab-ci.yml — agentRoadmap CI
+
+stages:
+  - check
+  - test
+  - build
+
+variables:
+  NODE_ENV: test
+
+.node-setup: &node-setup
+  image: node:24-slim
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  before_script:
+    - npm ci
+
+# ─── Stage 1: Check ───────────────────────────────────────────
+type-check:
+  <<: *node-setup
+  stage: check
+  script:
+    - npm run check:types
+  allow_failure: false
+
+lint:
+  <<: *node-setup
+  stage: check
+  script:
+    - npm run check
+  allow_failure: true  # biome warnings 不阻塞，先软跑
+
+# ─── Stage 2: Test ────────────────────────────────────────────
+test:
+  <<: *node-setup
+  stage: test
+  script:
+    - npm test
+  timeout: 10m
+
+# ─── Stage 3: Build ───────────────────────────────────────────
+build:
+  <<: *node-setup
+  stage: build
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
