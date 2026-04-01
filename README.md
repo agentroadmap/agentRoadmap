@@ -55,16 +55,16 @@ The project is structured to isolate the **Strategic Brain** from the **Nervous 
 agentRoadmap/
 ├── roadmap/                 # THE BRAIN: Strategic & Business Layer
 │   ├── business/            # Business Design, Strategy, and Financials
-│   ├── dataModel/           # Canonical Schema (v2.5) & DDL
 │   ├── product/             # State Machine definitions & RFC Templates
-│   └── workforce/           # Agent Fleet profiles & squad definitions
-├── spacetimedb-module/      # THE SOUL: Nervous System (Rust)
-│   └── src/lib.rs           # 14 Tables & Reducers (The Source of Truth)
+│   ├── workforce/           # Agent Fleet profiles & squad definitions
+│   ├── context/             # Token efficiency context and memory management 
+│   ├── spending/            # Auditable and traceble token spending
+│   └── model/               # MCP and model repository for fine tune resource allocation
 ├── src/                     # THE BODY: Execution Layer (TypeScript)
 │   ├── core/proposal/       # Unified Proposal Lifecycle Manager
 │   ├── bindings/            # Auto-generated DB Interface
 │   ├── mcp/                 # Model Context Protocol (LLM connectivity)
-│   └── web/                 # Live Dashboard (WebSockets / Subscriptions)
+│   └── web/                 # TUI and Web Dashboard (WebSockets / Subscriptions)
 └── package.json             # Enterprise-wide configuration
 ```
 
@@ -98,13 +98,6 @@ Every entity (Directive, Capability, Technical RFC, Component) must progress thr
 * **Zero-Trust:** Agents operate under strict `security_acl`. No agent has "root" access; everything is a requested permission.
 * **Version Ledger:** Every change to a proposal is recorded in `proposal_version` with a Git-style delta and an actor identity.
 * **Anti-Pollution:** Tactical "Ops Noise" (logs/minor bugs) is kept in the database, ensuring the `roadmap/` folder remains high-signal.
-
----
-
-## 👥 Stakeholders
-* **Visionary:** Lead Strategic Direction.
-* **SME (Material Science):** Derek (University of Toronto).
-* **SME (UX/Execution):** Nolan.
 
 ---
 
