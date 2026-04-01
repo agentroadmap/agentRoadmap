@@ -261,7 +261,7 @@ export class Core {
 	 */
 	getRateLimiter(): RateLimiter {
 		if (!this.rateLimiter) {
-			this.rateLimiter = new RateLimiter(this.fs.projectRoot);
+			this.rateLimiter = new RateLimiter(this.fs.rootDir);
 		}
 		return this.rateLimiter;
 	}
@@ -1933,8 +1933,17 @@ export class Core {
 
 		// Handle verificationProposalments
 		if (input.verificationProposalments !== undefined) {
-			if (!stringArraysEqual(proposal.verificationProposalments ?? [], input.verificationProposalments)) {
-				proposal.verificationProposalments = [...input.verificationProposalments];
+			if (!stringArraysEqual(
+				(proposal.verificationProposalments ?? []).map(c => c.text),
+				input.verificationProposalments.map(c => c.text),
+			)) {
+				proposal.verificationProposalments = input.verificationProposalments.map((c, i) => ({
+					index: i + 1,
+					text: c.text,
+					checked: !!c.checked,
+					role: c.role,
+					evidence: c.evidence,
+				}));
 				mutated = true;
 			}
 		}
@@ -1948,13 +1957,21 @@ export class Core {
 			const current = verificationProposalments;
 			let nextIndex = current.length > 0 ? Math.max(...current.map((c) => c.index)) + 1 : 1;
 			for (const item of input.addVerificationProposalments) {
-				verificationProposalments.push({
-					text: item.text,
-					checked: !!item.checked,
-					role: item.role,
-					evidence: item.evidence,
-					index: nextIndex++,
-				});
+				if (typeof item === "string") {
+					verificationProposalments.push({
+						text: item,
+						checked: false,
+						index: nextIndex++,
+					});
+				} else {
+					verificationProposalments.push({
+						text: item.text,
+						checked: !!item.checked,
+						role: item.role,
+						evidence: item.evidence,
+						index: nextIndex++,
+					});
+				}
 			}
 			mutated = true;
 		}

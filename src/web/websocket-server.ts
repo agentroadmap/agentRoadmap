@@ -132,7 +132,19 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
 
     case 'createProposal':
       if (sdbConnection) {
-        sdbConnection.reducers.createProposal(msg.data.id, msg.data.title, msg.data.body || '');
+        try {
+          sdbConnection.reducers.createProposal(msg.data.id, msg.data.title, msg.data.body || '');
+          ws.send(JSON.stringify({ type: 'proposalCreated', id: msg.data.id }));
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: `Failed to create proposal: ${errorMsg}`,
+            code: 'PROPOSAL_CREATE_FAILED'
+          }));
+        }
+      } else {
+        ws.send(JSON.stringify({ type: 'error', message: 'No SDB connection', code: 'NO_SDB' }));
       }
       break;
 
