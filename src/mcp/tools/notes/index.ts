@@ -4,8 +4,8 @@ import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import { NoteHandlers } from "./handlers.ts";
 import { noteCreateSchema, noteDeleteSchema, noteListSchema, noteDisplaySchema } from "./schemas.ts";
 
-export function registerNoteTools(server: McpServer, config: RoadmapConfig): void {
-	const handlers = new NoteHandlers(server, config.projectRoot);
+export function registerNoteTools(server: McpServer, projectRoot: string): void {
+	const handlers = new NoteHandlers(server, projectRoot);
 
 	const createTool = createSimpleValidatedTool(
 		{
@@ -13,6 +13,7 @@ export function registerNoteTools(server: McpServer, config: RoadmapConfig): voi
 			description: "Create a note/discussion/review attached to a proposal. Supports markdown content and multiple note types (discussion, review, decision, question, general).",
 			inputSchema: noteCreateSchema,
 		},
+		noteCreateSchema,
 		async (args) => handlers.createNote(args),
 	);
 
@@ -22,6 +23,7 @@ export function registerNoteTools(server: McpServer, config: RoadmapConfig): voi
 			description: "List all notes attached to a proposal. Can filter by note type.",
 			inputSchema: noteListSchema,
 		},
+		noteListSchema,
 		async (args) => handlers.listNotes(args),
 	);
 
@@ -31,6 +33,7 @@ export function registerNoteTools(server: McpServer, config: RoadmapConfig): voi
 			description: "Delete a note by ID.",
 			inputSchema: noteDeleteSchema,
 		},
+		noteDeleteSchema,
 		async (args) => handlers.deleteNote(args),
 	);
 
@@ -40,6 +43,7 @@ export function registerNoteTools(server: McpServer, config: RoadmapConfig): voi
 			description: "Display full discussion notes for a proposal with formatted content. Shows note type, author, timestamp, and full body text.",
 			inputSchema: noteDisplaySchema,
 		},
+		noteDisplaySchema,
 		async (args) => handlers.displayNotes(args),
 	);
 
