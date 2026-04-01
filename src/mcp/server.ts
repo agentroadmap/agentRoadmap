@@ -343,9 +343,9 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	// Normal mode: full tools and resources
 	registerWorkflowResources(server);
 	registerWorkflowTools(server);
-	registerProposalTools(server, projectRoot);
+	registerProposalTools(server, config);
 	registerSdbMessageTools(server, projectRoot);
-	registerNoteTools(server, config);
+	registerNoteTools(server, projectRoot);
 	registerMilestoneTools(server);
 	registerDocumentTools(server, config);
 	registerMessageTools(server);

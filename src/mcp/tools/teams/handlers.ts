@@ -179,7 +179,7 @@ export class TeamHandlers {
 	 */
 	async queryRoster(args: { teamId?: string; role?: string; pool?: string }): Promise<CallToolResult> {
 		try {
-			const entries = this.teamBuilder.queryRoster(args);
+			const entries = this.membership.queryRoster(args);
 
 			if (entries.length === 0) {
 				return {
@@ -394,7 +394,7 @@ export class TeamHandlers {
 				};
 			}
 
-			const status = this.federation.getStatus();
+			const status = this.federation.getStats();
 
 			return {
 				content: [{
