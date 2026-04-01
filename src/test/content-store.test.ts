@@ -154,8 +154,8 @@ describe("ContentStore", () => {
 
 		const decisionsDir = filesystem.decisionsDir;
 		const decisionFiles: string[] = [];
-		for await (const file of globSync("decision-*.md", { cwd: decisionsDir, follow: true })) {
-			decisionFiles.push(file);
+		for await (const file of globSync("decision-*.md", { cwd: decisionsDir })) {
+			decisionFiles.push(typeof file === 'string' ? file : (file as any).name);
 		}
 		const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
 		if (!decisionFile) {
