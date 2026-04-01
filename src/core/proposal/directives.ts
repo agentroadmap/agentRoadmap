@@ -1,4 +1,5 @@
 import type { Directive, DirectiveBucket, DirectiveSummary, Proposal } from "../../types/index.ts";
+import { isReachedStatus, isReady, isTerminalStatus } from "../../utils/status.ts";
 
 const NO_DIRECTIVE_KEY = "__none";
 
@@ -257,7 +258,7 @@ export function getDirectiveLabel(directiveId: string | undefined, directiveEnti
 	return entity?.title || directiveId;
 }
 
-export { isReachedStatus, isReady, isTerminalStatus } from "../../utils/status.ts";
+/** Re-exported for consumers — already imported above for local use. */
 
 /**
  * Create a directive bucket for a given directive

@@ -127,6 +127,8 @@ export interface Proposal {
 	lastModified?: Date;
 	/** Data provenance indicator (where the proposal was loaded from) */
 	origin?: "local" | "remote" | "completed" | "local-branch";
+	/** Source identifier for debug tracking (e.g. branch name, file path) */
+	source?: string;
 	/** Optional per-proposal callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 	/** Budget limit in USD for this proposal (from SDB budget_limit_usd) */

@@ -71,9 +71,9 @@ describe("proposal-63: Agent Team Membership", () => {
 			const discoveries = manager.discoverTeams("agent-alpha", "proposal-42");
 
 			assert.equal(discoveries.length, 1);
-			assert.equal(discoveries[0].team.teamId, "team-1");
-			assert.ok(discoveries[0].relevance >= 0);
-			assert.ok(discoveries[0].relevance <= 1);
+			assert.equal(discoveries[0]!.team.teamId, "team-1");
+			assert.ok(discoveries[0]!.relevance >= 0);
+			assert.ok(discoveries[0]!.relevance <= 1);
 		});
 
 		it("returns empty for unknown proposal", () => {
@@ -99,7 +99,7 @@ describe("proposal-63: Agent Team Membership", () => {
 
 			assert.ok(discoveries.length >= 2);
 			// First should have higher relevance
-			assert.ok(discoveries[0].relevance >= discoveries[1].relevance);
+			assert.ok(discoveries[0]!.relevance >= discoveries[1].relevance);
 		});
 
 		it("filters by minimum relevance", () => {
@@ -131,7 +131,7 @@ describe("proposal-63: Agent Team Membership", () => {
 
 			const discoveries = manager.discoverTeams("agent-alpha", "proposal-42");
 
-			assert.ok(discoveries[0].availableRoles.includes("contributor"));
+			assert.ok(discoveries[0]!.availableRoles.includes("contributor"));
 		});
 
 		it("registers and unregisters teams", () => {
