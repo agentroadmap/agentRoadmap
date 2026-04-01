@@ -1,0 +1,2 @@
+# .gitleaksignore — exclude test fixtures with fake secrets
+src/test/proposal-52-secrets-manager.test.ts
