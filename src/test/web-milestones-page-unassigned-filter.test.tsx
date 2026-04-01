@@ -5,6 +5,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Directive, Proposal } from "../types/index.ts";
 import DirectivesPage from "../web/components/DirectivesPage";
+import { expect } from "./test-utils.ts";
 
 const statuses = ["Potential", "Active", "Complete"];
 
