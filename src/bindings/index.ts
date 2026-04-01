@@ -37,7 +37,7 @@ import {
 import { AddTeamMemberReducer } from "./add_team_member_reducer.ts";
 import { CacheClearReducer } from "./cache_clear_reducer.ts";
 import { CacheSetReducer } from "./cache_set_reducer.ts";
-import { ClaimStepReducer } from "./claim_step_reducer.ts";
+// import { ClaimStepReducer } from "./claim_step_reducer.ts"; // STALE: removed in v2 proposal refactor
 import { CreateAcReducer } from "./create_ac_reducer.ts";
 import { CreateChannelReducer } from "./create_channel_reducer.ts";
 import { CreateCompReducer } from "./create_comp_reducer.ts";
@@ -45,11 +45,11 @@ import { CreateDiscussionReducer } from "./create_discussion_reducer.ts";
 import { CreateGoalReducer } from "./create_goal_reducer.ts";
 import { CreateProposalReducer } from "./create_proposal_reducer.ts";
 import { CreateStateNoteReducer } from "./create_state_note_reducer.ts";
-import { CreateStepReducer } from "./create_step_reducer.ts";
+// import { CreateStepReducer } from "./create_step_reducer.ts"; // STALE
 import { CreateTeamReducer } from "./create_team_reducer.ts";
 import { DeleteDiscussionReducer } from "./delete_discussion_reducer.ts";
 import { DeleteStateNoteReducer } from "./delete_state_note_reducer.ts";
-import { DeleteStepReducer } from "./delete_step_reducer.ts";
+// import { DeleteStepReducer } from "./delete_step_reducer.ts"; // STALE
 import { EmitEventReducer } from "./emit_event_reducer.ts";
 import { GrantPrivilegeReducer } from "./grant_privilege_reducer.ts";
 import { MarkReadReducer } from "./mark_read_reducer.ts";
@@ -58,12 +58,12 @@ import { RecordTokensReducer } from "./record_tokens_reducer.ts";
 import { RegisterAgentReducer } from "./register_agent_reducer.ts";
 import { ReleaseClaimReducer } from "./release_claim_reducer.ts";
 import { RemoveTeamMemberReducer } from "./remove_team_member_reducer.ts";
-import { RestoreStepReducer } from "./restore_step_reducer.ts";
+// import { RestoreStepReducer } from "./restore_step_reducer.ts"; // STALE
 import { SendMessageReducer } from "./send_message_reducer.ts";
 import { SetConfigReducer } from "./set_config_reducer.ts";
 import { SubmitReviewReducer } from "./submit_review_reducer.ts";
 import { SubscribeChannelReducer } from "./subscribe_channel_reducer.ts";
-import { TransitionStepReducer } from "./transition_step_reducer.ts";
+// import { TransitionStepReducer } from "./transition_step_reducer.ts"; // STALE
 import { UpdateGoalStatusReducer } from "./update_goal_status_reducer.ts";
 import { VerifyAcReducer } from "./verify_ac_reducer.ts";
 
@@ -96,7 +96,7 @@ import { Rev } from "./rev_table.ts";
 import { Sbx } from "./sbx_table.ts";
 import { Skill } from "./skill_table.ts";
 import { StateNote } from "./state_note_table.ts";
-import { Step } from "./step_table.ts";
+// import { Step } from "./step_table.ts"; // STALE
 import { Sub } from "./sub_table.ts";
 import { Team } from "./team_table.ts";
 import { Test } from "./test_table.ts";
@@ -288,13 +288,13 @@ const tablesSchema = __schema({
         'id'] }],
     constraints: [],
   }, StateNote),
-  step: __table({
-    name: 'step',
-    indexes: [
-      { accessor: 'id', name: 'step_id_idx_btree', algorithm: 'btree', columns: [
-        'id'] }],
-    constraints: [],
-  }, Step),
+  // step: __table({ // STALE: table removed in v2 proposal refactor
+  //   name: 'step',
+  //   indexes: [
+  //     { accessor: 'id', name: 'step_id_idx_btree', algorithm: 'btree', columns: [
+  //       'id'] }],
+  //   constraints: [],
+  // }, Step),
   sub: __table({
     name: 'sub',
     indexes: [
@@ -330,7 +330,7 @@ const reducersSchema = __reducers(
   __reducerSchema("add_team_member", AddTeamMemberReducer),
   __reducerSchema("cache_clear", CacheClearReducer),
   __reducerSchema("cache_set", CacheSetReducer),
-  __reducerSchema("claim_step", ClaimStepReducer),
+  // __reducerSchema("claim_step", ClaimStepReducer), // STALE
   __reducerSchema("create_ac", CreateAcReducer),
   __reducerSchema("create_channel", CreateChannelReducer),
   __reducerSchema("create_comp", CreateCompReducer),
@@ -338,11 +338,11 @@ const reducersSchema = __reducers(
   __reducerSchema("create_goal", CreateGoalReducer),
   __reducerSchema("create_proposal", CreateProposalReducer),
   __reducerSchema("create_state_note", CreateStateNoteReducer),
-  __reducerSchema("create_step", CreateStepReducer),
+  // __reducerSchema("create_step", CreateStepReducer), // STALE
   __reducerSchema("create_team", CreateTeamReducer),
   __reducerSchema("delete_discussion", DeleteDiscussionReducer),
   __reducerSchema("delete_state_note", DeleteStateNoteReducer),
-  __reducerSchema("delete_step", DeleteStepReducer),
+  // __reducerSchema("delete_step", DeleteStepReducer), // STALE
   __reducerSchema("emit_event", EmitEventReducer),
   __reducerSchema("grant_privilege", GrantPrivilegeReducer),
   __reducerSchema("mark_read", MarkReadReducer),
@@ -351,12 +351,12 @@ const reducersSchema = __reducers(
   __reducerSchema("register_agent", RegisterAgentReducer),
   __reducerSchema("release_claim", ReleaseClaimReducer),
   __reducerSchema("remove_team_member", RemoveTeamMemberReducer),
-  __reducerSchema("restore_step", RestoreStepReducer),
+  // __reducerSchema("restore_step", RestoreStepReducer), // STALE
   __reducerSchema("send_message", SendMessageReducer),
   __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("submit_review", SubmitReviewReducer),
   __reducerSchema("subscribe_channel", SubscribeChannelReducer),
-  __reducerSchema("transition_step", TransitionStepReducer),
+  // __reducerSchema("transition_step", TransitionStepReducer), // STALE
   __reducerSchema("update_goal_status", UpdateGoalStatusReducer),
   __reducerSchema("verify_ac", VerifyAcReducer),
 );
