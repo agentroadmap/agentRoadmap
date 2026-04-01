@@ -2,7 +2,7 @@
 id: RFC-20260401-DATA-MODEL
 display_id: RFC-20260401-DATA-MODEL
 proposal_type: TECHNICAL
-category: 
+category: RESEARCH
 domain_id: 
 title: "Data Model Schema v2.1"
 status: Draft

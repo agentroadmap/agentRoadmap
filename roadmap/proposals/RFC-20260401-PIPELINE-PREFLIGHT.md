@@ -2,7 +2,7 @@
 id: RFC-20260401-PIPELINE-PREFLIGHT
 display_id: RFC-20260401-PIPELINE-PREFLIGHT
 proposal_type: TECHNICAL
-category: 
+category: FEATURE
 domain_id: 
 title: "Pipeline Pre-flight Check Protocol"
 status: Draft

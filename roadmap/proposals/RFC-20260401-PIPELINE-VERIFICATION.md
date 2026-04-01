@@ -2,7 +2,7 @@
 id: RFC-20260401-PIPELINE-VERIFICATION
 display_id: RFC-20260401-PIPELINE-VERIFICATION
 proposal_type: TECHNICAL
-category: 
+category: FEATURE
 domain_id: 
 title: "Pipeline Verification & QA"
 status: Draft

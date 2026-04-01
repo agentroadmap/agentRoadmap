@@ -2,7 +2,7 @@
 id: RFC-20260401-BUSINESS-STRATEGY
 display_id: RFC-20260401-BUSINESS-STRATEGY
 proposal_type: DIRECTIVE
-category: 
+category: FEATURE
 domain_id: 
 title: "Business Strategy & Vision Alignment"
 status: Draft

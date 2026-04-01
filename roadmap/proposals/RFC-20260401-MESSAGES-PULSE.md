@@ -2,7 +2,7 @@
 id: RFC-20260401-MESSAGES-PULSE
 display_id: RFC-20260401-MESSAGES-PULSE
 proposal_type: COMPONENT
-category: 
+category: FEATURE
 domain_id: 
 title: "Group Pulse & Messaging"
 status: Draft
