@@ -331,7 +331,7 @@ export class FileSystem {
 		}
 
 		const config = await this.loadConfig();
-		const proposalPrefix = (config?.proposal_prefix || config?.prefixes?.proposal || "proposal").toLowerCase();
+		const proposalPrefix = (config?.prefixes?.proposal || "proposal").toLowerCase();
 
 		const proposalFiles: string[] = [];
 		try {
@@ -394,7 +394,7 @@ export class FileSystem {
 		}
 
 		const config = await this.loadConfig();
-		const proposalPrefix = (config?.proposal_prefix || config?.prefixes?.proposal || "proposal").toLowerCase();
+		const proposalPrefix = (config?.prefixes?.proposal || "proposal").toLowerCase();
 
 		const proposalFiles: string[] = [];
 		try {
@@ -435,7 +435,7 @@ export class FileSystem {
 		}
 
 		const config = await this.loadConfig();
-		const proposalPrefix = (config?.proposal_prefix || config?.prefixes?.proposal || "proposal").toLowerCase();
+		const proposalPrefix = (config?.prefixes?.proposal || "proposal").toLowerCase();
 
 		const proposalFiles: string[] = [];
 		try {
@@ -1525,10 +1525,10 @@ ${description || `Directive: ${title}`}`,
 					// Remove surrounding quotes if present, but preserve inner content
 					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
 					break;
-				case "proposal_prefix":
+				case "proposal":
 					const prefixVal = value.replace(/['"]/g, "");
-					config.proposal_prefix = prefixVal;
-					config.prefixes = { proposal: prefixVal };
+					if (!config.prefixes) config.prefixes = {};
+					config.prefixes.proposal = prefixVal;
 					break;
 			}
 		}
@@ -1582,7 +1582,7 @@ ${description || `Directive: ${title}`}`,
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
-			...(config.prefixes?.proposal ? [`proposal_prefix: "${config.prefixes.proposal}"`] : []),
+			...(config.prefixes?.proposal ? [`proposal: "${config.prefixes.proposal}"`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;
