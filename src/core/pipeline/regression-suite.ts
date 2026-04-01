@@ -241,7 +241,7 @@ export class RegressionSuite {
 			const included = filtered.map((t) => t.path);
 			for (const include of this.config.alwaysInclude) {
 				if (!included.includes(include)) {
-					filtered.push({ path: include, category: "integration", name: include });
+					filtered.push({ path: include, category: "integration", name: include, size: 0 });
 				}
 			}
 		}
