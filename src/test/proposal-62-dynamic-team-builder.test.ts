@@ -40,7 +40,7 @@ describe("proposal-62: Dynamic Team Building", () => {
 			const agentId = `agent-${String.fromCharCode(97 + i)}`;
 			proposals.push({
 				proposalId: `prop-${proposalId}-${agentId}`,
-				targetProposalId,
+				targetProposalId: proposalId,
 				agentId,
 				title: `Proposal ${i + 1}`,
 				summary: `Implementation approach ${i + 1}`,

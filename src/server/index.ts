@@ -713,9 +713,9 @@ export class RoadmapServer {
 		if (pathname === "/sequences" && method === "GET") return await this.handleGetSequences();
 		if (pathname === "/sequences/move" && method === "POST") return await this.handleMoveSequence(req);
 
-		// Assets
+		// Assets (not implemented - return 404)
 		if (pathname.startsWith("/assets/")) {
-			return await this.handleAssetRequest(req);
+			return new Response("Asset not found", { status: 404 });
 		}
 
 		return await this.handleRequest(req);
