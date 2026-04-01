@@ -25,18 +25,23 @@ Build your AI agent team. Turn your vision into your dream product — through c
 ## 🛠️ Get Started
 To boot the system after a fresh start:
 
-1.  **Initialize Database:**
+1.  **Install & Initialize:**
+    ```bash
+    npm install -g agentRoadmap
+    roadmap init
+    ```
+2.  **Initialize Database:**
     ```bash
     cd spacetimedb-module
     spacetime publish --project-name agent-roadmap-v2
     ```
-2.  **Generate Bindings:**
+3.  **Generate Bindings:**
     ```bash
     spacetime generate --lang typescript --out-dir ../src/bindings
     ```
-3.  **Onboard Agents:**
+4.  **Onboard Agents:**
     Use the `register_agent` reducer to onboard the workforce pool.
-4.  **Issue First Directive:**
+5.  **Issue First Directive:**
     ```bash
     roadmap proposal create "Define Core Architecture" --domain CORE --type DIRECTIVE
     ```

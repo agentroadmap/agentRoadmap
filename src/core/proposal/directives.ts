@@ -1,4 +1,4 @@
-import type { Directive, DirectiveBucket, DirectiveSummary, Proposal } from "../types/index.ts";
+import type { Directive, DirectiveBucket, DirectiveSummary, Proposal } from "../../types/index.ts";
 
 const NO_DIRECTIVE_KEY = "__none";
 

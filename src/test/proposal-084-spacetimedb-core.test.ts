@@ -14,7 +14,7 @@ import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { AgentRegistry } from "../spacetimedb/registry.ts";
 import { SandboxRegistry } from "../spacetimedb/sandbox-registry.ts";
-import { DAGHealth } from "../core/dag-health.ts";
+import { DAGHealth } from "../core/dag/dag-health.ts";
 import type { Proposal } from "../types/index.ts";
 
 // Helper to create mock proposals for DAG testing

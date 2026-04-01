@@ -18,7 +18,7 @@ import type {
 	RoadmapConfig,
 	Agent,
 	PulseEvent,
-} from "../types/index.ts";
+} from "../../types/index.ts";
 
 export interface DaemonClientOptions {
 	/** Base URL of the daemon (e.g., "http://localhost:6420") */

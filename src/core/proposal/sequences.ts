@@ -1,4 +1,4 @@
-import type { Sequence, Proposal } from "../types/index.ts";
+import type { Sequence, Proposal } from "../../types/index.ts";
 import { sortByProposalId } from "../../utils/proposal-sorting.ts";
 
 /**

@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Proposal } from "../types/index.ts";
+import type { Proposal } from "../../types/index.ts";
 import { FederationPKI, type Host, type Certificate } from "./federation.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────

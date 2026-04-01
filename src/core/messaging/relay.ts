@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Core } from "../roadmap.ts";
-import type { RelayConfig } from "../types/index.ts";
+import type { RelayConfig } from "../../types/index.ts";
 
 export class RelayService {
 	private readonly core: Core;

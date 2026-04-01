@@ -1,4 +1,4 @@
-import type { Proposal } from "../types/index.ts";
+import type { Proposal } from "../../types/index.ts";
 import { isReachedStatus } from "./directives.ts";
 
 export interface ProposalStatistics {

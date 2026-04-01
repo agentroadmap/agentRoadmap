@@ -277,7 +277,7 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 
 			const connections = pki.getHostConnections(host1.hostId);
 			assert.equal(connections.length, 1);
-			assert.equal(connections[0].mtlsVerified, true);
+			assert.equal(connections[0]!.mtlsVerified, true);
 		});
 
 		it("tracks failed connections", async () => {
@@ -298,7 +298,7 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 
 			const failed = pki.getFailedConnections();
 			assert.equal(failed.length, 1);
-			assert.ok(failed[0].error);
+			assert.ok(failed[0]!.error);
 		});
 	});
 
@@ -375,7 +375,7 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 			const keys = generateTestKeyPair();
 			await pki.registerHost("dup-host.local", 8080, keys.publicKey);
 			const req = await pki.approveJoinRequest(
-				pki.getPendingRequests()[0].requestId,
+				pki.getPendingRequests()[0]!.requestId,
 				"admin",
 			);
 
@@ -395,8 +395,8 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 
 			// Approve both hosts
 			const pending = pki.getPendingRequests();
-			await pki.approveJoinRequest(pending[0].requestId, "admin");
-			await pki.approveJoinRequest(pending[1].requestId, "admin");
+			await pki.approveJoinRequest(pending[0]!.requestId, "admin");
+			await pki.approveJoinRequest(pending[1]!.requestId, "admin");
 
 			const hosts = pki.getAllHosts();
 			assert.equal(hosts.length, 2);
@@ -411,11 +411,11 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 
 			// Approve only host1
 			const pending = pki.getPendingRequests();
-			await pki.approveJoinRequest(pending[0].requestId, "admin");
+			await pki.approveJoinRequest(pending[0]!.requestId, "admin");
 
 			const active = pki.getActiveHosts();
 			assert.equal(active.length, 1);
-			assert.equal(active[0].hostname, "host1.local");
+			assert.equal(active[0]!.hostname, "host1.local");
 		});
 	});
 
@@ -469,7 +469,7 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 			const keys = generateTestKeyPair();
 			await shortPki.registerHost("host1.local", 8080, keys.publicKey);
 			const pending = shortPki.getPendingRequests();
-			await shortPki.approveJoinRequest(pending[0].requestId, "admin");
+			await shortPki.approveJoinRequest(pending[0]!.requestId, "admin");
 
 			// Check for certs expiring in 30 days (should include our 30-day cert)
 			const expiring = shortPki.getExpiringCertificates(30);
@@ -481,10 +481,10 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 			const keys = generateTestKeyPair();
 			await pki.registerHost("host1.local", 8080, keys.publicKey);
 			const pending = pki.getPendingRequests();
-			await pki.approveJoinRequest(pending[0].requestId, "admin");
+			await pki.approveJoinRequest(pending[0]!.requestId, "admin");
 
 			// Manually expire the certificate for testing
-			const certs = pki.getHostCertificates(pki.getHost(pending[0].hostId)!.hostId);
+			const certs = pki.getHostCertificates(pki.getHost(pending[0]!.hostId)!.hostId);
 			// No way to manually expire in this implementation, but cleanup works
 			const expired = pki.cleanupExpiredCertificates();
 			assert.ok(Array.isArray(expired));
@@ -544,14 +544,14 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 			await pki.registerHost("host2.local", 8080, keys2.publicKey);
 
 			const pending = pki.getPendingRequests();
-			await pki.approveJoinRequest(pending[0].requestId, "admin");
-			await pki.approveJoinRequest(pending[1].requestId, "admin");
+			await pki.approveJoinRequest(pending[0]!.requestId, "admin");
+			await pki.approveJoinRequest(pending[1]!.requestId, "admin");
 
-			pki.quarantineHost(pending[0].hostId, "Malicious behavior");
+			pki.quarantineHost(pending[0]!.hostId, "Malicious behavior");
 
 			const quarantined = pki.getQuarantinedHosts();
 			assert.equal(quarantined.length, 1);
-			assert.equal(quarantined[0].hostId, pending[0].hostId);
+			assert.equal(quarantined[0]!.hostId, pending[0]!.hostId);
 		});
 
 		it("lifts quarantine", async () => {
@@ -607,12 +607,12 @@ describe("proposal-56: Federation-PKI-Host-Authentication", () => {
 
 			// Approve both hosts first
 			const pending = pki.getPendingRequests();
-			await pki.approveJoinRequest(pending[0].requestId, "admin");
-			await pki.approveJoinRequest(pending[1].requestId, "admin");
+			await pki.approveJoinRequest(pending[0]!.requestId, "admin");
+			await pki.approveJoinRequest(pending[1]!.requestId, "admin");
 
 			// Then quarantine one
 			const hosts = pki.getAllHosts();
-			pki.quarantineHost(hosts[1].hostId, "Test quarantine");
+			pki.quarantineHost(hosts[1]!.hostId, "Test quarantine");
 
 			const stats = pki.getStats();
 

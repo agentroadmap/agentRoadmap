@@ -12,7 +12,7 @@
 import { readdirSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
-import type { Proposal, RoadmapConfig } from "../types/index.ts";
+import type { Proposal, RoadmapConfig } from "../../types/index.ts";
 
 export interface DocGeneratorOptions {
 	outputDir: string;

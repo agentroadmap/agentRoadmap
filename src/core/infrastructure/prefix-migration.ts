@@ -10,7 +10,7 @@ import { glob, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseProposal } from "../../markdown/parser.ts";
-import type { RoadmapConfig, Proposal } from "../types/index.ts";
+import type { RoadmapConfig, Proposal } from "../../types/index.ts";
 import { generateNextId } from "../../utils/prefix-config.ts";
 
 /**

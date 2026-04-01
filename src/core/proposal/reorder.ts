@@ -1,4 +1,4 @@
-import type { Proposal } from "../types/index.ts";
+import type { Proposal } from "../../types/index.ts";
 
 export const DEFAULT_ORDINAL_STEP = 1000;
 const EPSILON = 1e-6;

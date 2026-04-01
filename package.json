@@ -1,5 +1,5 @@
 {
-	"name": "agent-roadmap",
+	"name": "agentRoadmap",
 	"version": "0.5.0",
 	"type": "module",
 	"module": "src/cli.ts",
@@ -74,10 +74,10 @@
 	"author": "Alex Gavrilescu (https://github.com/MrLesk)",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/MrLesk/agentRoadmap.md.git"
+		"url": "git+https://github.com/agentroadmap/agentRoadmap.git"
 	},
 	"bugs": {
-		"url": "https://github.com/MrLesk/agentRoadmap.md/issues"
+		"url": "https://github.com/agentroadmap/agentRoadmap/issues"
 	},
 	"homepage": "https://roadmap.md",
 	"keywords": [

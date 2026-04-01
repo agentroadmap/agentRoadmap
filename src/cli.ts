@@ -726,7 +726,7 @@ program
 				let agentFiles: AgentInstructionFile[] = [];
 				let agentInstructionsSkipped = false;
 				let mcpClientSetupSummary: string | undefined;
-				const mcpGuideUrl = "https://github.com/MrLesk/Roadmap.md#-mcp-integration-model-context-protocol";
+				const mcpGuideUrl = "https://github.com/agentroadmap/agentRoadmap#-mcp-integration-model-context-protocol";
 
 				if (
 					!integrationOption &&

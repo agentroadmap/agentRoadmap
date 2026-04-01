@@ -9,7 +9,7 @@ import type {
 	SearchResult,
 	SearchResultType,
 	Proposal,
-} from "../types/index.ts";
+} from "../../types/index.ts";
 import { isReachedStatus, isTerminalStatus } from "../proposal/directives.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 // SQLite removed — search uses SpacetimeDB via sdb-proposal-loader

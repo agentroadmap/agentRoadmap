@@ -11,7 +11,7 @@
  * AC#5: Alerts posted to group-pulse channel
  */
 
-import type { Proposal } from "../types/index.ts";
+import type { Proposal } from "../../types/index.ts";
 
 /** Health issue severity levels */
 export type HealthSeverity = "error" | "warning" | "info";

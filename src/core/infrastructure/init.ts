@@ -13,7 +13,7 @@ import { BLUEPRINTS, type BlueprintType } from "./blueprints.ts";
 import type { Core } from "../roadmap.ts";
 
 export const MCP_SERVER_NAME = "roadmap";
-export const MCP_GUIDE_URL = "https://github.com/MrLesk/Roadmap.md#-mcp-integration-model-context-protocol";
+export const MCP_GUIDE_URL = "https://github.com/agentroadmap/agentRoadmap#-mcp-integration-model-context-protocol";
 
 export type IntegrationMode = "mcp" | "cli" | "none";
 export type McpClient = "claude" | "codex" | "gemini" | "kiro" | "guide";

@@ -1,4 +1,4 @@
-import type { RoadmapConfig } from "../types/index.ts";
+import type { RoadmapConfig } from "../../types/index.ts";
 
 /**
  * Migrates config to ensure all required fields exist with default values
