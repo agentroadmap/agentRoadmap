@@ -275,6 +275,7 @@ export const expect: ExpectFn = Object.assign(
 	},
 	{
 		any: (ctor: Function): ExpectAnyMatcher => ({ [EXPECT_ANY_MARKER]: true, constructor: ctor }),
+		arrayContaining: (arr: unknown[]): unknown => arr,
 	},
 );
 import { spawnSync } from "node:child_process";
