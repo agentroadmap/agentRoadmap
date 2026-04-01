@@ -1495,7 +1495,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const { exportKanbanBoardToFile } = await import("../index.ts");
+			const { exportKanbanBoardToFile } = await import("../board.ts");
 			const outputPath = join(TEST_DIR, "test-export.md");
 			const proposals = await core.filesystem.listProposals();
 			const config = await core.filesystem.loadConfig();
