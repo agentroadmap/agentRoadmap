@@ -6,5 +6,5 @@ declare module 'wouter' {
   export function Link(props: { href: string; children: ReactNode; className?: string }): JSX.Element;
   export function useRoute(pattern: string): [boolean, object | null];
   export function useLocation(): [string, (path: string) => void];
-  export function useSearchParams(): [URLSearchParams, (params: Record<string, string>) => void];
+  export function useSearchParams(): [URLSearchParams, (params: URLSearchParams | ((prev: URLSearchParams) => URLSearchParams), options?: { replace?: boolean }) => void];
 }
