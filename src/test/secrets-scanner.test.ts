@@ -18,7 +18,7 @@ import {
 	generatePreCommitHook,
 	containsSecrets,
 	maskSecrets,
-} from "../core/secrets-scanner.ts";
+} from "../core/security/secrets-scanner.ts";
 
 describe("EncryptedVault (proposal-52 AC#2, AC#4)", () => {
 	let tempDir: string;
@@ -123,7 +123,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `const config = { apiKey: "sk-abcdef1234567890" };`;
 		const findings = scanner.scanContent(content, "test.ts");
 
-		const apiKeyFinding = findings.find((f) => f.type === "api_key");
+		const apiKeyFinding = findings.find((f: any) => f.type === "api_key");
 		assert.ok(apiKeyFinding, "Should detect API key");
 		assert.equal(apiKeyFinding?.severity, "high");
 	});
@@ -132,7 +132,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE`;
 		const findings = scanner.scanContent(content, ".env");
 
-		const awsFinding = findings.find((f) => f.type === "aws_access_key");
+		const awsFinding = findings.find((f: any) => f.type === "aws_access_key");
 		assert.ok(awsFinding, "Should detect AWS key");
 		assert.equal(awsFinding?.severity, "critical");
 	});
@@ -141,7 +141,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `-----BEGIN RSA PRIVATE KEY-----\nMIIEpA...\n-----END RSA PRIVATE KEY-----`;
 		const findings = scanner.scanContent(content, "id_rsa");
 
-		const keyFinding = findings.find((f) => f.type === "private_key");
+		const keyFinding = findings.find((f: any) => f.type === "private_key");
 		assert.ok(keyFinding, "Should detect private key");
 		assert.equal(keyFinding?.severity, "critical");
 	});
@@ -150,7 +150,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789`;
 		const findings = scanner.scanContent(content, ".env");
 
-		const ghFinding = findings.find((f) => f.type === "github_token");
+		const ghFinding = findings.find((f: any) => f.type === "github_token");
 		assert.ok(ghFinding, "Should detect GitHub token");
 		assert.equal(ghFinding?.severity, "critical");
 	});
@@ -159,7 +159,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`;
 		const findings = scanner.scanContent(content, "config.ts");
 
-		const bearerFinding = findings.find((f) => f.type === "bearer_token");
+		const bearerFinding = findings.find((f: any) => f.type === "bearer_token");
 		assert.ok(bearerFinding, "Should detect bearer token");
 	});
 
@@ -167,7 +167,7 @@ describe("SecretsScanner (proposal-52 AC#1, AC#3)", () => {
 		const content = `const db = { password: "supersecretpassword123" };`;
 		const findings = scanner.scanContent(content, "db.ts");
 
-		const passFinding = findings.find((f) => f.type === "password_assignment");
+		const passFinding = findings.find((f: any) => f.type === "password_assignment");
 		assert.ok(passFinding, "Should detect password");
 		assert.equal(passFinding?.severity, "high");
 	});

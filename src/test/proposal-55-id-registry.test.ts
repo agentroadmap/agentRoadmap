@@ -79,7 +79,7 @@ describe("proposal-55: Proposal ID Registry", () => {
 				sessionId: "test",
 			});
 
-			assert.ok(/^proposal-\d+$/.test(result.ids[0]));
+			assert.ok(/^proposal-\d+$/.test(result.ids[0]!));
 		});
 
 		it("supports custom prefixes", async () => {
@@ -102,8 +102,8 @@ describe("proposal-55: Proposal ID Registry", () => {
 
 			const status = registry.getStatus();
 			assert.equal(status.reservedRanges.length, 1);
-			assert.equal(status.reservedRanges[0].sessionId, "session-1");
-			assert.ok(status.reservedRanges[0].expiresAt);
+			assert.equal(status.reservedRanges[0]!.sessionId, "session-1");
+			assert.ok(status.reservedRanges[0]!.expiresAt);
 		});
 
 		it("releases reservations for a session", async () => {
@@ -209,9 +209,9 @@ describe("proposal-55: Proposal ID Registry", () => {
 
 			const log = registry.getAuditLog();
 			assert.equal(log.length, 2);
-			assert.equal(log[0].id, "proposal-1");
-			assert.equal(log[0].sessionId, "agent-1");
-			assert.equal(log[1].id, "proposal-2");
+			assert.equal(log[0]!.id, "proposal-1");
+			assert.equal(log[0]!.sessionId, "agent-1");
+			assert.equal(log[1]!.id, "proposal-2");
 			assert.equal(log[1].sessionId, "agent-2");
 		});
 
