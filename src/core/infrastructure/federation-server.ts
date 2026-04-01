@@ -463,7 +463,7 @@ export class FederationServer {
 		// Check if both have been modified since last sync
 		const localVersion = this.proposalVersions.get(proposalId) ?? 0;
 		const remoteVersion =
-			(remoteProposal as Record<string, unknown>)._federationVersion as number | undefined ?? 0;
+			(remoteProposal as unknown as Record<string, unknown>)._federationVersion as number | undefined ?? 0;
 
 		// If both have been modified, we have a conflict
 		if (localVersion > 0 && remoteVersion > 0 && localTimestamp !== remoteTimestamp) {
@@ -540,7 +540,7 @@ export class FederationServer {
 				winner = {
 					...conflict.remoteProposal,
 					acceptanceCriteriaItems:
-						conflict.localProposal.acceptanceCriteriaItems?.length > 0
+						(conflict.localProposal.acceptanceCriteriaItems?.length ?? 0) > 0
 							? conflict.localProposal.acceptanceCriteriaItems
 							: conflict.remoteProposal.acceptanceCriteriaItems,
 				};

@@ -168,7 +168,8 @@ export class ProposalManager {
 		const isDraft = input.status?.toLowerCase() === "draft";
 		const entityType = isDraft ? EntityType.Draft : EntityType.Proposal;
 		
-		const id = await this.idRegistry.allocateId(entityType, input.parentProposalId);
+		const allocatedId = await this.idRegistry.allocateId({ sessionId: entityType });
+		const id = allocatedId.ids[0];
 
 		const proposal: Proposal = {
 			id,
