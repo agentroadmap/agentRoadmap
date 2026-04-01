@@ -153,7 +153,7 @@ describe("Line Wrapping", () => {
 		screen.render();
 
 		// The list should be constrained by its parent width
-		assert.ok(proposalList.width < screen.width);
+		assert.ok(proposalList.width != null && proposalList.width < screen.width);
 
 		screen.destroy();
 	});

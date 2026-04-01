@@ -16,15 +16,15 @@ id: proposal-1
 		const proposalments = VerificationProposalmentsManager.parseVerificationProposalments(original);
 		assert.equal(proposalments.length, 2);
 		
-		assert.equal(proposalments[0].text, "Test item 1");
-		assert.equal(proposalments[0].role, "builder");
-		assert.equal(proposalments[0].evidence, "unit test");
-		assert.equal(proposalments[0].checked, false);
+		assert.equal(proposalments[0]!.text, "Test item 1");
+		assert.equal(proposalments[0]!.role, "builder");
+		assert.equal(proposalments[0]!.evidence, "unit test");
+		assert.equal(proposalments[0]!.checked, false);
 
-		assert.equal(proposalments[1].text, "Test item 2");
-		assert.equal(proposalments[1].role, "peer-tester");
-		assert.equal(proposalments[1].evidence, "observation");
-		assert.equal(proposalments[1].checked, true);
+		assert.equal(proposalments[1]!.text, "Test item 2");
+		assert.equal(proposalments[1]!.role, "peer-tester");
+		assert.equal(proposalments[1]!.evidence, "observation");
+		assert.equal(proposalments[1]!.checked, true);
 
 		const updated = VerificationProposalmentsManager.updateContent(original, proposalments);
 		assert.ok(updated.includes("- [ ] #1 [builder] Test item 1 (evidence: unit test)"));
@@ -43,7 +43,7 @@ id: proposal-1
 		assert.ok(updated.includes("- [ ] #1 [builder] New proposalment (evidence: logs)"));
 		
 		const parsed = VerificationProposalmentsManager.parseVerificationProposalments(updated);
-		assert.equal(parsed[0].role, "builder");
-		assert.equal(parsed[0].evidence, "logs");
+		assert.equal(parsed[0]!.role, "builder");
+		assert.equal(parsed[0]!.evidence, "logs");
 	});
 });
