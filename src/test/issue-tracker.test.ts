@@ -54,24 +54,24 @@ describe("Issue Tracker Module", () => {
 		
 		store = issueTracker.addIssue(store, issue);
 		assert.equal(store.issues.length, 1);
-		assert.equal(store.issues[0].id, "ISSUE-10.1-1");
-		assert.equal(store.issues[0].title, "UI glitch in board");
+		assert.equal(store.issues[0]!.id, "ISSUE-10.1-1");
+		assert.equal(store.issues[0]!.title, "UI glitch in board");
 
 		issueTracker.saveIssues(TEST_DIR, store);
 		
 		const loaded = issueTracker.loadIssues(TEST_DIR);
 		assert.equal(loaded.issues.length, 1);
-		assert.equal(loaded.issues[0].id, "ISSUE-10.1-1");
+		assert.equal(loaded.issues[0]!.id, "ISSUE-10.1-1");
 	});
 
 	it("should resolve and wontfix issues", () => {
 		let store = issueTracker.loadIssues(TEST_DIR);
 		const issue = issueTracker.createIssue("1", "Bug", "major", "t.ts");
 		store = issueTracker.addIssue(store, issue);
-		const issueId = store.issues[0].id;
+		const issueId = store.issues[0]!.id;
 
 		store = issueTracker.resolveIssue(store, issueId, "Fixed in commit abc");
-		assert.equal(store.issues[0].status, "resolved");
+		assert.equal(store.issues[0]!.status, "resolved");
 		assert.equal(store.issues[0].resolution, "Fixed in commit abc");
 		assert.ok(store.issues[0].resolvedAt);
 
