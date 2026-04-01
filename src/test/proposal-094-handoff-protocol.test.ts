@@ -313,7 +313,8 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitImplementationNarrative(narrative);
 
 			assert.ok(received);
-			assert.equal(received as PulseMessage.type, "narrative");
+			const msg = received as PulseMessage;
+			assert.equal(msg.type, "narrative");
 		});
 
 		it("routes quality signals to ship team", () => {
@@ -337,9 +338,10 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitQualitySignals(signals);
 
 			assert.ok(received);
-			assert.equal(received as PulseMessage.type, "quality");
-			assert.equal(received as PulseMessage.fromPhase, CubicPhase.Test);
-			assert.equal(received as PulseMessage.toPhase, CubicPhase.Ship);
+			const msg3 = received as PulseMessage;
+			assert.equal(msg3.type, "quality");
+			assert.equal(msg3.fromPhase, CubicPhase.Test);
+			assert.equal(msg3.toPhase, CubicPhase.Ship);
 		});
 
 		it("sets urgent priority when risks present", () => {
@@ -364,7 +366,8 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitIntent(intent);
 
 			assert.ok(received);
-			assert.equal(received as PulseMessage.priority, "urgent");
+			const msg4 = received as PulseMessage;
+			assert.equal(msg4.priority, "urgent");
 		});
 
 		it("sets blocking priority for blocked assessments", () => {
@@ -388,7 +391,8 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitQualitySignals(signals);
 
 			assert.ok(received);
-			assert.equal(received as PulseMessage.priority, "blocking");
+			const msg5 = received as PulseMessage;
+			assert.equal(msg5.priority, "blocking");
 		});
 
 		it("unsubscribes correctly", () => {

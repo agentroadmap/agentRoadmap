@@ -491,7 +491,7 @@ export interface RoadmapConfig {
 }
 
 export interface DatabaseConfig {
-	provider: "spacetime" | "sqlite" | "markdown";
+	provider: "spacetime" | "markdown";
 	host?: string;
 	port?: number;
 	name?: string;
