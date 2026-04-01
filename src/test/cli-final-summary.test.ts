@@ -79,7 +79,7 @@ describe("Final Summary CLI", () => {
 
 		body = await core.getProposalContent("proposal-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBeUndefined();
-		assert.ok(!body.includes("## Final Summary"));
+		assert.ok(!body?.includes("## Final Summary"));
 	});
 
 	it("renders Final Summary in plain output after Implementation Notes when present", async () => {
