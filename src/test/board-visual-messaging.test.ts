@@ -84,7 +84,7 @@ describe("Board - Step Colors", () => {
 		const dimColors = ["dark-gray", "red"];
 
 		for (const status of hiddenStatuses) {
-			const color = STATUS_COLORS[status];
+			const color = STATUS_COLORS[status] as string;
 			assert.ok(dimColors.includes(color), `${status} should have dim color`);
 		}
 	});
@@ -128,12 +128,12 @@ describe("Board - Column Ordering", () => {
 			proposals: proposals.filter((s) => s.status === status),
 		}));
 
-		assert.strictEqual(columns[0].status, "Proposal");
-		assert.strictEqual(columns[1].status, "Draft");
-		assert.strictEqual(columns[2].status, "Accepted");
-		assert.strictEqual(columns[3].status, "Active");
-		assert.strictEqual(columns[4].status, "Review");
-		assert.strictEqual(columns[5].status, "Complete");
+		assert.strictEqual(columns[0]!.status, "Proposal");
+		assert.strictEqual(columns[1]!.status, "Draft");
+		assert.strictEqual(columns[2]!.status, "Accepted");
+		assert.strictEqual(columns[3]!.status, "Active");
+		assert.strictEqual(columns[4]!.status, "Review");
+		assert.strictEqual(columns[5]!.status, "Complete");
 	});
 
 	it("column order preserved after proposal move", () => {
