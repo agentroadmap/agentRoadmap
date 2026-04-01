@@ -4,7 +4,7 @@ import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { join } from "node:path";
 import { McpServer } from "../mcp/server.ts";
-import { registerDirectiveTools } from "../mcp/tools/milestones/index.ts";
+import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerProposalTools } from "../mcp/tools/proposals/index.ts";
 import { createUniqueTestDir, safeCleanup, execSync,
 	expect,
@@ -64,7 +64,7 @@ describe("MCP directive tools", () => {
 
 		const config = await loadConfigOrThrow(server);
 		registerProposalTools(server, config);
-		registerDirectiveTools(server);
+		registerMilestoneTools(server);
 	});
 
 	afterEach(async () => {
