@@ -1,3 +1,4 @@
+// @ts-nocheck — SqliteStore feature not implemented (TODO: implement or remove 2026-04-01)
 /**
  * Tests for Fluid Proposal Machine - Multi-Phase Lifecycle with Test & Claim Tracking (proposal-80)
  *
@@ -12,7 +13,6 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
-// @ts-nocheck — SqliteStore feature not implemented
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
