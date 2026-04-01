@@ -238,12 +238,12 @@ const clackPromptRunner: ProposalWizardPromptRunner = async (question) => {
 			validate: question.validate,
 			render() {
 				const withGuide = clack.settings.withGuide;
-				const header = `${withGuide ? `${picocolors.gray(clack.S_BAR)}\n` : ""}${clack.symbol(this.proposal)}  ${question.message}\n`;
+				const header = `${withGuide ? `${picocolors.gray(clack.S_BAR)}\n` : ""}${clack.symbol(this.prompt)}  ${question.message}\n`;
 				const placeholder = picocolors.inverse(picocolors.hidden("_"));
 				const inputValue = this.userInput.length > 0 ? this.userInputWithCursor : placeholder;
 				const submittedValue = String(this.value ?? "");
 
-				switch (this.proposal) {
+				switch (this.prompt) {
 					case "error": {
 						const linePrefix = withGuide ? `${picocolors.yellow(clack.S_BAR)}  ` : "";
 						const footer = withGuide ? picocolors.yellow(clack.S_BAR_END) : "";
@@ -278,7 +278,7 @@ const clackPromptRunner: ProposalWizardPromptRunner = async (question) => {
 			const wasEmptyBeforeKeypress = previousInput.length === 0;
 			const isEmptyAfterKeypress = textPrompt.userInput.length === 0;
 			if (question.allowBackspaceNavigation && wasEmptyBeforeKeypress && isEmptyAfterKeypress) {
-				textPrompt.proposal = "submit";
+				textPrompt.prompt = "submit";
 				textPrompt.value = WIZARD_BACKSPACE_NAVIGATION as unknown as string;
 				return;
 			}
@@ -549,6 +549,9 @@ async function runProposalWizardValues(params: {
 		return {
 			title: values.title.trim(),
 			description: values.description,
+			domainId: values.domainId,
+			proposalType: values.proposalType,
+			category: values.category,
 			status: canonicalStatus,
 			priority: values.priority.trim().toLowerCase(),
 			assignee: values.assignee,

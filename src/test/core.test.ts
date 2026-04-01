@@ -359,9 +359,10 @@ describe("Core", () => {
 			await core.createDocument(baseDocument, false);
 
 			const [initialFile] = await Array.fromAsync(
-				globSync("doc-*.md", { cwd: core.filesystem.docsDir, follow: true }),
+				globSync("doc-*.md", { cwd: core.filesystem.docsDir }),
 			);
-			assert.strictEqual(initialFile, "doc-1 - Operations-Guide.md");
+			const initialFileName = typeof initialFile === 'string' ? initialFile : initialFile?.name;
+			assert.strictEqual(initialFileName, "doc-1 - Operations-Guide.md");
 
 			const documents = await core.filesystem.listDocuments();
 			const existingDoc = documents[0];
@@ -373,10 +374,11 @@ describe("Core", () => {
 			await core.updateDocument({ ...existingDoc, title: "Operations Guide Updated" }, "# Updated content", false);
 
 			const docFiles = await Array.fromAsync(
-				globSync("doc-*.md", { cwd: core.filesystem.docsDir, follow: true }),
+				globSync("doc-*.md", { cwd: core.filesystem.docsDir }),
 			);
-			assert.strictEqual(docFiles.length, 1);
-			assert.strictEqual(docFiles[0], "doc-1 - Operations-Guide-Updated.md");
+			const docFileNames = docFiles.map((d: any) => typeof d === 'string' ? d : d.name);
+			assert.strictEqual(docFileNames.length, 1);
+			assert.strictEqual(docFileNames[0], "doc-1 - Operations-Guide-Updated.md");
 
 			const updatedDocs = await core.filesystem.listDocuments();
 			assert.strictEqual(updatedDocs[0]?.title, "Operations Guide Updated");
