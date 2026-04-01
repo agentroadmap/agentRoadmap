@@ -28,7 +28,7 @@ import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
 } from "../../utils/status.ts";
-import { isReachedStatus, isReady } from "../directives.ts";
+import { isReachedStatus, isReady } from "./directives.ts";
 import { IdRegistry } from "../identity/id-registry.ts";
 import { DaemonClient } from "../infrastructure/daemon-client.ts";
 

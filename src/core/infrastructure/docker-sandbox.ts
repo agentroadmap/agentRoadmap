@@ -10,7 +10,7 @@
 import type {
 	SandboxRecord,
 	SandboxConfig,
-} from "../spacetimedb/sandbox-registry.ts";
+} from "../../spacetimedb/sandbox-registry.ts";
 
 // ──────────────────────────────────────────
 // AC#1: Docker Container Provisioning

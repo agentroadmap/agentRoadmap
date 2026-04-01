@@ -11,7 +11,7 @@ import type {
 	Proposal,
 } from "../../types/index.ts";
 import { isReachedStatus, isTerminalStatus } from "../proposal/directives.ts";
-import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
+import type { ContentStore, ContentStoreEvent } from "../storage/content-store.ts";
 // SQLite removed — search uses SpacetimeDB via sdb-proposal-loader
 
 interface BaseSearchEntity {

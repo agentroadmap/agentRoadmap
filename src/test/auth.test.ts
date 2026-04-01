@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { AgentAuth, extractBearerToken } from "../core/auth.ts";
+import { AgentAuth, extractBearerToken } from "../core/security/auth.ts";
 
 describe("AgentAuth (proposal-51)", () => {
 	let tempDir: string;

@@ -6,7 +6,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { registerAgent, deregisterAgent, listAgents, getAgent, updateAgentStatus } from '../core/agent-registry/index.ts';
+import { registerAgent, deregisterAgent, listAgents, getAgent, updateAgentStatus } from '../core/identity/agent-registry/index.ts';
 
 describe('S147.1: Agent Startup Registration', () => {
   

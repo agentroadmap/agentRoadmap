@@ -1,7 +1,7 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
-import type { FileSystem } from "../file-system/operations.ts";
+import type { FileSystem } from "../../file-system/operations.ts";
 import { parseDecision, parseDocument, parseProposal } from "../../markdown/parser.ts";
 import type { Decision, Document, Proposal, ProposalListFilter } from "../../types/index.ts";
 import { normalizeProposalId, normalizeProposalIdentity, proposalIdsEqual } from "../../utils/proposal-path.ts";

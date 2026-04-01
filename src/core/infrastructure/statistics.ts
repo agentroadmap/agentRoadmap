@@ -1,5 +1,5 @@
 import type { Proposal } from "../../types/index.ts";
-import { isReachedStatus } from "./directives.ts";
+import { isReachedStatus } from "../proposal/directives.ts";
 
 export interface ProposalStatistics {
 	statusCounts: Map<string, number>;

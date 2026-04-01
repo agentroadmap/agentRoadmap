@@ -5,7 +5,7 @@
  * Uses MCP message tools for transport, agent registry for routing.
  */
 
-import { getAgent } from '../agent-registry/index.ts';
+import { getAgent } from '../../identity/agent-registry/index.ts';
 import type { AgentMessage, SendMessageRequest, SendMessageResponse, MessageFilter, MessageType } from './types.ts';
 import { randomUUID } from 'node:crypto';
 

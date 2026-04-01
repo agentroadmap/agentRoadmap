@@ -19,7 +19,7 @@ import {
 	AccessControl,
 	DataIntegrity,
 	AgentTokenStore,
-} from "../core/db-security.ts";
+} from "../core/security/db-security.ts";
 
 describe("Database Migration Security (proposal-095 AC#5)", () => {
 	let tempDir: string;

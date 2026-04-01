@@ -5,7 +5,7 @@
  * Events are stored in SpacetimeDB 'event' table and streamed via WebSocket.
  */
 
-import { querySdbSync } from "./sdb-client.ts";
+import { querySdbSync } from "../storage/sdb-client.ts";
 
 const DB_NAME = "agent-roadmap-v2";
 

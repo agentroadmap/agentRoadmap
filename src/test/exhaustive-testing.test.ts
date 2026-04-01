@@ -31,9 +31,9 @@ import {
 	filterByCategory,
 	getTestStats,
 	scanTestDirectory,
-} from "../core/test-discovery.ts";
+} from "../core/pipeline/test-discovery.ts";
 // Test runner
-import { allTestsPassed, formatTestReport, runTestFile } from "../core/test-runner.ts";
+import { allTestsPassed, formatTestReport, runTestFile } from "../core/pipeline/test-runner.ts";
 import { createUniqueTestDir, execSync, safeCleanup } from "./test-utils.ts";
 
 // --- Test Discovery Tests ---
