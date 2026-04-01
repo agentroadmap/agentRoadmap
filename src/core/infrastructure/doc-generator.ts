@@ -76,11 +76,11 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 	let multilineContent = "";
 	let indentLevel = 0;
 
-	const lines = yaml.split("\n");
+	const lines = yaml!.split("\n");
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		const trimmed = line.trim();
+		const trimmed = line!.trim();
 
 		// Skip empty lines
 		if (!trimmed) {
@@ -106,7 +106,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 		}
 
 		// Check for key-value pair
-		const colonIndex = line.indexOf(":");
+		const colonIndex = line!.indexOf(":");
 		if (colonIndex > 0) {
 			// Save previous array if exists
 			if (inArray && currentKey) {
@@ -115,14 +115,14 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 				currentArray = [];
 			}
 
-			const key = line.slice(0, colonIndex).trim();
-			let value: unknown = line.slice(colonIndex + 1).trim();
+			const key = line!.slice(0, colonIndex).trim();
+			let value: unknown = line!.slice(colonIndex + 1).trim();
 
 			// Handle empty value (may be followed by array or multiline)
 			if (!value) {
 				currentKey = key;
 				// Check if next line is an array
-				if (i + 1 < lines.length && lines[i + 1].trim().startsWith("- ")) {
+				if (i + 1 < lines.length && lines[i + 1]!.trim().startsWith("- ")) {
 					currentArray = [];
 					inArray = true;
 					continue;
@@ -140,9 +140,9 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 				}
 
 				// Handle JSON arrays inline
-				if (value.startsWith("[") && value.endsWith("]")) {
+				if ((value as string).startsWith("[") && (value as string).endsWith("]")) {
 					try {
-						value = JSON.parse(value);
+						value = JSON.parse(value as string);
 					} catch {
 						// Keep as string
 					}
@@ -177,18 +177,18 @@ export function parseProposalFile(filePath: string): Proposal | null {
 		// Extract title from filename or frontmatter
 		const filename = filePath.split("/").pop() || "";
 		const titleMatch = filename.match(/proposal-[\d.]+\s*-\s*(.+?)\.md$/);
-		const title = (frontmatter.title as string) || (titleMatch ? titleMatch[1].replace(/-/g, " ") : "Unknown");
+		const title = (frontmatter.title as string) || (titleMatch ? titleMatch[1]!.replace(/-/g, " ") : "Unknown");
 
 		return {
 			id: frontmatter.id as string,
 			title,
 			status: (frontmatter.status as string) || "Potential",
-			assignee: frontmatter.assignee as string[] | string | undefined,
-			priority: (frontmatter.priority as string) || "medium",
+			assignee: (frontmatter.assignee as string[] | undefined) ?? [],
+			priority: ((frontmatter.priority as string) || "medium") as "high" | "medium" | "low",
 			dependencies: (frontmatter.dependencies as string[]) || [],
 			labels: (frontmatter.labels as string[]) || [],
-			created_date: (frontmatter.created_date as string) || "",
-			updated_date: (frontmatter.updated_date as string) || "",
+			createdDate: (frontmatter.created_date as string) || "",
+			updatedDate: (frontmatter.updatedDate as string) || "",
 		};
 	} catch {
 		return null;
@@ -336,8 +336,8 @@ export function formatStatusSection(title: string, proposals: Proposal[], emoji:
 export function buildChangelogSection(proposals: Proposal[], maxEntries: number = 20): string {
 	// Sort by updated_date descending
 	const sorted = [...proposals]
-		.filter((s) => s.updated_date)
-		.sort((a, b) => b.updated_date!.localeCompare(a.updated_date!))
+		.filter((s) => s.updatedDate)
+		.sort((a, b) => b.updatedDate!.localeCompare(a.updatedDate!))
 		.slice(0, maxEntries);
 
 	if (sorted.length === 0) {
@@ -347,7 +347,7 @@ export function buildChangelogSection(proposals: Proposal[], maxEntries: number 
 	let section = "## 📝 Recent Changes\n\n";
 
 	for (const proposal of sorted) {
-		section += `- **${proposal.updated_date}**: ${proposal.id} - ${proposal.title} (${proposal.status})\n`;
+		section += `- **${proposal.updatedDate}**: ${proposal.id} - ${proposal.title} (${proposal.status})\n`;
 	}
 
 	return section + "\n";
@@ -488,7 +488,7 @@ function extractSection(content: string, sectionName: string): string {
 	for (const pattern of patterns) {
 		const match = content.match(pattern);
 		if (match) {
-			return match[1].trim();
+			return match[1]!.trim();
 		}
 	}
 	return "";
@@ -506,8 +506,8 @@ function parseAcceptanceCriteria(content: string): Array<{ number: number; text:
 		const match = line.match(/- \[([ x])\] #(\d+) (.+)/);
 		if (match) {
 			criteria.push({
-				number: Number.parseInt(match[2], 10),
-				text: match[3].trim(),
+				number: Number.parseInt(match[2]!, 10),
+				text: match[3]!.trim(),
 				passed: match[1] === "x",
 			});
 		}
@@ -553,7 +553,7 @@ export function parseProposalFileFullDetail(filePath: string): ProposalFullDetai
 
 		const filename = filePath.split("/").pop() || "";
 		const titleMatch = filename.match(/proposal-[\d.]+\s*-\s*(.+?)\.md$/);
-		const title = (frontmatter.title as string) || (titleMatch ? titleMatch[1].replace(/-/g, " ") : "Unknown");
+		const title = (frontmatter.title as string) || (titleMatch ? titleMatch[1]!.replace(/-/g, " ") : "Unknown");
 
 		const description = extractSection(content, "DESCRIPTION");
 		const implementationNotes = extractSection(content, "NOTES");
@@ -572,7 +572,7 @@ export function parseProposalFileFullDetail(filePath: string): ProposalFullDetai
 			builder: frontmatter.builder as string | undefined,
 			auditor: frontmatter.auditor as string | undefined,
 			created_date: frontmatter.created_date as string | undefined,
-			updated_date: frontmatter.updated_date as string | undefined,
+			updated_date: frontmatter.updatedDate as string | undefined,
 			labels: (frontmatter.labels as string[]) || [],
 			dependencies: (frontmatter.dependencies as string[]) || [],
 			parent_proposal_id: frontmatter.parent_proposal_id as string | undefined,
@@ -961,7 +961,7 @@ export function generateStatusIndexPages(summary: StatusSummary, outputDir: stri
 			content += `| ID | Title | Priority | Updated |\n`;
 			content += `|-----|-------|----------|--------|\n`;
 			for (const proposal of status.proposals) {
-				content += `| [${proposal.id}](../proposals/${proposal.id}.md) | ${proposal.title} | ${proposal.priority} | ${proposal.updated_date || "N/A"} |\n`;
+				content += `| [${proposal.id}](../proposals/${proposal.id}.md) | ${proposal.title} | ${proposal.priority} | ${proposal.updatedDate || "N/A"} |\n`;
 			}
 		} else {
 			content += "_No proposals in this category._\n";
@@ -1067,7 +1067,7 @@ export async function generateDocs(
 				const configContent = readFileSync(configPath, "utf-8");
 				const nameMatch = configContent.match(/project_name:\s*["']?([^"'\n]+)["']?/);
 				if (nameMatch) {
-					projectName = nameMatch[1].trim();
+					projectName = nameMatch[1]!.trim();
 				}
 			} catch {
 				// Use default

@@ -98,8 +98,8 @@ describe("proposal-49: Inter-Agent Communication Protocol", () => {
 
 			const aliceMentions = findMentionsForAgent(messages, "alice");
 			assert.equal(aliceMentions.length, 2);
-			assert.equal(aliceMentions[0].message.from, "bob");
-			assert.equal(aliceMentions[1].message.from, "carol");
+			assert.equal(aliceMentions[0]!.message.from, "bob");
+			assert.equal(aliceMentions[1]!.message.from, "carol");
 
 			// Should not include self-mentions
 			const aliceMentionsIncludingSelf = findMentionsForAgent(messages, "alice");
@@ -248,11 +248,11 @@ describe("proposal-49: Inter-Agent Communication Protocol", () => {
 			const threads = buildThreads(messages);
 
 			assert.equal(threads.length, 1);
-			assert.equal(threads[0].id, "MSG-001");
-			assert.equal(threads[0].replies.length, 2);
-			assert.ok(threads[0].participants.includes("bob"));
-			assert.ok(threads[0].participants.includes("alice"));
-			assert.ok(threads[0].participants.includes("carol"));
+			assert.equal(threads[0]!.id, "MSG-001");
+			assert.equal(threads[0]!.replies.length, 2);
+			assert.ok(threads[0]!.participants.includes("bob"));
+			assert.ok(threads[0]!.participants.includes("alice"));
+			assert.ok(threads[0]!.participants.includes("carol"));
 		});
 
 		it("should format thread for display", () => {
@@ -373,9 +373,9 @@ describe("proposal-49: Inter-Agent Communication Protocol", () => {
 			const messages = parseMessagesFromFile(filePath, "project");
 
 			assert.equal(messages.length, 3);
-			assert.equal(messages[0].from, "bob");
-			assert.ok(messages[1].mentions.includes("bob"));
-			assert.equal(messages[2].from, "carol");
+			assert.equal(messages[0]!.from, "bob");
+			assert.ok(messages[1]!.mentions.includes("bob"));
+			assert.equal(messages[2]!.from, "carol");
 		});
 
 		it("should handle missing files", () => {

@@ -24,9 +24,9 @@ import {
         buildChangelogSection,
         formatMarkdown,
         generateDocs,
-        type Proposal,
         type StatusSummary,
 } from '../core/infrastructure/doc-generator.ts';
+import type { Proposal } from '../types/index.ts';
 
 describe("proposal-58: Live Product Documentation Auto-Generated", () => {
         let testDir: string;
@@ -54,7 +54,7 @@ title: ${title}
 status: ${status}
 assignee: []
 created_date: '2026-03-22'
-updated_date: '2026-03-23'
+updatedDate: '2026-03-23'
 labels: []
 dependencies: ${JSON.stringify(deps)}
 priority: medium
@@ -102,15 +102,15 @@ Test proposal description.
         describe("AC#2: Includes what's built, in progress, and planned", () => {
                 it("should categorize proposals by status", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "Built", status: "Complete", dependencies: [] },
-                                { id: "proposal-2", title: "Active", status: "Active", dependencies: [] },
-                                { id: "proposal-3", title: "Review", status: "Review", dependencies: [] },
-                                { id: "proposal-4", title: "Planned", status: "Potential", dependencies: [] },
+                                { id: "proposal-1", title: "Built", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-2", title: "Active", status: "Active", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-3", title: "Review", status: "Review", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-4", title: "Planned", status: "Potential", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const summary = buildStatusSummary(proposals);
 
-                        assert.equal(summary.complete.length, 1);
+                        assert.equal(summary.reached.length, 1);
                         assert.equal(summary.active.length, 1);
                         assert.equal(summary.review.length, 1);
                         assert.equal(summary.potential.length, 1);
@@ -119,20 +119,20 @@ Test proposal description.
 
                 it("should handle 'Complete' status as synonym for 'Complete'", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "Done", status: "Complete", dependencies: [] },
+                                { id: "proposal-1", title: "Done", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const summary = buildStatusSummary(proposals);
 
-                        assert.equal(summary.complete.length, 1);
+                        assert.equal(summary.reached.length, 1);
                 });
 
                 it("should generate markdown with status sections", () => {
                         const summary: StatusSummary = {
-                                complete: [{ id: "proposal-1", title: "Built", status: "Complete", dependencies: [] }],
-                                active: [{ id: "proposal-2", title: "In Progress", status: "Active", dependencies: [] }],
+                                reached: [{ id: "proposal-1", title: "Built", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] }],
+                                active: [{ id: "proposal-2", title: "In Progress", status: "Active", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] }],
                                 review: [],
-                                potential: [{ id: "proposal-3", title: "Planned", status: "Potential", dependencies: [] }],
+                                potential: [{ id: "proposal-3", title: "Planned", status: "Potential", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] }],
                                 abandoned: [],
                                 total: 3,
                         };
@@ -204,21 +204,21 @@ Test proposal description.
         describe("AC#4: Includes architecture diagrams from DAG", () => {
                 it("should build DAG nodes from proposals", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "First", status: "Complete", dependencies: [] },
-                                { id: "proposal-2", title: "Second", status: "Active", dependencies: ["proposal-1"] },
+                                { id: "proposal-1", title: "First", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-2", title: "Second", status: "Active", dependencies: ["proposal-1"], assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const nodes = buildDagNodes(proposals);
 
                         assert.equal(nodes.length, 2);
-                        assert.equal(nodes[0].id, "proposal-1");
-                        assert.ok(nodes[1].dependencies.includes("proposal-1"));
+                        assert.equal(nodes[0]!.id, "proposal-1");
+                        assert.ok(nodes[1]!.dependencies.includes("proposal-1"));
                 });
 
                 it("should generate PlantUML architecture diagram", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "Base", status: "Complete", dependencies: [] },
-                                { id: "proposal-2", title: "Dependent", status: "Active", dependencies: ["proposal-1"] },
+                                { id: "proposal-1", title: "Base", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-2", title: "Dependent", status: "Active", dependencies: ["proposal-1"], assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const diagram = buildArchitectureSection(proposals);
@@ -326,8 +326,8 @@ Body`;
         describe("Additional features", () => {
                 it("should format status section correctly", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "One", status: "Complete", dependencies: [] },
-                                { id: "proposal-2", title: "Two", status: "Complete", dependencies: [] },
+                                { id: "proposal-1", title: "One", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-2", title: "Two", status: "Complete", dependencies: [], assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const section = formatStatusSection("Completed", proposals, "✅");
@@ -346,8 +346,8 @@ Body`;
 
                 it("should generate changelog from recent changes", () => {
                         const proposals: Proposal[] = [
-                                { id: "proposal-1", title: "Recent", status: "Complete", dependencies: [], updated_date: "2026-03-24" },
-                                { id: "proposal-2", title: "Older", status: "Active", dependencies: [], updated_date: "2026-03-22" },
+                                { id: "proposal-1", title: "Recent", status: "Complete", dependencies: [], updatedDate: "2026-03-24", assignee: [], createdDate: "2024-01-01", labels: [] },
+                                { id: "proposal-2", title: "Older", status: "Active", dependencies: [], updatedDate: "2026-03-22", assignee: [], createdDate: "2024-01-01", labels: [] },
                         ];
 
                         const changelog = buildChangelogSection(proposals, 10);
@@ -359,8 +359,8 @@ Body`;
 
                 it("should include assignee information in output", () => {
                         const summary: StatusSummary = {
-                                complete: [],
-                                active: [{ id: "proposal-1", title: "Assigned", status: "Active", dependencies: [], assignee: ["alice", "bob"] }],
+                                reached: [],
+                                active: [{ id: "proposal-1", title: "Assigned", status: "Active", dependencies: [], assignee: ["alice", "bob"], createdDate: "2024-01-01", labels: [] }],
                                 review: [],
                                 potential: [],
                                 abandoned: [],

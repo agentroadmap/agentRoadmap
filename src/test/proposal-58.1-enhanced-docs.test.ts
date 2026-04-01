@@ -174,10 +174,10 @@ describe("proposal-58.1: Enhanced Product Documentation", () => {
 
 			assert.ok(detail, "Should parse proposal file");
 			assert.equal(detail.acceptanceCriteria.length, 3);
-			assert.equal(detail.acceptanceCriteria[0].number, 1);
-			assert.equal(detail.acceptanceCriteria[0].passed, true);
-			assert.equal(detail.acceptanceCriteria[1].passed, false);
-			assert.equal(detail.acceptanceCriteria[2].passed, true);
+			assert.equal(detail.acceptanceCriteria[0]!.number, 1);
+			assert.equal(detail.acceptanceCriteria[0]!.passed, true);
+			assert.equal(detail.acceptanceCriteria[1]!.passed, false);
+			assert.equal(detail.acceptanceCriteria[2]!.passed, true);
 		});
 
 		it("should handle minimal proposal with missing optional fields", () => {
