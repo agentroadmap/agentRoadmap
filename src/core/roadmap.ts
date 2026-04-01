@@ -3901,6 +3901,9 @@ export class Core {
 			});
 
 			const bestProposal = sorted[0];
+			if (!bestProposal) {
+				return null;
+			}
 			const explanation = `Chosen ${bestProposal.id} ("${
 				bestProposal.title
 			}") based on priority '${bestProposal.priority || "low"}' and readiness (unblocked and unassigned).`;
