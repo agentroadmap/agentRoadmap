@@ -656,7 +656,9 @@ export async function updateReporting(args: { agentId: string; managerId?: strin
     `curl -s "http://host.docker.internal:3000/v1/database/${S100_DB}/call/update_reporting" -H "Content-Type: application/json" -d '${JSON.stringify([args.agentId, managerId])}'`,
     { encoding: 'utf8', timeout: 10000 }
   );
-  return { success: true, agentId: args.agentId, reportsTo: managerId };
+  return {
+    content: [{ type: "text", text: JSON.stringify({ success: true, agentId: args.agentId, reportsTo: managerId }) }],
+  };
 }
 
 export async function grantPrivilege(args: { agentId: string; permission: string; grantedBy: string }) {
@@ -664,7 +666,9 @@ export async function grantPrivilege(args: { agentId: string; permission: string
     `curl -s "http://host.docker.internal:3000/v1/database/${S100_DB}/call/grant_privilege" -H "Content-Type: application/json" -d '${JSON.stringify([args.agentId, args.permission, args.grantedBy])}'`,
     { encoding: 'utf8', timeout: 10000 }
   );
-  return { success: true, agentId: args.agentId, permission: args.permission };
+  return {
+    content: [{ type: "text", text: JSON.stringify({ success: true, agentId: args.agentId, permission: args.permission }) }],
+  };
 }
 
 export async function revokePrivilege(args: { privilegeId: number }) {
@@ -672,5 +676,7 @@ export async function revokePrivilege(args: { privilegeId: number }) {
     `curl -s "http://host.docker.internal:3000/v1/database/${S100_DB}/call/revoke_privilege" -H "Content-Type: application/json" -d '${JSON.stringify([args.privilegeId])}'`,
     { encoding: 'utf8', timeout: 10000 }
   );
-  return { success: true, revoked: args.privilegeId };
+  return {
+    content: [{ type: "text", text: JSON.stringify({ success: true, revoked: args.privilegeId }) }],
+  };
 }
