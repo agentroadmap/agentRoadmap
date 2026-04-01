@@ -22,18 +22,45 @@ Build your AI agent team. Turn your vision into your dream product — through c
 
 ---
 
+## 🛠️ Get Started
+To boot the system after a fresh start:
+
+1.  **Initialize Database:**
+    ```bash
+    cd spacetimedb-module
+    spacetime publish --project-name agent-roadmap-v2
+    ```
+2.  **Generate Bindings:**
+    ```bash
+    spacetime generate --lang typescript --out-dir ../src/bindings
+    ```
+3.  **Onboard Agents:**
+    Use the `register_agent` reducer to onboard the workforce pool.
+4.  **Issue First Directive:**
+    ```bash
+    roadmap proposal create "Define Core Architecture" --domain CORE --type DIRECTIVE
+    ```
+
+---
+
 ## 📂 The Physical Map
-The project root is structured to isolate the **Strategic Brain** from the **Execution Body**.
+The project is structured to isolate the **Strategic Brain** from the **Nervous System** and **Execution Body**.
 
 ```text
 agentRoadmap/
-├── product/                 # THE BRAIN: Strategic & Business Layer
-│   ├── proposals/           # Read-only MD mirrors (Directives, RFCs, Caps)
-│   └── attachments/         # STABLE BINARIES: Photos & Diagrams (Git LFS)
-├── infrastructure/          # THE BODY: Technical & Execution Layer
-│   ├── src/                 # SpacetimeDB Rust modules (Reducers & Logic)
-│   └── src/test/            # Rust-based Unit and Integration tests
-└── ops/                     # THE EXHAUST: Maintenance & Log files
+├── roadmap/                 # THE BRAIN: Strategic & Business Layer
+│   ├── business/            # Business Design, Strategy, and Financials
+│   ├── dataModel/           # Canonical Schema (v2.5) & DDL
+│   ├── product/             # State Machine definitions & RFC Templates
+│   └── workforce/           # Agent Fleet profiles & squad definitions
+├── spacetimedb-module/      # THE SOUL: Nervous System (Rust)
+│   └── src/lib.rs           # 14 Tables & Reducers (The Source of Truth)
+├── src/                     # THE BODY: Execution Layer (TypeScript)
+│   ├── core/proposal/       # Unified Proposal Lifecycle Manager
+│   ├── bindings/            # Auto-generated DB Interface
+│   ├── mcp/                 # Model Context Protocol (LLM connectivity)
+│   └── web/                 # Live Dashboard (WebSockets / Subscriptions)
+└── package.json             # Enterprise-wide configuration
 ```
 
 ---
@@ -43,8 +70,8 @@ The enterprise is powered by a specialized workforce divided into **Squads**.
 
 * **Architect Squad:** Synthesizes Directives into Technical RFCs.
 * **Skeptic Squad:** Performs adversarial reviews on budget and security.
-* **Coder Squad:** Implements changes in the `infrastructure/` domain.
-* **QA Squad:** Validates `proposal_criteria` via `src/test/`.
+* **Coder Squad:** Implements changes in the physical execution domains.
+* **QA Squad:** Validates `proposal_criteria` via automated test suites.
 * **Auditor Agent:** Monitors `spending_caps` and `security_acl` in real-time.
 
 ---
@@ -65,23 +92,7 @@ Every entity (Directive, Capability, Technical RFC, Component) must progress thr
 ## 🛡️ Security & Provenance
 * **Zero-Trust:** Agents operate under strict `security_acl`. No agent has "root" access; everything is a requested permission.
 * **Version Ledger:** Every change to a proposal is recorded in `proposal_version` with a Git-style delta and an actor identity.
-* **Anti-Pollution:** Tactical "Ops Noise" (logs/minor bugs) is kept in the database and `ops/` folder, ensuring the `product/` roadmap remains high-signal.
-
----
-
-## 🛠️ Day Zero: Initialization
-To boot the system after a fresh start:
-
-1.  **Initialize Database:**
-    ```bash
-    spacetime publish --project-name agentRoadmap
-    ```
-2.  **Register Workforce:**
-    Use the `register_agent` reducer to onboard the first 10 Lead Architects.
-3.  **Issue First Directive:**
-    Create a `proposal` of type `DIRECTIVE` to define the next milestone.
-4.  **Sync Mirror:**
-    Start the background sync service to generate the initial `product/proposals/` Markdown files.
+* **Anti-Pollution:** Tactical "Ops Noise" (logs/minor bugs) is kept in the database, ensuring the `roadmap/` folder remains high-signal.
 
 ---
 

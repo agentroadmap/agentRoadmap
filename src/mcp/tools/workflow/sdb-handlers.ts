@@ -56,7 +56,7 @@ export class SdbWorkflowHandlers {
       const result = execSync(`spacetime sql --server local agent-roadmap-v2 "${sql}"`, { encoding: 'utf8', cwd: this.projectRoot });
       const lines = result.trim().split('\n').filter(l => !l.includes('WARNING'));
       if (lines.length < 2) return [];
-      const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
+      const headers = lines[0]!.split('|').map(h => h.trim()).filter(Boolean);
       return lines.slice(1).map(line => {
         const values = line.split('|').map(v => v.trim().replace(/"/g, ''));
         const obj: any = {};

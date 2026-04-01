@@ -187,7 +187,7 @@ export class NoteHandlers {
 				.split("\n")
 				.filter((l) => !l.includes("WARNING"));
 			if (lines.length < 2) return [];
-			const headers = lines[0]
+			const headers = lines[0]!
 				.split("|")
 				.map((h) => h.trim())
 				.filter(Boolean);

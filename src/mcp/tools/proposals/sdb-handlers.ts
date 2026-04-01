@@ -133,7 +133,7 @@ export class SdbProposalHandlers {
       const lines = result.trim().split('\n').filter(l => !l.includes('WARNING'));
       if (lines.length < 2) return [];
       
-      const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
+      const headers = lines[0]!.split('|').map(h => h.trim()).filter(Boolean);
       return lines.slice(1).map(line => {
         const values = line.split('|').map(v => v.trim().replace(/"/g, ''));
         const obj: any = {};
