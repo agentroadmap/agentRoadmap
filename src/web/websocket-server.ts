@@ -93,7 +93,7 @@ function connectToSpacetimeDB() {
         broadcast({ type: 'newMessage', data: row, channel: r.channel_name });
     });
 
-    sdbConnection.subscriptionBuilder()
+    sdbConnection!.subscriptionBuilder()
         .onApplied(() => {
             console.log('[SDB] Subscription applied! Live data active.');
             clients.forEach(ws => sendSnapshot(ws));

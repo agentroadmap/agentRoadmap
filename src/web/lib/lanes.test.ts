@@ -1,184 +1,164 @@
-import { describe, expect, it } from "bun:test";
-import type { Proposal } from "../../types";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import type { Proposal } from "../hooks/useWebSocket";
 import {
 	buildLanes,
 	DEFAULT_LANE_KEY,
 	groupProposalsByLaneAndStatus,
-	laneKeyFromDirective,
-	sortProposalsForStatus,
+	laneKeyFromType,
+	laneKeyFromDomain,
+	sortProposals,
 } from "./lanes";
 
-const makeProposal = (overrides: Partial<Proposal>): Proposal => ({
+const makeProposal = (overrides: Partial<Proposal> = {}): Proposal => ({
 	id: "proposal-1",
+	displayId: "P-1",
+	parentId: null,
+	proposalType: "Feature",
+	category: "core",
+	domainId: "default",
 	title: "Proposal",
 	status: "Potential",
-	assignee: [],
-	labels: [],
-	dependencies: [],
-	createdDate: "2024-01-01",
+	priority: "Medium",
+	bodyMarkdown: null,
+	processLogic: null,
+	maturityLevel: null,
+	repositoryPath: null,
+	budgetLimitUsd: 0,
+	tags: null,
+	createdAt: "2024-01-01T00:00:00Z",
+	updatedAt: "2024-01-01T00:00:00Z",
 	...overrides,
 });
 
 describe("buildLanes", () => {
-	it("creates directive lanes including No directive and proposal-discovered directives", () => {
+	it("creates type lanes including discovered proposal types", () => {
 		const proposals = [
-			makeProposal({ id: "proposal-1", directive: "M1" }),
-			makeProposal({ id: "proposal-2", directive: "Extra" }),
-			makeProposal({ id: "proposal-3" }),
+			makeProposal({ id: "proposal-1", proposalType: "Feature" }),
+			makeProposal({ id: "proposal-2", proposalType: "Bug" }),
+			makeProposal({ id: "proposal-3", proposalType: "Feature" }),
 		];
-		const lanes = buildLanes("directive", proposals, ["M1"]);
-		expect(lanes.map((lane) => lane.label)).toEqual(["No directive", "M1", "Extra"]);
+		const lanes = buildLanes("type", proposals);
+		assert.deepEqual(
+			lanes.map((lane) => lane.label),
+			["Bug", "Feature"],
+		);
 	});
 
 	it("falls back to a single lane when mode is none", () => {
-		const lanes = buildLanes("none", [], ["M1"]);
-		expect(lanes).toHaveLength(1);
-		expect(lanes[0]?.key).toBe(DEFAULT_LANE_KEY);
+		const lanes = buildLanes("none", [], ["Feature"]);
+		assert.equal(lanes.length, 1);
+		assert.equal(lanes[0]?.key, DEFAULT_LANE_KEY);
 	});
 
-	it("excludes archived directives from lane definitions", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "M1" })];
-		const lanes = buildLanes("directive", proposals, ["M1"], [], { archivedDirectiveIds: ["M1"] });
-		expect(lanes.map((lane) => lane.label)).toEqual(["No directive"]);
-	});
-
-	it("canonicalizes numeric directive aliases to configured directive IDs", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "1" })];
-		const lanes = buildLanes(
-			"directive",
-			proposals,
-			[],
-			[{ id: "m-1", title: "Release 1", description: "", rawContent: "" }],
+	it("creates domain lanes from proposals", () => {
+		const proposals = [
+			makeProposal({ id: "proposal-1", domainId: "frontend" }),
+			makeProposal({ id: "proposal-2", domainId: "backend" }),
+		];
+		const lanes = buildLanes("domain", proposals);
+		assert.deepEqual(
+			lanes.map((lane) => lane.label),
+			["backend", "frontend"],
 		);
-		expect(lanes.map((lane) => lane.directive)).toContain("m-1");
-		expect(lanes.map((lane) => lane.directive)).not.toContain("1");
 	});
 
-	it("canonicalizes zero-padded directive ID aliases to configured directive IDs", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "m-01" })];
-		const lanes = buildLanes(
-			"directive",
-			proposals,
-			[],
-			[{ id: "m-1", title: "Release 1", description: "", rawContent: "" }],
-		);
-		expect(lanes.map((lane) => lane.directive)).toContain("m-1");
-		expect(lanes.map((lane) => lane.directive)).not.toContain("m-01");
-	});
-
-	it("filters archived numeric directive aliases from lane definitions", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "1" })];
-		const lanes = buildLanes("directive", proposals, [], [], {
-			archivedDirectiveIds: ["m-1"],
-			archivedDirectives: [{ id: "m-1", title: "Archived", description: "", rawContent: "" }],
-		});
-		expect(lanes.map((lane) => lane.label)).toEqual(["No directive"]);
-	});
-
-	it("prefers active title aliases when archived directives reuse the same title", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "Shared" })];
-		const lanes = buildLanes(
-			"directive",
-			proposals,
-			[],
-			[{ id: "m-2", title: "Shared", description: "", rawContent: "" }],
-			{
-				archivedDirectiveIds: ["m-0"],
-				archivedDirectives: [{ id: "m-0", title: "Shared", description: "", rawContent: "" }],
-			},
-		);
-		expect(lanes.map((lane) => lane.directive)).toContain("m-2");
-		expect(lanes.map((lane) => lane.directive)).not.toContain("Shared");
-	});
-
-	it("prefers real directive IDs over numeric title aliases in lane definitions", () => {
-		const proposals = [makeProposal({ id: "proposal-1", directive: "1" })];
-		const lanes = buildLanes(
-			"directive",
-			proposals,
-			[],
-			[
-				{ id: "m-1", title: "Release 1", description: "", rawContent: "" },
-				{ id: "m-2", title: "1", description: "", rawContent: "" },
-			],
-		);
-		expect(lanes.map((lane) => lane.directive)).toContain("m-1");
-		expect(lanes.map((lane) => lane.directive)).not.toContain("m-2");
+	it("deduplicates proposal types", () => {
+		const proposals = [
+			makeProposal({ id: "proposal-1", proposalType: "Feature" }),
+			makeProposal({ id: "proposal-2", proposalType: "Feature" }),
+			makeProposal({ id: "proposal-3", proposalType: "Bug" }),
+		];
+		const lanes = buildLanes("type", proposals);
+		assert.equal(lanes.length, 2);
 	});
 });
 
 describe("groupProposalsByLaneAndStatus", () => {
 	const proposals = [
-		makeProposal({ id: "proposal-1", status: "Potential", directive: "M1" }),
-		makeProposal({ id: "proposal-2", status: "Active" }),
-		makeProposal({ id: "proposal-3", status: "Potential", directive: "Extra", ordinal: 5 }),
+		makeProposal({ id: "proposal-1", status: "Potential", proposalType: "Feature" }),
+		makeProposal({ id: "proposal-2", status: "Active", proposalType: "Bug" }),
+		makeProposal({ id: "proposal-3", status: "Potential", proposalType: "Feature" }),
 	];
 
-	it("groups proposals under their directive lanes", () => {
-		const lanes = buildLanes("directive", proposals, ["M1"]);
-		const grouped = groupProposalsByLaneAndStatus("directive", lanes, ["Potential", "Active"], proposals);
+	it("groups proposals under their type lanes", () => {
+		const lanes = buildLanes("type", proposals);
+		const grouped = groupProposalsByLaneAndStatus("type", lanes, ["Potential", "Active"], proposals);
 
-		expect((grouped.get(laneKeyFromDirective("M1"))?.get("Potential") ?? []).map((t) => t.id)).toEqual(["proposal-1"]);
-		expect((grouped.get(laneKeyFromDirective(null))?.get("Active") ?? []).map((t) => t.id)).toEqual(["proposal-2"]);
-		expect((grouped.get(laneKeyFromDirective("Extra"))?.get("Potential") ?? []).map((t) => t.id)).toEqual(["proposal-3"]);
+		const featureLane = grouped.get(laneKeyFromType("Feature"));
+		const bugLane = grouped.get(laneKeyFromType("Bug"));
+
+		assert.deepEqual(
+			(featureLane?.get("Potential") ?? []).map((t) => t.id),
+			["proposal-1", "proposal-3"],
+		);
+		assert.deepEqual(
+			(bugLane?.get("Active") ?? []).map((t) => t.id),
+			["proposal-2"],
+		);
 	});
 
 	it("places all proposals into the default lane when lane mode is none", () => {
-		const lanes = buildLanes("none", proposals, []);
+		const lanes = buildLanes("none", proposals);
 		const grouped = groupProposalsByLaneAndStatus("none", lanes, ["Potential", "Active"], proposals);
 		const defaultLaneProposals = grouped.get(DEFAULT_LANE_KEY);
 
-		expect(defaultLaneProposals?.get("Potential")?.map((t) => t.id)).toEqual(["proposal-3", "proposal-1"]);
-		expect(defaultLaneProposals?.get("Active")?.map((t) => t.id)).toEqual(["proposal-2"]);
+		assert.ok(defaultLaneProposals);
+		assert.equal(defaultLaneProposals.get("Potential")?.length, 2);
+		assert.equal(defaultLaneProposals.get("Active")?.length, 1);
 	});
 
-	it("normalizes archived directive proposals to no directive", () => {
-		const lanes = buildLanes("directive", proposals, ["M1"], [], { archivedDirectiveIds: ["M1"] });
-		const grouped = groupProposalsByLaneAndStatus("directive", lanes, ["Potential", "Active"], proposals, {
-			archivedDirectiveIds: ["M1"],
-		});
-		expect((grouped.get(laneKeyFromDirective(null))?.get("Potential") ?? []).map((t) => t.id)).toEqual(["proposal-1"]);
-	});
-
-	it("normalizes numeric aliases for archived directives to no directive", () => {
-		const archivedDirectives = [{ id: "m-1", title: "Archived", description: "", rawContent: "" }];
-		const archivedAliasProposals = [makeProposal({ id: "proposal-1", status: "Potential", directive: "1" })];
-		const lanes = buildLanes("directive", archivedAliasProposals, [], []);
-		const grouped = groupProposalsByLaneAndStatus("directive", lanes, ["Potential"], archivedAliasProposals, {
-			archivedDirectiveIds: ["m-1"],
-			archivedDirectives,
-		});
-		expect((grouped.get(laneKeyFromDirective(null))?.get("Potential") ?? []).map((t) => t.id)).toEqual(["proposal-1"]);
-	});
-
-	it("prefers real directive IDs over numeric title aliases when grouping proposals", () => {
-		const proposalsWithNumericTitleCollision = [makeProposal({ id: "proposal-1", status: "Potential", directive: "1" })];
-		const directives = [
-			{ id: "m-1", title: "Release 1", description: "", rawContent: "" },
-			{ id: "m-2", title: "1", description: "", rawContent: "" },
+	it("groups proposals by domain lanes", () => {
+		const domainProposals = [
+			makeProposal({ id: "proposal-1", status: "Potential", domainId: "frontend" }),
+			makeProposal({ id: "proposal-2", status: "Active", domainId: "backend" }),
 		];
-		const lanes = buildLanes("directive", proposalsWithNumericTitleCollision, [], directives);
-		const grouped = groupProposalsByLaneAndStatus("directive", lanes, ["Potential"], proposalsWithNumericTitleCollision, {
-			directiveEntities: directives,
-		});
-		expect((grouped.get(laneKeyFromDirective("m-1"))?.get("Potential") ?? []).map((proposal) => proposal.id)).toEqual([
-			"proposal-1",
-		]);
-		expect((grouped.get(laneKeyFromDirective("m-2"))?.get("Potential") ?? []).map((proposal) => proposal.id) ?? []).toHaveLength(
-			0,
+		const lanes = buildLanes("domain", domainProposals);
+		const grouped = groupProposalsByLaneAndStatus("domain", lanes, ["Potential", "Active"], domainProposals);
+
+		const frontendLane = grouped.get(laneKeyFromDomain("frontend"));
+		assert.deepEqual(
+			(frontendLane?.get("Potential") ?? []).map((t) => t.id),
+			["proposal-1"],
 		);
 	});
 });
 
-describe("sortProposalsForStatus", () => {
-	it("prioritizes ordinal when present and falls back to updatedDate for done statuses", () => {
+describe("sortProposals", () => {
+	it("sorts by priority and falls back to updatedAt", () => {
 		const proposals = [
-			makeProposal({ id: "proposal-1", status: "Reached", updatedDate: "2024-01-02", createdDate: "2024-01-01" }),
-			makeProposal({ id: "proposal-2", status: "Reached", ordinal: 1, updatedDate: "2024-01-01" }),
-			makeProposal({ id: "proposal-3", status: "Reached", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
+			makeProposal({ id: "proposal-1", priority: "Low", updatedAt: "2024-01-03T00:00:00Z" }),
+			makeProposal({ id: "proposal-2", priority: "High", updatedAt: "2024-01-01T00:00:00Z" }),
+			makeProposal({ id: "proposal-3", priority: "High", updatedAt: "2024-01-02T00:00:00Z" }),
 		];
 
-		const sorted = sortProposalsForStatus(proposals, "Reached").map((t) => t.id);
-		expect(sorted).toEqual(["proposal-2", "proposal-3", "proposal-1"]);
+		const sorted = sortProposals(proposals).map((t) => t.id);
+		assert.deepEqual(sorted, ["proposal-3", "proposal-2", "proposal-1"]);
+	});
+
+	it("handles empty array", () => {
+		assert.deepEqual(sortProposals([]), []);
+	});
+});
+
+describe("laneKeyFromType", () => {
+	it("returns none key for null/undefined", () => {
+		assert.equal(laneKeyFromType(null), "lane:type:__none");
+		assert.equal(laneKeyFromType(undefined), "lane:type:__none");
+	});
+
+	it("returns typed key for valid type", () => {
+		assert.equal(laneKeyFromType("Feature"), "lane:type:Feature");
+	});
+});
+
+describe("laneKeyFromDomain", () => {
+	it("returns none key for null/undefined", () => {
+		assert.equal(laneKeyFromDomain(null), "lane:domain:__none");
+		assert.equal(laneKeyFromDomain(undefined), "lane:domain:__none");
+	});
+
+	it("returns domain key for valid domain", () => {
+		assert.equal(laneKeyFromDomain("frontend"), "lane:domain:frontend");
 	});
 });
