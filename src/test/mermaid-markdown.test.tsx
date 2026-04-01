@@ -9,7 +9,7 @@ describe("MermaidMarkdown", () => {
 		const source =
 			"Implemented contracts: getDishesByMenu(String menuId) -> Result<List<MenuItem>>";
 
-		expect(() => renderToString(<MermaidMarkdown source={source} />)).not.toThrow();
+		assert.doesNotThrow(() => renderToString(<MermaidMarkdown source={source} />));
 
 		const html = renderToString(<MermaidMarkdown source={source} />);
 		assert.ok(html.includes("Result&lt;List&lt;MenuItem&gt;&gt;"));
