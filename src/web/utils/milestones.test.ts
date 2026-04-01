@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import type { Directive, Proposal } from "../../types";
-import { buildDirectiveBuckets, collectDirectiveIds, validateDirectiveName } from "./directives";
+import { buildDirectiveBuckets, collectDirectiveIds, validateDirectiveName } from "../../core/proposal/directives";
 
 const makeProposal = (overrides: Partial<Proposal>): Proposal => ({
 	id: "proposal-1",
@@ -23,17 +24,17 @@ describe("buildDirectiveBuckets", () => {
 	it("returns buckets for file directives, discovered directives, and no-directive", () => {
 		const directives: Directive[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Active", "Accepted", "Complete", "Abandoned"]);
-		const labels = buckets.map((b) => b.label);
-		expect(labels).toEqual(["Proposals without directive", "M1", "M2"]);
+		const labels = buckets.map((b: { label: string }) => b.label);
+		assert.deepEqual(labels, ["Proposals without directive", "M1", "M2"]);
 	});
 
 	it("calculates status counts per bucket", () => {
 		const directives: Directive[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Active", "Accepted", "Complete", "Abandoned"]);
-		const m1 = buckets.find((b) => b.label === "M1");
-		const none = buckets.find((b) => b.isNoDirective);
-		expect(m1?.statusCounts["Potential"]).toBe(1);
-		expect(none?.statusCounts.Reached).toBe(1);
+		const m1 = buckets.find((b: { label: string }) => b.label === "M1");
+		const none = buckets.find((b: { isNoDirective?: boolean }) => b.isNoDirective);
+		assert.equal((m1 as any)?.statusCounts["Potential"], 1);
+		assert.equal((none as any)?.statusCounts.Reached, 1);
 	});
 
 	it("marks directives completed when all proposals are done", () => {
@@ -43,8 +44,8 @@ describe("buildDirectiveBuckets", () => {
 		];
 		const directives: Directive[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
 		const buckets = buildDirectiveBuckets(completedProposals, directives, ["Potential", "Active", "Accepted", "Complete", "Abandoned"]);
-		const m1 = buckets.find((b) => b.label === "M1");
-		expect(m1?.isCompleted).toBe(true);
+		const m1 = buckets.find((b: { label: string }) => b.label === "M1");
+		assert.equal((m1 as any)?.isCompleted, true);
 	});
 
 	it("keeps active directives when archived titles are reused", () => {
@@ -56,8 +57,8 @@ describe("buildDirectiveBuckets", () => {
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Reached"], {
 			archivedDirectiveIds: ["m-1", "Release 1"],
 		});
-		const active = buckets.find((bucket) => bucket.directive === "m-2");
-		expect(active?.label).toBe("Release 1");
+		const active = buckets.find((bucket: { directive?: string }) => bucket.directive === "m-2");
+		assert.equal((active as any)?.label, "Release 1");
 	});
 
 	it("canonicalizes reused archived titles to the active directive ID", () => {
@@ -72,26 +73,35 @@ describe("buildDirectiveBuckets", () => {
 			archivedDirectiveIds: ["m-1"],
 			archivedDirectives,
 		});
-		const releaseBuckets = buckets.filter((bucket) => bucket.label === "Release 1");
-		expect(releaseBuckets).toHaveLength(1);
-		expect(releaseBuckets[0]?.directive).toBe("m-2");
-		expect(releaseBuckets[0]?.proposals.map((proposal) => proposal.id)).toEqual(["proposal-1", "proposal-2"]);
+		const releaseBuckets = buckets.filter((bucket: { label: string }) => bucket.label === "Release 1");
+		assert.equal(releaseBuckets.length, 1);
+		assert.equal((releaseBuckets[0] as any)?.directive, "m-2");
+		assert.deepEqual(
+			(releaseBuckets[0] as any)?.proposals.map((proposal: { id: string }) => proposal.id),
+			["proposal-1", "proposal-2"],
+		);
 	});
 
 	it("canonicalizes numeric directive aliases to directive IDs", () => {
 		const proposals = [makeProposal({ id: "proposal-1", directive: "1", status: "Potential" })];
 		const directives: Directive[] = [{ id: "m-1", title: "Release 1", description: "", rawContent: "" }];
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Reached"]);
-		const releaseBucket = buckets.find((bucket) => bucket.directive === "m-1");
-		expect(releaseBucket?.proposals.map((proposal) => proposal.id)).toEqual(["proposal-1"]);
+		const releaseBucket = buckets.find((bucket: { directive?: string }) => bucket.directive === "m-1");
+		assert.deepEqual(
+			(releaseBucket as any)?.proposals.map((proposal: { id: string }) => proposal.id),
+			["proposal-1"],
+		);
 	});
 
 	it("canonicalizes zero-padded directive ID aliases to canonical IDs", () => {
 		const proposals = [makeProposal({ id: "proposal-1", directive: "m-01", status: "Potential" })];
 		const directives: Directive[] = [{ id: "m-1", title: "Release 1", description: "", rawContent: "" }];
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Reached"]);
-		const releaseBucket = buckets.find((bucket) => bucket.directive === "m-1");
-		expect(releaseBucket?.proposals.map((proposal) => proposal.id)).toEqual(["proposal-1"]);
+		const releaseBucket = buckets.find((bucket: { directive?: string }) => bucket.directive === "m-1");
+		assert.deepEqual(
+			(releaseBucket as any)?.proposals.map((proposal: { id: string }) => proposal.id),
+			["proposal-1"],
+		);
 	});
 
 	it("keeps active-title aliases when an archived directive ID shares the same key", () => {
@@ -102,8 +112,11 @@ describe("buildDirectiveBuckets", () => {
 			archivedDirectives,
 			archivedDirectiveIds: ["m-0"],
 		});
-		const noDirectiveBucket = buckets.find((bucket) => bucket.isNoDirective);
-		expect(noDirectiveBucket?.proposals.map((proposal) => proposal.id)).toEqual(["proposal-1"]);
+		const noDirectiveBucket = buckets.find((bucket: { isNoDirective?: boolean }) => bucket.isNoDirective);
+		assert.deepEqual(
+			(noDirectiveBucket as any)?.proposals.map((proposal: { id: string }) => proposal.id),
+			["proposal-1"],
+		);
 	});
 
 	it("prefers real directive IDs over numeric title aliases", () => {
@@ -113,10 +126,13 @@ describe("buildDirectiveBuckets", () => {
 			{ id: "m-2", title: "1", description: "", rawContent: "" },
 		];
 		const buckets = buildDirectiveBuckets(proposals, directives, ["Potential", "Reached"]);
-		const idBucket = buckets.find((bucket) => bucket.directive === "m-1");
-		const titleBucket = buckets.find((bucket) => bucket.directive === "m-2");
-		expect(idBucket?.proposals.map((proposal) => proposal.id)).toEqual(["proposal-1"]);
-		expect(titleBucket?.proposals.map((proposal) => proposal.id) ?? []).toHaveLength(0);
+		const idBucket = buckets.find((bucket: { directive?: string }) => bucket.directive === "m-1");
+		const titleBucket = buckets.find((bucket: { directive?: string }) => bucket.directive === "m-2");
+		assert.deepEqual(
+			(idBucket as any)?.proposals.map((proposal: { id: string }) => proposal.id),
+			["proposal-1"],
+		);
+		assert.equal(((titleBucket as any)?.proposals ?? []).length, 0);
 	});
 });
 
@@ -129,7 +145,7 @@ describe("collectDirectiveIds", () => {
 	const directives: Directive[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
 
 	it("merges file directives and discovered proposal directives without duplicates", () => {
-		expect(collectDirectiveIds(proposals, directives)).toEqual(["M1", "New"]);
+		assert.deepEqual(collectDirectiveIds(proposals, directives), ["M1", "New"]);
 	});
 
 	it("normalizes whitespace and casing", () => {
@@ -138,21 +154,21 @@ describe("collectDirectiveIds", () => {
 			makeProposal({ id: "proposal-2", directive: "New" }),
 		];
 		const result = collectDirectiveIds(variantProposals, directives);
-		expect(result).toEqual(["M1", "New"]);
+		assert.deepEqual(result, ["M1", "New"]);
 	});
 });
 
 describe("validateDirectiveName", () => {
 	it("rejects empty names", () => {
-		expect(validateDirectiveName("   ", [])).toBe("Directive name cannot be empty.");
+		assert.equal(validateDirectiveName("   ", []), "Directive name cannot be empty.");
 	});
 
 	it("rejects duplicates case-insensitively", () => {
-		expect(validateDirectiveName("Alpha", ["alpha", "Beta"])).toBe("Directive already exists.");
-		expect(validateDirectiveName(" beta  ", ["alpha", "Beta"])).toBe("Directive already exists.");
+		assert.equal(validateDirectiveName("Alpha", ["alpha", "Beta"]), "Directive already exists.");
+		assert.equal(validateDirectiveName(" beta  ", ["alpha", "Beta"]), "Directive already exists.");
 	});
 
 	it("allows unique names", () => {
-		expect(validateDirectiveName("Release", ["alpha", "Beta"])).toBeNull();
+		assert.equal(validateDirectiveName("Release", ["alpha", "Beta"]), null);
 	});
 });
