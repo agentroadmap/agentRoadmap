@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 // Acceptance integration
-import { validateNoBlockingIssues, validateCompleteTransition } from '../core/proposal/acceptance.ts';
+import { validateNoBlockingIssues, validateReachedTransition } from '../core/proposal/acceptance.ts';
 import { Core } from "../core/roadmap.ts";
 // Issue tracker
 import {
