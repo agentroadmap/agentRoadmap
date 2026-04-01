@@ -6,145 +6,92 @@ Build your AI agent team. Turn your vision into your dream product — through c
 
 ---
 
-## What It Is
+# 🚀 agentRoadmap V2 0.5.0: The Agentic Enterprise
 
-AgentRoadmap is a CLI + TUI platform for assembling AI agent teams that build products from your vision.
+**Visionary:** Gary  
+**Core Stack:** SpacetimeDB 2.0 | OpenClaw CLI | Rust | Git LFS  
+**Architecture:** Universal Entity Lifecycle (v2.5)
 
-You define what you want. The system assembles the right agent team — architect, builders, testers, reviewers — and they work autonomously through phases: design, build, test, ship. You stay informed. You veto when needed. They keep building.
+## 📌 Project Vision
+`agentRoadmap` is a decentralized, agent-native project management engine. Unlike traditional tools that suffer from "Semantic Decay" and "Merge Conflict Hell," this system treats every business idea, technical RFC, and code component as a **Universal Proposal** managed in a real-time state engine.
 
-Not project management. **Product development, agent-native.**
-
-## Features
-
-- **State Management** — Create, edit, track states with rich metadata (ACs, labels, priorities, dependencies)
-- **Kanban Board** — Interactive TUI with drag-like navigation, column filters, search
-- **Cubic Dashboard** — Agent roster view showing cubics, agents, and model usage
-- **Headlines Stream** — Live event feed of all state transitions
-- **Pluggable Storage** — Use whatever backend fits your workflow
-- **Multi-Agent Support** — Agent identity, claims, handoffs, heartbeat monitoring
-- **MCP Integration** — Works with Claude, Cursor, and other MCP-compatible tools
+### **The "Database-First" Doctrine**
+* **Source of Truth:** SpacetimeDB (Memory-resident, ACID-compliant).
+* **The Mirror:** Local Filesystem (Read-only Markdown for humans).
+* **The Protocol:** Agents collaborate via Reducers; humans steer via Directives.
 
 ---
 
-## Quick Start
+## 📂 The Physical Map
+The project root is structured to isolate the **Strategic Brain** from the **Execution Body**.
 
-```bash
-# Install
-npm install -g agent-roadmap
-
-# Initialize
-npx agent-roadmap init
-
-# Create a state
-npx agent-roadmap state create "My Feature" --status Draft
-
-# Open the board
-npx agent-roadmap board
+```text
+agentRoadmap/
+├── product/                 # THE BRAIN: Strategic & Business Layer
+│   ├── proposals/           # Read-only MD mirrors (Directives, RFCs, Caps)
+│   └── attachments/         # STABLE BINARIES: Photos & Diagrams (Git LFS)
+├── infrastructure/          # THE BODY: Technical & Execution Layer
+│   ├── src/                 # SpacetimeDB Rust modules (Reducers & Logic)
+│   └── src/test/            # Rust-based Unit and Integration tests
+└── ops/                     # THE EXHAUST: Maintenance & Log files
 ```
 
-## Keyboard Shortcuts
+---
 
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch views (State List → Kanban → Cubic Dashboard → Headlines) |
-| `/` | Search |
-| `P` | Filter by priority |
-| `F` | Filter by labels |
-| `I` | Filter by milestone |
-| `~` | Toggle empty columns |
-| `=` | Toggle Parked/Rejected states |
-| `S` | Headlines-only mode (mobile-friendly) |
-| `Enter` | View state details |
-| `E` | Edit state |
-| `M` | Move state |
-| `Q` | Quit |
+## 🤖 The Workforce (100-Agent Fleet)
+The enterprise is powered by a specialized workforce divided into **Squads**.
 
-## Architecture
+* **Architect Squad:** Synthesizes Directives into Technical RFCs.
+* **Skeptic Squad:** Performs adversarial reviews on budget and security.
+* **Coder Squad:** Implements changes in the `infrastructure/` domain.
+* **QA Squad:** Validates `proposal_criteria` via `src/test/`.
+* **Auditor Agent:** Monitors `spending_caps` and `security_acl` in real-time.
 
-```
-┌─────────────────────────────────────────┐
-│            TUI / CLI Layer              │
-│  (blessed-based interactive board)      │
-├─────────────────────────────────────────┤
-│           State Management              │
-│  (CRUD, transitions, ACs, labels)      │
-├─────────────────────────────────────────┤
-│           Storage Layer                 │
-│  (SpacetimeDB, filesystem, or custom)  │
-├─────────────────────────────────────────┤
-│           Agent Layer                   │
-│  (identity, claims, heartbeats)         │
-└─────────────────────────────────────────┘
-```
+---
 
-### Storage Flexibility
+## 🏛️ Governance: The 9-Stage Lifecycle
+Every entity (Directive, Capability, Technical RFC, Component) must progress through the unified state machine:
 
-The storage layer is pluggable — use whatever fits your workflow:
+1.  **New:** Initial entry.
+2.  **Draft:** Active development.
+3.  **Review:** Peer and Skeptic analysis.
+4.  **Active:** Execution/Coding phase.
+5.  **Accepted:** Passes all `proposal_criteria`.
+6.  **Complete:** Merged into the physical architecture.
+7.  **Rejected / Abandoned / Replaced:** Historical archives.
 
-- **Filesystem** — Plain markdown files in Git (default, zero setup)
-- **Database** — SQLite, Postgres, SpacetimeDB, or anything with a simple adapter
-- **Custom** — Implement the `StorageProvider` interface
+---
 
-No vendor lock-in. Your states stay in your repo.
+## 🛡️ Security & Provenance
+* **Zero-Trust:** Agents operate under strict `security_acl`. No agent has "root" access; everything is a requested permission.
+* **Version Ledger:** Every change to a proposal is recorded in `proposal_version` with a Git-style delta and an actor identity.
+* **Anti-Pollution:** Tactical "Ops Noise" (logs/minor bugs) is kept in the database and `ops/` folder, ensuring the `product/` roadmap remains high-signal.
 
-## Multi-Agent Coordination
+---
 
-Agents can:
-- Register with skills and roles
-- Claim states via lease-based system
-- Send handoff messages
-- Receive heartbeat monitoring
+## 🛠️ Day Zero: Initialization
+To boot the system after a fresh start:
 
-```
-Agent A (Builder) → claims STATE-042 → implements → hands off
-Agent B (Reviewer) → receives handoff → reviews → approves
-```
+1.  **Initialize Database:**
+    ```bash
+    spacetime publish --project-name agentRoadmap
+    ```
+2.  **Register Workforce:**
+    Use the `register_agent` reducer to onboard the first 10 Lead Architects.
+3.  **Issue First Directive:**
+    Create a `proposal` of type `DIRECTIVE` to define the next milestone.
+4.  **Sync Mirror:**
+    Start the background sync service to generate the initial `product/proposals/` Markdown files.
 
-## Configuration
+---
 
-```yaml
-# roadmap/config.yml
-statuses:
-  - Proposal
-  - Draft
-  - Accepted
-  - Active
-  - Review
-  - Complete
+## 👥 Stakeholders
+* **Visionary:** Lead Strategic Direction.
+* **SME (Material Science):** Derek (University of Toronto).
+* **SME (UX/Execution):** Nolan.
 
-hidden_statuses:
-  - Parked
-  - Rejected
+---
 
-labels:
-  - feature
-  - bugfix
-  - refactor
-  - docs
+**"The best way to predict the future is to build the agents that create it."**
 
-prefixes:
-  state: "STATE"
-  draft: "DRAFT"
-```
-
-## For AI Agents
-
-If you're an AI agent joining this project:
-
-```bash
-# Register your agent
-npx agent-roadmap agents register --name "YourName" --role builder
-
-# Check for ready work
-npx agent-roadmap state list --status Accepted
-
-# Claim a state
-npx agent-roadmap state claim STATE-042
-
-# Submit completion
-npx agent-roadmap state complete STATE-042 --proof "commit:abc123"
-```
-
-## License
-
-MIT
+---
