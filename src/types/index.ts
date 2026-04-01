@@ -237,6 +237,7 @@ export interface ProposalUpdateInput {
 	domainId?: string;
 	proposalType?: string;
 	category?: string;
+	parentProposalId?: string | null;
 	labels?: string[];
 	addLabels?: string[];
 	removeLabels?: string[];

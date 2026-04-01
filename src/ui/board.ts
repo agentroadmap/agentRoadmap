@@ -354,6 +354,7 @@ export async function renderBoardTui(
 		let hideEmptyColumns = false;
 		const hiddenStatusesFromConfig = (config as any)?.hidden_statuses || [];
 		let hiddenStatuses = [...hiddenStatusesFromConfig];
+		let hiddenStatusesToggle = hiddenStatuses.length > 0;
 		const hasActiveSharedFilters = () =>
 			Boolean(
 				sharedFilters.searchQuery.trim() ||
@@ -794,7 +795,7 @@ export async function renderBoardTui(
 			// Apply column visibility filters
 			projectedData = filterBoardColumns(projectedData, {
 				hideEmpty: hideEmptyColumns,
-				hideAbandoned: hiddenStatuses,
+				hiddenStatuses,
 			});
 
 			// If we are moving, we want to select the moving proposal
@@ -901,9 +902,10 @@ export async function renderBoardTui(
 		// Toggle hide abandoned columns
 		screen.key(["="], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
-			hiddenStatuses = !hiddenStatuses;
+			hiddenStatusesToggle = !hiddenStatusesToggle;
+			hiddenStatuses = hiddenStatusesToggle ? hiddenStatusesFromConfig : [];
 			showTransientFooter(
-				hiddenStatuses
+				hiddenStatusesToggle
 					? " {green-fg}Abandoned columns hidden{/}"
 					: " {green-fg}Abandoned columns shown{/}",
 			);
@@ -917,7 +919,7 @@ export async function renderBoardTui(
 		const applyColumnVisibility = () => {
 			const filteredStatuses = statuses.filter((s) => !hiddenColumns.has(s));
 			currentStatuses = filteredStatuses;
-			rebuildColumns();
+			rebuildColumns(currentColumnsData);
 			renderView();
 		};
 
@@ -984,6 +986,7 @@ export async function renderBoardTui(
 				const statusIdx = i - 1;
 				if (statusIdx >= statuses.length) return;
 				const status = statuses[statusIdx];
+				if (!status) return;
 				if (hiddenColumns.has(status)) {
 					hiddenColumns.delete(status);
 					showTransientFooter(` {green-fg}${status} column shown{/}`);
@@ -1556,9 +1559,9 @@ export async function renderBoardTui(
 			screen.render();
 
 			const answer = await new Promise<boolean>((resolve) => {
-				const cleanup = () => { screen.remove(confirmBox); popupOpen = false; screen.render(); };
-				screen.onceKey(["y", "Y"], () => { cleanup(); resolve(true); });
-				screen.onceKey(["n", "N", "escape"], () => { cleanup(); resolve(false); });
+				const cleanup = () => { (screen as any).remove(confirmBox); popupOpen = false; screen.render(); };
+				(screen as any).onceKey(["y", "Y"], () => { cleanup(); resolve(true); });
+				(screen as any).onceKey(["n", "N", "escape"], () => { cleanup(); resolve(false); });
 			});
 			return answer;
 		};
@@ -1625,6 +1628,8 @@ export async function renderBoardTui(
 			if (!proposal) return;
 			const { generateProposalMarkdown } = await import("../utils/proposal-markdown-generator.ts");
 			const md = generateProposalMarkdown(proposal);
+			const { join } = await import("node:path");
+			const fs = await import("node:fs");
 			const exportPath = join(process.cwd(), `export-${proposalId}.md`);
 			fs.writeFileSync(exportPath, md);
 			showTransientFooter(` {green-fg}Exported to ${exportPath}{/}`);
@@ -1763,7 +1768,7 @@ export async function renderBoardTui(
 				currentEvents = events;
 				const lines = events.map(e => {
 					const time = new Date(e.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-					const icon = { proposal_accepted: '📋', proposal_claimed: '✋', proposal_coding: '💻', review_requested: '👀', proposal_reviewing: '🔍', review_passed: '✅', review_failed: '❌', proposal_complete: '🎉', proposal_merged: '🔀', proposal_pushed: '🚀', agent_online: '🟢', agent_offline: '🔴', handoff: '🤝', heartbeat: '💓' }[e.type] || '📌';
+					const icon = { proposal_accepted: '📋', proposal_claimed: '✋', proposal_coding: '💻', review_requested: '👀', proposal_reviewing: '🔍', review_passed: '✅', review_failed: '❌', proposal_complete: '🎉', proposal_merged: '🔀', proposal_pushed: '🚀', agent_online: '🟢', agent_offline: '🔴', handoff: '🤝', heartbeat: '💓', cubic_phase_change: '🔄', custom: '📌', message: '💬' }[e.type] || '📌';
 					return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
 				});
 				eventPanel.setContent(lines.join('\n'));
