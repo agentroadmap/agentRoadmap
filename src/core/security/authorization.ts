@@ -29,6 +29,7 @@ export type Permission =
 	| "proposal:revert"
 	| "phase:review"
 	| "phase:certify"
+	| "phase:transition"
 	| "admin:config"
 	| "admin:override"
 	| "audit:read";
@@ -278,7 +279,7 @@ export class AuthorizationService {
 		if (this.policy.override.enabled && role === "reviewer") {
 			if (this.canUseOverride(agentId)) {
 				this.incrementOverrideCount(agentId);
-				return this.allowAccess(agentId, "proposal:edit", role, timestamp, "Reviewer override used", true);
+				return this.allowAccess(agentId, "proposal:edit", role, timestamp, "Reviewer override used");
 			}
 		}
 

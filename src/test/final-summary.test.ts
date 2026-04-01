@@ -33,9 +33,9 @@ describe("Final Summary", () => {
 			finalSummary: "Completed the core workflow",
 		});
 
-		assert.ok(proposal.rawContent.includes("## Final Summary"));
-		assert.ok(proposal.rawContent.includes("<!-- SECTION:FINAL_SUMMARY:BEGIN -->"));
-		assert.ok(proposal.rawContent.includes("<!-- SECTION:FINAL_SUMMARY:END -->"));
+		assert.ok(proposal.rawContent?.includes("## Final Summary"));
+		assert.ok(proposal.rawContent?.includes("<!-- SECTION:FINAL_SUMMARY:BEGIN -->"));
+		assert.ok(proposal.rawContent?.includes("<!-- SECTION:FINAL_SUMMARY:END -->"));
 		expect(extractStructuredSection(proposal.rawContent ?? "", "finalSummary")).toBe("Completed the core workflow");
 	});
 
