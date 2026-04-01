@@ -441,7 +441,7 @@ export class SpacetimeDBAdapter {
 			createdDate,
 			updatedDate,
 			labels: [], // Would need to query labels table
-			directive: row.directive,
+			directive: row.directive ?? undefined,
 			dependencies: row.dependencies ? row.dependencies.split(",") : [],
 			body: row.content,
 			content: row.content,
