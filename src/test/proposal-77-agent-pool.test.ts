@@ -435,7 +435,7 @@ describe("proposal-77: Agent Pool Views", () => {
 			provider: "anthropic",
 		});
 		assert.strictEqual(anthropicAgents.length, 1);
-		assert.strictEqual(anthropicAgents[0].provider, "anthropic");
+		assert.strictEqual(anthropicAgents[0]?.provider, "anthropic");
 	});
 
 	it("getAgentPoolStats should return accurate statistics", () => {
@@ -469,18 +469,18 @@ describe("proposal-77: Agent Pool Views", () => {
 	it("getStaleAgents should detect stale agents", () => {
 		const staleAgents: MultiModelAgent[] = [
 			{
-				...testAgents[0],
+				...testAgents[0]!,
 				heartbeatAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 min ago
 			},
 		];
 
 		const stale = getStaleAgents(staleAgents, [], 5 * 60 * 1000);
 		assert.strictEqual(stale.length, 1);
-		assert.ok(stale[0].lastHeartbeatMs > 5 * 60 * 1000);
+		assert.ok(stale[0]?.lastHeartbeatMs! > 5 * 60 * 1000);
 	});
 
 	it("formatAgentStatus should produce readable output", () => {
-		const formatted = formatAgentStatus(testAgents[0]);
+		const formatted = formatAgentStatus(testAgents[0]!);
 		assert.ok(formatted.includes("claude-dev-1"));
 		assert.ok(formatted.includes("senior-developer"));
 		assert.ok(formatted.includes("claude-3-opus"));
