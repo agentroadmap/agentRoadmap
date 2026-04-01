@@ -1527,7 +1527,7 @@ ${description || `Directive: ${title}`}`,
 					break;
 				case "proposal":
 					const prefixVal = value.replace(/['"]/g, "");
-					if (!config.prefixes) config.prefixes = {};
+					if (!config.prefixes) config.prefixes = { proposal: "proposal" };
 					config.prefixes.proposal = prefixVal;
 					break;
 			}
