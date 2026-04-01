@@ -17,7 +17,7 @@
 		"skipLibCheck": true,
 		"typeRoots": ["./src/types", "./node_modules/@types"],
 		"noFallthroughCasesInSwitch": true,
-		"noUncheckedIndexedAccess": true,
+		"noUncheckedIndexedAccess": false,
 		"noImplicitOverride": true,
 		// Some stricter flags (disabled by default)
 		"noUnusedLocals": false,

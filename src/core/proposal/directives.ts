@@ -258,7 +258,8 @@ export function getDirectiveLabel(directiveId: string | undefined, directiveEnti
 	return entity?.title || directiveId;
 }
 
-/** Re-exported for consumers — already imported above for local use. */
+/** Re-exported for consumers */
+export { isReachedStatus, isReady, isTerminalStatus };
 
 /**
  * Create a directive bucket for a given directive
