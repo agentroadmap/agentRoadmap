@@ -3,7 +3,7 @@
 
 import { execSync } from 'child_process';
 
-export function checkMergeStatus(proposalId: string): 'merged' | 'pending' | 'merging' | 'unknown' {
+export function checkMergeStatus(proposalId: string): 'merged' | 'pending' | 'merging' | 'conflict' | 'unknown' {
   try {
     // Check if any commit in worktree branches mentions this proposal
     const result = execSync(`

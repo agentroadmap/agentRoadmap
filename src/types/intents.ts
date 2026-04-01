@@ -50,7 +50,7 @@ export function decodeIntent(text: string): NegotiationIntent | null {
 	if (!text.includes(INTENT_PREFIX)) return null;
 
 	const match = text.match(new RegExp(`${INTENT_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(.+?)(?:\\n|$)`));
-	if (!match) return null;
+	if (!match || !match[1]) return null;
 
 	try {
 		const payload = JSON.parse(match[1]);
