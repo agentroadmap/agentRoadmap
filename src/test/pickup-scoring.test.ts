@@ -13,7 +13,7 @@ import {
 	optimalAssignment,
 	scoreProposal,
 	scoreProposals,
-} from "../core/pickup-scorer.ts";
+} from "../core/orchestration/pickup-scorer.ts";
 
 // Test fixtures
 const opusAgent: AgentProfile = {

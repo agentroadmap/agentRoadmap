@@ -127,8 +127,8 @@ describe("Core.reorderProposal", () => {
 		});
 
 		assert.strictEqual(result.updatedProposal.id, "proposal-3");
-		assert.ok(result.updatedProposal.ordinal > 1000);
-		assert.ok(result.updatedProposal.ordinal < 2000);
+		assert.ok((result.updatedProposal.ordinal ?? 0) > 1000);
+		assert.ok((result.updatedProposal.ordinal ?? 0) < 2000);
 		expect(result.changedProposals.map((proposal) => proposal.id)).toEqual(["proposal-3"]);
 
 		const proposal2 = await core.filesystem.loadProposal("proposal-2");
@@ -172,7 +172,7 @@ describe("Core.reorderProposal", () => {
 		});
 
 		assert.strictEqual(result.updatedProposal.status, "Active");
-		assert.ok(result.updatedProposal.ordinal > 0);
+		assert.ok((result.updatedProposal.ordinal ?? 0) > 0);
 		expect(result.changedProposals.map((proposal) => proposal.id)).toContain("proposal-1");
 
 		const proposal2 = await core.filesystem.loadProposal("proposal-2");

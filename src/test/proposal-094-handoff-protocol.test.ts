@@ -17,7 +17,7 @@ import {
 	type ImplementationNarrative,
 	type QualitySignals,
 	type PulseMessage,
-} from "../core/handoff-protocol.ts";
+} from "../core/collaboration/handoff-protocol.ts";
 import { CubicPhase } from "../core/orchestration/cubic-architecture.ts";
 
 describe("proposal-094: Creative Phase Handoff Protocol", () => {

@@ -13,7 +13,7 @@ import {
 	type CubicAgent,
 	type HandoffPayload,
 	type HandoffArtifact,
-} from "./cubic-architecture.ts";
+} from "../orchestration/cubic-architecture.ts";
 
 // ──────────────────────────────────────────
 // AC#1: G1-G4 Handoff Points

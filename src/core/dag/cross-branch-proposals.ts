@@ -3,11 +3,11 @@
  * Determines the latest proposal of proposals across all git branches
  */
 
-import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
-import type { FileSystem } from "../file-system/operations.ts";
-import type { GitOperations as GitOps } from "../git/operations.ts";
+import { DEFAULT_DIRECTORIES } from "../../constants/index.ts";
+import type { FileSystem } from "../../file-system/operations.ts";
+import type { GitOperations as GitOps } from "../../git/operations.ts";
 import type { Proposal } from "../../types/index.ts";
-import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
+import { buildPathIdRegex, normalizeId } from "../../utils/prefix-config.ts";
 
 /** Default prefix for proposals */
 const DEFAULT_STATE_PREFIX = "proposal";
