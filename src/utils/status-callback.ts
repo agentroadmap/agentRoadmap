@@ -39,17 +39,24 @@ export async function executeStatusCallback(options: StatusCallbackOptions): Pro
 			STATE_TITLE: proposalTitle,
 		};
 
-		const proc = spawn({
-			cmd: ["sh", "-c", command],
-			cwd,
-			env,
-			stdout: "pipe",
-			stderr: "pipe",
+		const proc = spawn(command, { cwd, env, shell: true }) as any;
+
+		const [stdout, stderr] = await Promise.all([
+			new Promise<string>((resolve) => {
+				let data = '';
+				proc.stdout?.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+				proc.stdout?.on('end', () => resolve(data));
+			}),
+			new Promise<string>((resolve) => {
+				let data = '';
+				proc.stderr?.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+				proc.stderr?.on('end', () => resolve(data));
+			})
+		]);
+
+		const exitCode = await new Promise<number>((resolve) => {
+			proc.on('close', (code: number) => resolve(code ?? 1));
 		});
-
-		const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-
-		const exitCode = await proc.exited;
 		const success = exitCode === 0;
 
 		const output = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
