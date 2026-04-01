@@ -160,10 +160,11 @@ describe("Channel Subscriptions", () => {
 			});
 
 			// Verify alice received the notification
-			assert.ok(receivedMsg, "alice should have received a notification");
-			assert.equal(receivedMsg.channel, "project");
-			assert.equal(receivedMsg.from, "bob");
-			assert.ok(receivedMsg.text.includes("Hello project!"));
+			assert.ok(receivedMsg !== null, "alice should have received a notification");
+			const msg = receivedMsg as { channel: string; from: string; text: string; timestamp: string };
+			assert.equal(msg.channel, "project");
+			assert.equal(msg.from, "bob");
+			assert.ok(msg.text.includes("Hello project!"));
 		});
 
 		it("does not notify the sender", async () => {
