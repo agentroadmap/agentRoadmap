@@ -18,7 +18,7 @@ import {
 	hasAccess,
 	previewTransition,
 	type Role,
-} from "../core/access-control.ts";
+} from "../core/security/access-control.ts";
 
 describe("proposal-54: Authorization-Access-Control", () => {
 	let tempDir: string;

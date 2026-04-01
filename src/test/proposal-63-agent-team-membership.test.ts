@@ -13,8 +13,8 @@ import {
 	AgentTeamMembership,
 	type AgentProfile,
 	type MembershipEvent,
-} from "../core/agent-team-membership.ts";
-import type { Team, TeamMember } from "../core/dynamic-team-builder.ts";
+} from "../core/collaboration/agent-team-membership.ts";
+import type { Team, TeamMember } from "../core/collaboration/dynamic-team-builder.ts";
 
 describe("proposal-63: Agent Team Membership", () => {
 	let manager: AgentTeamMembership;

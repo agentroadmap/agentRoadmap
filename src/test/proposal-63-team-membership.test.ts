@@ -12,7 +12,7 @@ import {
 	parsePoolAssignment,
 	formatTokenDisplay,
 	generateTeamId,
-} from "../core/team-membership.ts";
+} from "../core/collaboration/team-membership.ts";
 
 describe("proposal-63: Agent Team Membership", () => {
 	let tempDir: string;

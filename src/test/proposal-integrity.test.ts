@@ -21,7 +21,7 @@ import {
 	extractChecksum,
 	verifyChecksum,
 	formatIntegrityReport,
-} from "../core/proposal-integrity.ts";
+} from "../core/proposal/proposal-integrity.ts";
 
 describe("Checksum Utilities (proposal-57)", () => {
 	it("computeChecksum should produce consistent SHA-256", () => {

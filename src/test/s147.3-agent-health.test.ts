@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { 
   pingAgent, recordPong, getAgentHealth, getAllHealth, 
   isAgentHealthy, getStaleAgents, clearHealthProposal 
-} from '../core/agent-health/index.ts';
+} from '../core/identity/agent-health/index.ts';
 
 describe('S147.3: Agent Communication Verification', () => {
   

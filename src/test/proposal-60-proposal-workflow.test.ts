@@ -31,7 +31,7 @@ import {
 	saveProposals,
 	resetProposals,
 	type Proposal,
-} from "../core/proposal-workflow.ts";
+} from "../core/collaboration/proposal-workflow.ts";
 
 describe("proposal-60: Proposal Workflow - Mature Potential Through Research & Approval", () => {
 	let testDir: string;

@@ -8,7 +8,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { RegressionSuite } from "../core/regression-suite.ts";
+import { RegressionSuite } from "../core/pipeline/regression-suite.ts";
 import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 

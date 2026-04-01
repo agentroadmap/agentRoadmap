@@ -12,7 +12,7 @@ describe("Roadmap Audit", () => {
 
 		const result = auditRoadmap(proposals);
 		assert.equal(result.orphans.length, 1);
-		assert.equal(result.orphans[0].id, "proposal-1");
+		assert.equal(result.orphans[0]!.id, "proposal-1");
 	});
 
 	test("identifies dead ends", () => {
@@ -25,7 +25,7 @@ describe("Roadmap Audit", () => {
 		const result = auditRoadmap(proposals);
 		// proposal-1 is complete but has no descendants and isn't terminal
 		assert.equal(result.deadEnds.length, 1);
-		assert.equal(result.deadEnds[0].id, "proposal-1");
+		assert.equal(result.deadEnds[0]!.id, "proposal-1");
 	});
 
 	test("identifies broken dependencies", () => {
