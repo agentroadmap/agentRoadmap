@@ -396,16 +396,17 @@ export class TeamHandlers {
 
 			const status = this.federation.getStats();
 
+			const stats = status as any;
 			return {
 				content: [{
 					type: "text",
 					text: `Federation Status:\n` +
-						`Host ID: ${status.hostId}\n` +
-						`Port: ${status.port}\n` +
-						`Connected Agents: ${status.connectedAgents}\n` +
-						`Pending Changes: ${status.pendingChanges}\n` +
-						`Pending Conflicts: ${status.conflicts}\n` +
-						`Connections: ${status.connectionStats.alive}/${status.connectionStats.total} alive`,
+						`Host ID: ${stats.hostId}\n` +
+						`Port: ${stats.port}\n` +
+						`Connected Agents: ${stats.connectedAgents}\n` +
+						`Pending Changes: ${stats.pendingChanges}\n` +
+						`Pending Conflicts: ${stats.conflicts}\n` +
+						`Connections: ${stats.connectionStats?.alive}/${stats.connectionStats?.total} alive`,
 				}],
 			};
 		} catch (error) {

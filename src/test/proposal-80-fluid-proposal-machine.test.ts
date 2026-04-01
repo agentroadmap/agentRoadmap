@@ -12,9 +12,9 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+// @ts-nocheck — SqliteStore feature not implemented
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-// @ts-nocheck — SqliteStore feature not implemented
 
 describe("proposal-80: Fluid Proposal Machine", () => {
 	let tempDir: string;

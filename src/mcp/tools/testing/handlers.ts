@@ -57,7 +57,7 @@ export class TestHandlers {
 	}
 
 	private getProjectRoot(): string {
-		return this.server.fs.getProjectRoot();
+		return this.server.fs.rootDir;
 	}
 
 	private getDefaultTestDir(): string {

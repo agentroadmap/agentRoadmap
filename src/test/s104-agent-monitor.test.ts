@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkProposalCount, checkRateLimit, checkDuplicates, AgentEvent } from '../core/agent-monitor';
+import { checkProposalCount, checkRateLimit, checkDuplicates, AgentEvent } from '../core/identity/agent-monitor/index.ts';
 
 describe('S104: Agent Activity Monitoring', () => {
   // AC#1: Proposal count monitor
