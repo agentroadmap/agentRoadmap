@@ -37,7 +37,7 @@ describe("CLI description newline handling", () => {
 
 		const core = new Core(TEST_DIR);
 		const body = await core.getProposalContent("proposal-1");
-		assert.ok(body.includes(desc));
+		assert.ok(body?.includes(desc));
 	});
 
 	it("should preserve literal newlines when editing proposal", async () => {
@@ -60,7 +60,7 @@ describe("CLI description newline handling", () => {
 		execSync(`node --experimental-strip-types ${buildCliCommand([cliPath, "proposal", "edit", "1", "--desc", desc])}`, { cwd: TEST_DIR });
 
 		const updatedBody = await core.getProposalContent("proposal-1");
-		assert.ok(updatedBody.includes(desc));
+		assert.ok(updatedBody?.includes(desc));
 	});
 
 	it("should not interpret \\n sequences as newlines", async () => {
@@ -69,6 +69,6 @@ describe("CLI description newline handling", () => {
 
 		const core = new Core(TEST_DIR);
 		const body = await core.getProposalContent("proposal-1");
-		assert.ok(body.includes("First line\\nSecond line"));
+		assert.ok(body?.includes("First line\\nSecond line"));
 	});
 });
