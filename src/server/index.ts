@@ -1449,7 +1449,8 @@ export class RoadmapServer {
 
 	private async handleGetVersion(): Promise<Response> {
 		try {
-			const version = await getVersion();
+			const versionInfo = await getVersionInfo();
+			const version = formatVersionLabel(versionInfo);
 			return Response.json({ version });
 		} catch (error) {
 			console.error("Error getting version:", error);
