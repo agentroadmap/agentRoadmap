@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import {
@@ -937,7 +938,7 @@ export class Core {
 				prefix: upperPrefix,
 			});
 			if (allocation && allocation.ids.length > 0) {
-				return allocation.ids[0];
+				return allocation.ids[0]!;
 			}
 		}
 		let max = 0;
@@ -2610,8 +2611,8 @@ export class Core {
 		const nextProposal = targetIndex < validProposals.length - 1 ? validProposals[targetIndex + 1] : null;
 
 		const { ordinal: newOrdinal, requiresRebalance } = calculateNewOrdinal({
-			previous: previousProposal,
-			next: nextProposal,
+			previous: previousProposal as Pick<Proposal, "id" | "ordinal"> | null | undefined,
+			next: nextProposal as Pick<Proposal, "id" | "ordinal"> | null | undefined,
 			defaultStep,
 		});
 
@@ -4058,8 +4059,8 @@ export class Core {
 								registeredAgents[existingIndex] = {
 									...registeredAgents[existingIndex],
 									...workspaceProfile,
-									name: registeredAgents[existingIndex].name, // Keep registered name
-								};
+									name: registeredAgents[existingIndex]!.name, // Keep registered name
+								} as Agent;
 							} else {
 								// Add as a new discovered agent
 								registeredAgents.push({
@@ -4261,7 +4262,8 @@ export class Core {
 
 		// Commit if auto-commit is enabled
 		await this.ensureConfigLoaded();
-		if (this.config?.autoCommit) {
+		const config = await this.fs.loadConfig();
+		if (config?.autoCommit) {
 			try {
 				await this.git.addFile(filePath);
 				await this.git.commitChanges(`${from} sent a message to ${channelName}`, dirname(filePath));

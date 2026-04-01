@@ -608,7 +608,7 @@ export class RoadmapServer {
 
 			if (pathname.startsWith("/api/proposals/")) {
 				const parts = pathname.split("/");
-				const id = parts[3];
+				const id = parts[3]!;
 				if (parts.length === 4) {
 					if (method === "GET") return await this.handleGetProposal(id);
 					if (method === "PUT") return await this.handleUpdateProposal(req, id);
@@ -628,7 +628,7 @@ export class RoadmapServer {
 			// GET /api/proposals/:id/notes - Discussion notes for a proposal
 			if (pathname.startsWith("/api/proposals/") && pathname.endsWith("/notes")) {
 				const parts = pathname.split("/");
-				const id = parts[3]; // /api/proposals/{id}/notes
+				const id = parts[3]!; // /api/proposals/{id}/notes
 				if (method === "GET") return await this.handleGetProposalNotes(id, req);
 			}
 
@@ -650,7 +650,7 @@ export class RoadmapServer {
 			}
 
 			if (pathname.startsWith("/api/docs/")) {
-				const id = pathname.split("/")[3];
+				const id = pathname.split("/")[3]!;
 				if (method === "GET") return await this.handleGetDoc(id);
 				if (method === "PUT") return await this.handleUpdateDoc(req, id);
 			}
@@ -666,14 +666,14 @@ export class RoadmapServer {
 			}
 
 			if (pathname.startsWith("/api/decisions/")) {
-				const id = pathname.split("/")[3];
+				const id = pathname.split("/")[3]!;
 				if (method === "GET") return await this.handleGetDecision(id);
 				if (method === "PUT") return await this.handleUpdateDecision(req, id);
 			}
 
 			if (pathname === "/api/drafts" && method === "GET") return await this.handleListDrafts();
 			if (pathname.startsWith("/api/drafts/") && pathname.endsWith("/promote") && method === "POST") {
-				const id = pathname.split("/")[3];
+				const id = pathname.split("/")[3]!;
 				return await this.handlePromoteDraft(id);
 			}
 
@@ -686,7 +686,7 @@ export class RoadmapServer {
 
 			if (pathname.startsWith("/api/directives/")) {
 				const parts = pathname.split("/");
-				const id = parts[3];
+				const id = parts[3]!;
 				if (parts.length === 4) {
 					if (method === "GET") return await this.handleGetDirective(id);
 				}
