@@ -74,7 +74,7 @@ describe("proposal-84 AC#1: Claim Proposal and Release Proposal Logic", () => {
 			assert.ok(assignment);
 			assert.strictEqual(assignment.proposalId, "proposal-100");
 			assert.strictEqual(assignment.agentId, "agent-1");
-			assert.ok(assignment.claimedAt > 0);
+			assert.ok(assignment.claimedAt! > 0);
 		});
 
 		it("should prevent duplicate claims by different agents", () => {
@@ -196,7 +196,7 @@ describe("proposal-84 AC#1: Claim Proposal and Release Proposal Logic", () => {
 			assert.ok(before?.currentProposalId);
 
 			// Trigger stale recovery
-			shortRegistry.recoverStaleAgents();
+			shortRegistry.recoverStaleAgents(30000);
 
 			// Agent should still exist
 			const after = shortRegistry.getAgent("agent-1");
@@ -228,7 +228,7 @@ describe("proposal-84 AC#1: Claim Proposal and Release Proposal Logic", () => {
 			registry.heartbeat("agent-1");
 
 			// Trigger recovery
-			registry.recoverStaleAgents();
+			registry.recoverStaleAgents(30000);
 
 			// Agent should still have assignment
 			const agent = registry.getAgent("agent-1");
@@ -518,7 +518,7 @@ describe("proposal-84 AC#3: DAG Validation for Cycles and Orphans", () => {
 			const cycles = report.issues.filter((i) => i.type === "cycle");
 
 			assert.ok(cycles.length >= 1, "Should detect at least one cycle");
-			assert.strictEqual(cycles[0].severity, "error");
+			assert.strictEqual(cycles[0]!.severity, "error");
 			assert.strictEqual(report.status, "critical");
 		});
 
@@ -627,7 +627,7 @@ describe("proposal-84 AC#3: DAG Validation for Cycles and Orphans", () => {
 			);
 
 			assert.strictEqual(missing.length, 1);
-			assert.strictEqual(missing[0].severity, "error");
+			assert.strictEqual(missing[0]!.severity, "error");
 		});
 
 		it("should detect deep dependency chains", () => {

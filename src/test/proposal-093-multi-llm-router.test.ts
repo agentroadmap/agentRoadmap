@@ -21,7 +21,7 @@ import {
 	type ModelConfig,
 	type TaskDefinition,
 	type ReasoningTier,
-} from "../core/multi-llm-router.ts";
+} from "../core/orchestration/multi-llm-router.ts";
 
 // ===================== Test Helpers =====================
 
@@ -310,8 +310,8 @@ describe("AC#3: Cost tracking per task based on model usage", () => {
 		router.trackCost("task-3", "claude-sonnet-4", 1000, 1000);
 
 		const byModel = router.getCostByModel();
-		assert.ok(byModel["claude-haiku-3.5"] > 0);
-		assert.ok(byModel["claude-sonnet-4"] > 0);
+		assert.ok(byModel["claude-haiku-3.5"]! > 0);
+		assert.ok(byModel["claude-sonnet-4"]! > 0);
 	});
 
 	it("tracks within budget", () => {
@@ -329,7 +329,7 @@ describe("AC#3: Cost tracking per task based on model usage", () => {
 
 		const records = router.getCostRecords();
 		assert.equal(records.length, 1);
-		assert.equal(records[0].taskId, "task-1");
+		assert.equal(records[0]!.taskId, "task-1");
 	});
 
 	it("clears cost history", () => {
