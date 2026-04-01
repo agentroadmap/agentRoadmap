@@ -3,7 +3,7 @@ id: RFC-20260401-PRODUCT-STATEMACHINE
 display_id: RFC-20260401-PRODUCT-STATEMACHINE
 proposal_type: CAPABILITY
 category: FEATURE
-domain_id: 
+domain_id: ENGINE
 title: "RFC State Machine & Lifecycle"
 status: Draft
 assignee: []

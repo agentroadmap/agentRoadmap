@@ -3,7 +3,7 @@ id: RFC-20260401-TUI-COCKPIT
 display_id: RFC-20260401-TUI-COCKPIT
 proposal_type: COMPONENT
 category: FEATURE
-domain_id: 
+domain_id: ENGINE
 title: "TUI & WebSash Command Center"
 status: Draft
 assignee: []

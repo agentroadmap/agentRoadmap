@@ -3,7 +3,7 @@ id: RFC-20260401-BUSINESS-DESIGN
 display_id: RFC-20260401-BUSINESS-DESIGN
 proposal_type: DIRECTIVE
 category: FEATURE
-domain_id: 
+domain_id: ENGINE
 title: "Business Architecture & Value Chain"
 status: Draft
 assignee: []

@@ -3,7 +3,7 @@ id: RFC-20260401-MESSAGING
 display_id: RFC-20260401-MESSAGING
 proposal_type: COMPONENT
 category: FEATURE
-domain_id: 
+domain_id: ENGINE
 title: "Messaging & Synchronization"
 status: Draft
 assignee: []

@@ -3,7 +3,7 @@ id: RFC-20260401-SECURITY
 display_id: RFC-20260401-SECURITY
 proposal_type: TECHNICAL
 category: SECURITY
-domain_id: 
+domain_id: ENGINE
 title: "Security & Access Control"
 status: Draft
 assignee: []
