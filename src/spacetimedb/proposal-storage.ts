@@ -344,7 +344,7 @@ export class SpacetimeDBProposalStorage {
 		this.logActivity(proposalId, "claim", agentId, null);
 
 		// Notify subscribers
-		this.notifySubscribers("update", proposal, undefined, { action: "claimed", agentId });
+		this.notifySubscribers("update", proposal);
 
 		return claim;
 	}
@@ -383,7 +383,7 @@ export class SpacetimeDBProposalStorage {
 		this.logActivity(proposalId, "release", agentId, null);
 
 		// Notify subscribers
-		this.notifySubscribers("update", proposal, undefined, { action: "released", agentId });
+		this.notifySubscribers("update", proposal);
 	}
 
 	// ===================== Reducer: complete_proposal (STATE-085) =====================
