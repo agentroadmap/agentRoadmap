@@ -4440,7 +4440,7 @@ export class Core {
 
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || DEFAULT_STATUSES;
-		const currentIndex = statuses.indexOf(proposal.status);
+		const currentIndex = statuses.indexOf(proposal.status as any);
 
 		if (currentIndex === -1 || currentIndex === statuses.length - 1) {
 			throw new Error(`Cannot promote proposal ${proposal.id} from status ${proposal.status}`);
@@ -4459,7 +4459,7 @@ export class Core {
 
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses || DEFAULT_STATUSES;
-		const currentIndex = statuses.indexOf(proposal.status);
+		const currentIndex = statuses.indexOf(proposal.status as any);
 
 		if (currentIndex <= 0) {
 			throw new Error(`Cannot demote proposal ${proposal.id} from status ${proposal.status}`);
