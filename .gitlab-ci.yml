@@ -1,6 +1,7 @@
 # .gitlab-ci.yml — agentRoadmap CI
 
 stages:
+  - security
   - check
   - test
   - build
@@ -16,6 +17,21 @@ variables:
       - node_modules/
   before_script:
     - npm ci
+
+# ─── Stage 0: Security ────────────────────────────────────────
+secret-scan:
+  image: zricethezav/gitleaks:latest
+  stage: security
+  script:
+    - gitleaks detect --source . --verbose
+  allow_failure: true  # 先 soft run，调准了再改 hard fail
+
+dependency-audit:
+  <<: *node-setup
+  stage: security
+  script:
+    - npm audit --audit-level=high
+  allow_failure: true  # 先 soft run
 
 # ─── Stage 1: Check ───────────────────────────────────────────
 type-check:
