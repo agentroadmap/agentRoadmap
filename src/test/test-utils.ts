@@ -282,7 +282,7 @@ import { spawnSync } from "node:child_process";
  * A wrapper around node's spawnSync that captures both stdout and stderr
  * and returns an object mimicking Bun's $ result, but also supports toString() for backward compatibility.
  */
-export function execSync(command: string, options: any = {}): { stdout: string, stderr: string, exitCode: number, text(): string, toString(): string } {
+export function execSync(command: string, options: any = {}): { stdout: string, stderr: string, combined: string, exitCode: number, text(): string, toString(): string } {
     const result = spawnSync("bash", ["-c", command], {
         ...options,
         encoding: 'utf-8',
