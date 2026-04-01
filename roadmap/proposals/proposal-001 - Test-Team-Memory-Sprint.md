@@ -1,5 +1,10 @@
 ---
 id: PROPOSAL-001
+display_id: OPS-001
+proposal_type: OPS_ISSUE
+category: FEATURE
+domain_id: ENGINE
+maturity: 0
 title: 'Test: Team Memory Sprint'
 status: Abandoned
 assignee: []
