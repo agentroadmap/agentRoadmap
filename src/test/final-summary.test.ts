@@ -64,7 +64,7 @@ describe("Final Summary", () => {
 		await core.updateProposalFromInput("proposal-1", { clearFinalSummary: true }, false);
 		body = await core.getProposalContent("proposal-1");
 		expect(extractStructuredSection(body ?? "", "finalSummary")).toBeUndefined();
-		assert.ok(!body.includes("## Final Summary"));
+		assert.ok(!body?.includes("## Final Summary"));
 	});
 
 	it("orders Final Summary after Implementation Notes", async () => {
