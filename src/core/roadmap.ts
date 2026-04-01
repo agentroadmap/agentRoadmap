@@ -3150,6 +3150,30 @@ export class Core {
 	async listProposalsWithMetadata(
 		includeBranchMeta = false,
 	): Promise<Array<Proposal & { lastModified?: Date; branch?: string }>> {
+
+	/**
+	 * Get completed proposals older than a specified number of days
+	 */
+	async getCompleteProposalsByAge(daysOld: number): Promise<Proposal[]> {
+		const proposals = await this.fs.listProposals();
+		const cutoffDate = new Date();
+		cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+		
+		return proposals.filter(p => {
+			if (p.status !== "Complete" && p.status !== "Reached") return false;
+			if (!p.reachedDate && !p.createdDate) return false;
+			
+			const dateStr = p.reachedDate || p.createdDate;
+			if (!dateStr) return false;
+			
+			const proposalDate = new Date(dateStr);
+			return proposalDate < cutoffDate;
+		});
+	}
+
+	async listProposalsWithMetadata(
+		includeBranchMeta = false,
+	): Promise<Array<Proposal & { lastModified?: Date; branch?: string }>> {
 		const proposals = await this.fs.listProposals();
 		const results = await Promise.all(
 			proposals.map(async (proposal) => {

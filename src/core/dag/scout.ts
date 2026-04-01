@@ -170,7 +170,7 @@ export function suggestDirective(proposal: ProposalInfo, allProposals: ProposalI
  * Analyze the roadmap and generate proposals for missing proposals.
  */
 export function generateProposals(proposals: ProposalInfo[]): Proposal[] {
-	const proposals: Proposal[] = [];
+	const generatedProposals: Proposal[] = [];
 	const proposalIds = new Set(proposals.map((s) => s.id));
 	const reachedIds = new Set(proposals.filter((s) => s.status === "Reached").map((s) => s.id));
 
@@ -191,7 +191,7 @@ export function generateProposals(proposals: ProposalInfo[]): Proposal[] {
 	}
 
 	for (const [capability, unlockedBy] of unimplementedUnlocks) {
-		proposals.push({
+		generatedProposals.push({
 			type: "proposal",
 			title: `Implement ${capability}`,
 			description: `This capability is unlocked by ${unlockedBy.join(", ")} but has no implementation proposal.`,
@@ -215,7 +215,7 @@ export function generateProposals(proposals: ProposalInfo[]): Proposal[] {
 		if (count >= 3) {
 			const proposal = proposals.find((s) => s.id === id);
 			if (proposal && proposal.status !== "Reached") {
-				proposals.push({
+				generatedProposals.push({
 					type: "obstacle",
 					title: `Bottleneck: ${proposal.title}`,
 					description: `${proposal.id} blocks ${count} other proposals. Consider prioritizing or parallelizing.`,
