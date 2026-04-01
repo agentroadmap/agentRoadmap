@@ -548,13 +548,13 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				});
 
 				// Set up key handlers
-				screen.key(["tab"], () => {
+				(screen as any).key(["tab"], () => {
 					onTabPress();
-					screen.destroy();
+					(screen as any).destroy();
 					resolve("switch");
 				});
-				screen.key(["q", "C-c"], () => {
-					screen.destroy();
+				(screen as any).key(["q", "C-c"], () => {
+					(screen as any).destroy();
 					resolve("exit");
 				});
 			});
@@ -574,9 +574,6 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					break;
 				case "cubic-dashboard":
 					result = await showCubicDashboard();
-					break;
-				case "headlines":
-					result = await showHeadlinesView();
 					break;
 				default:
 					result = "exit";
