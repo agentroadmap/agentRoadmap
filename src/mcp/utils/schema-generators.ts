@@ -285,11 +285,6 @@ export function generateProposalEditSchema(config: RoadmapConfig): JsonSchema {
 			notesClear: {
 				type: "boolean",
 			},
-			auditNotes: {
-				type: "string",
-				maxLength: 5000,
-				description: "Peer auditor findings and certification rationale",
-			},
 			auditNotesAppend: {
 				type: "array",
 				items: {
