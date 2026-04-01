@@ -281,7 +281,7 @@ describe("AuditTrail (proposal-53)", () => {
 	// ─── Format Helpers ──────────────────────────────────────────────
 
 	describe("Format helpers", () => {
-		const testEvents = [
+		const testEvents: AuditEvent[] = [
 			{
 				id: "1",
 				timestamp: "2026-03-24T02:00:00.000Z",
