@@ -56,6 +56,7 @@ export function normalizeId(id: string, prefix: string): string {
 
 	if (match) {
 		const body = match[1];
+		if (!body) return `${prefix.toUpperCase()}-${trimmed.toUpperCase()}`;
 		return `${prefix.toUpperCase()}-${body.toUpperCase()}`;
 	}
 
