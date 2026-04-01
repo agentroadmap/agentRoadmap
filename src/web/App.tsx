@@ -39,13 +39,13 @@ export default function App() {
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
           <Switch>
         <Route path="/">
-          <DashboardPage proposals={proposals as Proposal[]} agents={agents} />
+          <DashboardPage proposals={proposals as Proposal[]} />
         </Route>
         <Route path="/board">
           <BoardPage
-            proposals={proposals as Proposal[]}
+            proposals={proposals}
             statuses={STATUSES}
-            onProposalClick={handleProposalClick}
+            onProposalClick={(p) => handleProposalClick(p as Proposal)}
           />
         </Route>
         <Route path="/proposals">
@@ -87,11 +87,14 @@ export default function App() {
         <Route path="/settings">
           <SettingsPage />
         </Route>
-        <Route component={NotFoundPage} />
+        <Route path="*">
+          <NotFoundPage />
+        </Route>
       </Switch>
       {activeFeature && (
         <ProposalDetailsModal
           proposal={proposals.find(p => p.id === activeFeature) as Proposal | undefined}
+          isOpen={true}
           onClose={() => setActiveFeature(null)}
         />
       )}
