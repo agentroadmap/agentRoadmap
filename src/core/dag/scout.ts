@@ -228,7 +228,7 @@ export function generateProposals(proposals: ProposalInfo[]): Proposal[] {
 		}
 	}
 
-	return proposals;
+	return generatedProposals;
 }
 
 /**
