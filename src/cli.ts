@@ -33,6 +33,7 @@ import {
 	updateReadmeWithBoard,
 } from "./index.ts";
 import {
+	type AgentStatus,
 	type Decision,
 	type DecisionSearchResult,
 	type Document as DocType,
@@ -705,7 +706,7 @@ program
 						process.env.EDITOR ||
 						process.env.VISUAL ||
 						undefined;
-					result.autoCommit = parseBoolean(options.autoCommit, result.autoCommit ?? true);
+					result.autoCommit = parseBoolean(String((options as Record<string, unknown>).autoCommit ?? ""), result.autoCommit ?? true);
 					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
 					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
 					return result;
@@ -1011,8 +1012,8 @@ program
 				const advancedConfigured = false;
 				let installClaudeAgentSelection = false;
 				const installShellCompletionsSelection = false;
-				const completionInstallResult: CompletionInstallResult | null = null;
-				const completionInstallError: string | null = null;
+				let completionInstallResult: CompletionInstallResult | null = null;
+				let completionInstallError: string | null = null;
 
 				if (isNonInteractive) {
 					advancedConfig = applyAdvancedOptionOverrides();
@@ -1131,7 +1132,7 @@ program
 				}
 				let completionSummary: string;
 				if (completionInstallResult) {
-					completionSummary = `${good("installed")} to ${completionInstallResult.installPath}`;
+					completionSummary = `${good("installed")} to ${(completionInstallResult as CompletionInstallResult).installPath}`;
 				} else if (installShellCompletionsSelection) {
 					completionSummary = `${bad("installation failed")} (${muted("see warning below")})`;
 				} else if (advancedConfigured) {
@@ -1163,16 +1164,17 @@ program
 				clack.note(summaryLines.join("\n"), "Initialization Summary");
 
 				if (completionInstallResult) {
-					const instructions = completionInstallResult.instructions.trim();
+					const result = completionInstallResult as CompletionInstallResult;
+					const instructions = result.instructions.trim();
 					clack.note(
 						[
-							`${label("Path:")} ${colorize("1", completionInstallResult.installPath)}`,
+							`${label("Path:")} ${colorize("1", result.installPath)}`,
 							formatCompletionInstructions(instructions),
 						].join("\n\n"),
-						`Shell completions installed (${completionInstallResult.shell})`,
+						`Shell completions installed (${result.shell})`,
 					);
 				} else if (completionInstallError) {
-					const indentedError = completionInstallError
+					const indentedError = (completionInstallError as string)
 						.split("\n")
 						.map((line) => `  ${line}`)
 						.join("\n");
@@ -1490,18 +1492,18 @@ function buildProposalFromOptions(id: string, title: string, options: Record<str
 		requires,
 		rawContent: "",
 		...(options.description || options.desc ? { description: String(options.description || options.desc) } : {}),
-		...(normalizedParent && { parentProposalId: normalizedParent }),
-		...(validatedPriority && { priority: validatedPriority }),
-		...(options.rationale && { rationale: String(options.rationale) }),
-		...(options.maturity && { maturity: String(options.maturity).toLowerCase() as any }),
-		...(options.type && { proposalType: String(options.type).toUpperCase() }),
-		...(options.domain && { domainId: String(options.domain).toUpperCase() }),
-		...(options.category && { category: String(options.category).toUpperCase() }),
-		...(options.needs && { needs_capabilities: options.needs }),
-		...(options.external && { external_injections: options.external }),
-		...(options.unlocks && { unlocks: options.unlocks }),
-		...(options.builder && { builder: String(options.builder) }),
-		...(options.auditor && { auditor: String(options.auditor) }),
+		...(normalizedParent ? { parentProposalId: normalizedParent } : {}),
+		...(validatedPriority ? { priority: validatedPriority } : {}),
+		...(options.rationale ? { rationale: String(options.rationale) } : {}),
+		...(options.maturity ? { maturity: String(options.maturity).toLowerCase() as any } : {}),
+		...(options.type ? { proposalType: String(options.type).toUpperCase() } : {}),
+		...(options.domain ? { domainId: String(options.domain).toUpperCase() } : {}),
+		...(options.category ? { category: String(options.category).toUpperCase() } : {}),
+		...(options.needs ? { needs_capabilities: options.needs as string[] } : {}),
+		...(options.external ? { external_injections: options.external as string[] } : {}),
+		...(options.unlocks ? { unlocks: options.unlocks as string[] } : {}),
+		...(options.builder ? { builder: String(options.builder) } : {}),
+		...(options.auditor ? { auditor: String(options.auditor) } : {}),
 		verificationProposalments: Array.isArray(options.verify)
 			? options.verify
 					.map((assertion, index) => ({
@@ -3293,17 +3295,17 @@ proposalCmd
 		});
 
 		if (!result) {
-			console.log(info("No ready proposals found for pickup."));
+			console.log("ℹ️  No ready proposals found for pickup.");
 			return;
 		}
 
 		if (options.dryRun) {
-			console.log(info("Dry run: no claim created."));
+			console.log("ℹ️  Dry run: no claim created.");
 			console.log(result.explanation);
 			console.log("\nProposal details:");
 			console.log(formatProposalPlainText(result.proposal));
 		} else {
-			console.log(good(`Successfully picked up and claimed proposal ${result.proposal.id}`));
+			console.log(`✅ Successfully picked up and claimed proposal ${result.proposal.id}`);
 			console.log(result.explanation);
 			console.log(`\nUse 'roadmap proposal ${result.proposal.id}' to view details.`);
 		}
