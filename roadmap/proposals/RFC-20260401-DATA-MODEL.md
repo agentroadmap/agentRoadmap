@@ -4,6 +4,7 @@ display_id: RFC-20260401-DATA-MODEL
 proposal_type: TECHNICAL
 category: RESEARCH
 domain_id: ENGINE
+maturity: 0
 title: "Data Model Schema v2.1"
 status: Draft
 assignee: []

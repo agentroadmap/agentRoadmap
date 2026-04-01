@@ -6,6 +6,7 @@ title: "Authorization & Access Control"
 status: Draft
 category: child
 domain_id: ENGINE
+maturity: 0
 parent: RFC-20260401-SECURITY
 assignee: []
 created_date: "2026-04-01 20:32"

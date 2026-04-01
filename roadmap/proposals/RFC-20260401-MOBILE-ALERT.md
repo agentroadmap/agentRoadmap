@@ -4,6 +4,7 @@ display_id: RFC-20260401-MOBILE-ALERT
 proposal_type: COMPONENT
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Mobile Alert System"
 status: Draft
 assignee: []

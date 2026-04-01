@@ -4,6 +4,7 @@ display_id: RFC-20260401-PIPELINE-PREFLIGHT
 proposal_type: TECHNICAL
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Pipeline Pre-flight Check Protocol"
 status: Draft
 assignee: []

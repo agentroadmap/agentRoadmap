@@ -4,6 +4,7 @@ display_id: RFC-20260401-MOBILE-VISIONARY
 proposal_type: COMPONENT
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Visionary Command Schema"
 status: Draft
 assignee: []

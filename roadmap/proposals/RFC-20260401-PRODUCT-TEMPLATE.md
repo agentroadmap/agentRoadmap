@@ -4,6 +4,7 @@ display_id: RFC-20260401-PRODUCT-TEMPLATE
 proposal_type: CAPABILITY
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "RFC Template & Lifecycle"
 status: Draft
 assignee: []

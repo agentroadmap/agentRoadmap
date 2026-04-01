@@ -4,6 +4,7 @@ display_id: RFC-20260401-BUSINESS-STRATEGY
 proposal_type: DIRECTIVE
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Business Strategy & Vision Alignment"
 status: Draft
 assignee: []

@@ -4,6 +4,7 @@ display_id: RFC-20260401-SPENDING-VISIBILITY
 proposal_type: COMPONENT
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Financial Visibility & Monitoring"
 status: Draft
 assignee: []

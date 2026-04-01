@@ -4,6 +4,7 @@ display_id: RFC-20260401-MESSAGES-PULSE
 proposal_type: COMPONENT
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Group Pulse & Messaging"
 status: Draft
 assignee: []

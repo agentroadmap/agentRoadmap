@@ -4,6 +4,7 @@ display_id: RFC-20260401-MCP-TOOL-SPEC
 proposal_type: TECHNICAL
 category: INFRA
 domain_id: ENGINE
+maturity: 0
 title: "MCP Tool Specification v2.1"
 status: Draft
 assignee: []

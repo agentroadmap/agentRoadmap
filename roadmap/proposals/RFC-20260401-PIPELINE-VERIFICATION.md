@@ -4,6 +4,7 @@ display_id: RFC-20260401-PIPELINE-VERIFICATION
 proposal_type: TECHNICAL
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Pipeline Verification & QA"
 status: Draft
 assignee: []

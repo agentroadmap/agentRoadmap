@@ -4,6 +4,7 @@ display_id: RFC-20260401-WORKFORCE-CORE
 proposal_type: COMPONENT
 category: FEATURE
 domain_id: ENGINE
+maturity: 0
 title: "Core Team & Role-Based Access Control"
 status: Draft
 assignee: []
