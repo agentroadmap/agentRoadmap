@@ -612,7 +612,6 @@ function toInitialWizardValues(input: { title?: string } & Partial<Proposal>): P
 		documentation: formatListInput(input.documentation),
 		dependencies: formatListInput(input.dependencies),
 		verificationProposalments: formatChecklistInput(input.verificationProposalments),
-		auditNotes: input.auditNotes ?? "",
 	};
 }
 
@@ -748,9 +747,6 @@ export async function runProposalEditWizard(
 	}
 	if (values.implementationNotes !== initial.implementationNotes) {
 		updateInput.implementationNotes = values.implementationNotes;
-	}
-	if (values.auditNotes !== initial.auditNotes) {
-		updateInput.auditNotes = values.auditNotes;
 	}
 
 	const existingCriteria = (options.proposal.acceptanceCriteriaItems ?? [])
