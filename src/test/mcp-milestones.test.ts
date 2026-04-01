@@ -386,8 +386,9 @@ describe("MCP directive tools", () => {
 		const directiveFiles = await Array.fromAsync(
 			globSync("m-*.md", { cwd: server.filesystem.directivesDir, follow: true }),
 		);
-		assert.ok(directiveFiles.includes("m-0 - release-2.0.md"));
-		assert.ok(!directiveFiles.includes("m-0 - release-1.0.md"));
+		const fileNames = directiveFiles.map((d: any) => typeof d === 'string' ? d : d.name);
+		assert.ok(fileNames.includes("m-0 - release-2.0.md"));
+		assert.ok(!fileNames.includes("m-0 - release-1.0.md"));
 	});
 
 	it("keeps git clean when renaming directives with autoCommit enabled", async () => {
@@ -424,8 +425,9 @@ describe("MCP directive tools", () => {
 		const directiveFilesBefore = await Array.fromAsync(
 			globSync("m-*.md", { cwd: server.filesystem.directivesDir, follow: true }),
 		);
-		assert.strictEqual(directiveFilesBefore.length, 1);
-		const sourcePath = join(server.filesystem.directivesDir, directiveFilesBefore[0] as string);
+		const fileNamesBefore = directiveFilesBefore.map((d: any) => typeof d === 'string' ? d : d.name);
+		assert.strictEqual(fileNamesBefore.length, 1);
+		const sourcePath = join(server.filesystem.directivesDir, fileNamesBefore[0]!);
 		const originalContent = await await readFile(sourcePath, "utf-8");
 		const notesLine = "Keep reference Directive: Release 1.0 in notes";
 		await writeFile(sourcePath,  `${originalContent.trimEnd()}\n\n## Notes\n\n${notesLine}\n`);
