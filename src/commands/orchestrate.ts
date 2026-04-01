@@ -145,7 +145,7 @@ async function setupAgentWorktree(
 		// AC#2: Skip symlink creation when daemon mode is active
 		if (useDaemon) {
 			// Daemon mode: no symlink needed, agents use HTTP API
-			spin.update(`Configuring daemon mode for ${agentName}...`);
+			spin.message(`Configuring daemon mode for ${agentName}...`);
 		} else {
 			// Legacy mode: Share the entire roadmap directory via symlink
 			const sharedRoadmapDir = join(rootDir, "roadmap");

@@ -10,7 +10,7 @@
  * AC#4: Connection recovery after network interruption
  */
 
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, request, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -609,7 +609,7 @@ export class FederationServer {
 		const body = serializeMessage(message);
 
 		return new Promise((resolve, reject) => {
-			const req = createServer().request(
+			const req = request(
 				{
 					hostname: targetHostname,
 					port: targetPort,
@@ -621,9 +621,9 @@ export class FederationServer {
 						"X-Host-Id": this.config.hostId,
 					},
 				},
-				(res) => {
+				(res: any) => {
 					let data = "";
-					res.on("data", (chunk) => {
+					res.on("data", (chunk: any) => {
 						data += chunk;
 					});
 					res.on("end", () => {
@@ -636,7 +636,7 @@ export class FederationServer {
 				},
 			);
 
-			req.on("error", (err) => {
+			req.on("error", (err: any) => {
 				// AC#4: Record reconnection attempt
 				this.connectionManager.recordReconnectAttempt(targetHostname);
 				reject(err);

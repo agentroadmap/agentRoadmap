@@ -222,7 +222,7 @@ export class Core {
 
 		try {
 			const config = await this.fs.loadConfig();
-			const client = createDaemonClientFromConfig(config);
+			const client = createDaemonClientFromConfig(config ?? undefined);
 			if (client) {
 				// Verify the daemon is actually reachable
 				const available = await client.isAvailable();
@@ -3157,9 +3157,9 @@ export class Core {
 		
 		return proposals.filter(p => {
 			if (p.status !== "Complete" && p.status !== "Reached") return false;
-			if (!p.reachedDate && !p.createdDate) return false;
+			if (!p.updatedDate && !p.createdDate) return false;
 			
-			const dateStr = p.reachedDate || p.createdDate;
+			const dateStr = p.updatedDate || p.createdDate;
 			if (!dateStr) return false;
 			
 			const proposalDate = new Date(dateStr);
