@@ -9,7 +9,7 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { DAGHealth } from "../core/dag-health.ts";
+import { DAGHealth } from "../core/dag/dag-health.ts";
 import type { Proposal } from "../types/index.ts";
 
 const createProposal = (id: string, deps: string[] = [], status = "Potential"): Proposal => ({

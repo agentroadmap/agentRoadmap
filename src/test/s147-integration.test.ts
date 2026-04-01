@@ -1,9 +1,9 @@
 // S147 Integration Test: Real Agent Registration & Messaging
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { registerAgent, deregisterAgent, listAgents } from '../core/agent-registry/index.ts';
-import { sendMessage, getMessages } from '../core/agent-messaging/index.ts';
-import { pingAgent } from '../core/agent-health/index.ts';
+import { registerAgent, deregisterAgent, listAgents } from '../core/identity/agent-registry/index.ts';
+import { sendMessage, getMessages } from '../core/messaging/agent-messaging/index.ts';
+import { pingAgent } from '../core/identity/agent-health/index.ts';
 
 describe('S147: Integration Test', () => {
   const instanceId = 'xTest1-' + Date.now().toString(36);
