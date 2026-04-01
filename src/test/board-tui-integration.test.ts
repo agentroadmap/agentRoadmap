@@ -79,12 +79,12 @@ describe("AC#2: TUI Board Rendering", () => {
 			proposals: proposals.filter((s) => s.status === status),
 		}));
 
-		assert.strictEqual(columns[0].status, "Proposal");
-		assert.strictEqual(columns[0].proposals.length, 1);
-		assert.strictEqual(columns[1].status, "Draft");
-		assert.strictEqual(columns[1].proposals.length, 0); // empty
-		assert.strictEqual(columns[2].status, "Active");
-		assert.strictEqual(columns[2].proposals.length, 1);
+		assert.strictEqual(columns[0]!.status, "Proposal");
+		assert.strictEqual(columns[0]!.proposals.length, 1);
+		assert.strictEqual(columns[1]!.status, "Draft");
+		assert.strictEqual(columns[1]!.proposals.length, 0); // empty
+		assert.strictEqual(columns[2]!.status, "Active");
+		assert.strictEqual(columns[2]!.proposals.length, 1);
 	});
 
 	it("handles empty proposal list gracefully", () => {
@@ -128,7 +128,7 @@ describe("AC#3: Tab Navigation", () => {
 
 		function switchToNextView(): ViewProposal {
 			currentViewIndex = (currentViewIndex + 1) % viewOrder.length;
-			return viewOrder[currentViewIndex];
+			return viewOrder[currentViewIndex]!;
 		}
 
 		// Proposal List → Kanban
@@ -146,7 +146,7 @@ describe("AC#3: Tab Navigation", () => {
 
 		function switchToNextView(): ViewProposal {
 			currentViewIndex = (currentViewIndex + 1) % viewOrder.length;
-			return viewOrder[currentViewIndex];
+			return viewOrder[currentViewIndex]!;
 		}
 
 		assert.strictEqual(switchToNextView(), "proposal-list");
@@ -312,8 +312,8 @@ describe("AC#5: Proposal Detail Content", () => {
 		});
 
 		assert.strictEqual(proposal.acceptanceCriteriaItems!.length, 2);
-		assert.strictEqual(proposal.acceptanceCriteriaItems![0].checked, true);
-		assert.strictEqual(proposal.acceptanceCriteriaItems![1].checked, false);
+		assert.strictEqual(proposal.acceptanceCriteriaItems![0]!.checked, true);
+		assert.strictEqual(proposal.acceptanceCriteriaItems![1]!.checked, false);
 	});
 
 	it("displays implementation notes", () => {
@@ -345,7 +345,7 @@ describe("AC#5: Proposal Detail Content", () => {
 
 	it("displays assignee", () => {
 		const proposal = createTestProposal({ assignee: ["@alice"] });
-		assert.ok(proposal.assignee![0].includes("alice"));
+		assert.ok(proposal.assignee![0]!.includes("alice"));
 	});
 
 	it("handles missing description gracefully", () => {
@@ -391,7 +391,7 @@ describe("AC#6: Regression - Critical Board Paths", () => {
 		assert.strictEqual(proposal.acceptanceCriteriaItems!.length, 2);
 		assert.strictEqual(proposal.implementationNotes, "Notes");
 		assert.strictEqual(proposal.finalSummary, "Summary");
-		assert.strictEqual(proposal.assignee![0], "@builder");
+		assert.strictEqual(proposal.assignee![0]!, "@builder");
 	});
 
 	it("handles proposal with minimal fields", () => {
@@ -416,9 +416,9 @@ describe("AC#6: Regression - Critical Board Paths", () => {
 		];
 
 		const filtered = proposals.filter((s) => s.status === "Active");
-		assert.strictEqual(filtered[0].id, "proposal-100");
-		assert.strictEqual(filtered[1].id, "proposal-101");
-		assert.strictEqual(filtered[2].id, "proposal-102");
+		assert.strictEqual(filtered[0]!.id, "proposal-100");
+		assert.strictEqual(filtered[1]!.id, "proposal-101");
+		assert.strictEqual(filtered[2]!.id, "proposal-102");
 	});
 
 	it("proposal priority ordering works correctly", () => {
@@ -443,8 +443,8 @@ describe("AC#6: Regression - Critical Board Paths", () => {
 		const checkedIcon = "{green-fg}✓{/}";
 		const uncheckedIcon = "{gray-fg}○{/}";
 
-		assert.strictEqual(acItems[0].checked, true); // should show ✓
-		assert.strictEqual(acItems[1].checked, false); // should show ○
+		assert.strictEqual(acItems[0]!.checked, true); // should show ✓
+		assert.strictEqual(acItems[1]!.checked, false); // should show ○
 	});
 
 	it("hidden statuses are filtered from board", () => {
@@ -460,6 +460,6 @@ describe("AC#6: Regression - Critical Board Paths", () => {
 		);
 
 		assert.strictEqual(visible.length, 1);
-		assert.strictEqual(visible[0].id, "proposal-100");
+		assert.strictEqual(visible[0]!.id, "proposal-100");
 	});
 });
