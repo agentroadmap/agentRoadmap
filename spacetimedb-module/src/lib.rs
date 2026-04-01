@@ -25,7 +25,7 @@ pub struct Proposal {
     // Content & Logic
     pub body_markdown: Option<String>,  // The primary text (Idea, RFC Spec, or Issue details)
     pub process_logic: Option<String>,  // Descriptive business process for Directives
-    pub maturity_level: Option<u32>,    // 1-5 (For CAPABILITY and COMPONENT types)
+    pub maturity_level: Option<u32>,    // 0-3 (Universal scale: 0=New, 1=Draft, 2=Active, 3=Complete)
     pub repository_path: Option<String>, // Physical Git path (For COMPONENT/SRC types)
     
     // Economics & Search
