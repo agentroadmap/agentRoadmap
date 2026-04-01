@@ -6,6 +6,7 @@ import {
 	type Proposal,
 	type ProposalListFilter,
 } from "../../../types/index.ts";
+import { normalizeProposalId } from "../../../utils/proposal-path.ts";
 import type { ProposalEditArgs, ProposalEditRequest } from "../../../types/proposal-edit-args.ts";
 import {
 	createDirectiveFilterValueResolver,
@@ -24,6 +25,7 @@ import { formatProposalCallResult } from "../../utils/proposal-response.ts";
 export type ProposalCreateArgs = {
 	title: string;
 	description?: string;
+	rationale?: string;
 	labels?: string[];
 	assignee?: string[];
 	priority?: "high" | "medium" | "low";
@@ -181,7 +183,7 @@ export class ProposalHandlers {
 	private formatProposalSummaryLine(proposal: Proposal, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = proposal.priority ? `[${proposal.priority.toUpperCase()}] ` : "";
 		const readyIndicator = proposal.ready ? " [READY]" : "";
-		const status = proposal.status || (proposal.source === "completed" ? "Reached" : "");
+		const status = proposal.status || (proposal.origin === "completed" ? "Reached" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
 		return `  ${priorityIndicator}${proposal.id} - ${proposal.title}${readyIndicator}${statusText}`;
 	}
@@ -563,7 +565,7 @@ export class ProposalHandlers {
 		});
 	}
 
-	async demoteProposal(args: { id: string }): Promise<CallToolResult> {
+	async demoteProposalSimple(args: { id: string }): Promise<CallToolResult> {
 		const proposal = await this.loadProposalOrThrow(args.id);
 		const success = await this.core.demoteProposal(proposal.id, false);
 		if (!success) {
@@ -785,7 +787,7 @@ export class ProposalHandlers {
 			
 			const updated = await this.core.updatePriority(proposalId, priorities[nextIdx] as any, args.agent || "agent", true);
 			if (args.rationale) {
-				await this.core.appendImplementationNotes(proposalId, [`Priority increased to ${priorities[nextIdx]}. Rationale: ${args.rationale}`], true);
+				await this.core.editProposal(proposalId, { implementationNotes: `Priority increased to ${priorities[nextIdx]}. Rationale: ${args.rationale}` }, true);
 			}
 			return await formatProposalCallResult(updated, [`Increased priority of ${proposalId} to ${updated.priority}`]);
 		} catch (error) {
@@ -805,7 +807,7 @@ export class ProposalHandlers {
 			
 			const updated = await this.core.updatePriority(proposalId, priorities[nextIdx] as any, args.agent || "agent", true);
 			if (args.rationale) {
-				await this.core.appendImplementationNotes(proposalId, [`Priority decreased to ${priorities[nextIdx]}. Rationale: ${args.rationale}`], true);
+				await this.core.editProposal(proposalId, { implementationNotes: `Priority decreased to ${priorities[nextIdx]}. Rationale: ${args.rationale}` }, true);
 			}
 			return await formatProposalCallResult(updated, [`Decreased priority of ${proposalId} to ${updated.priority}`]);
 		} catch (error) {
