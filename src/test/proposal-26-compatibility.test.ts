@@ -84,7 +84,7 @@ title: Old Proposal
 	it("should initialize new projects with schemaVersion 2", async () => {
 		const core = new Core(repoDir);
 		const { initializeProject } = await import('../core/infrastructure/init.ts');
-		await initializeProject(core, { projectName: "New Project" });
+		await initializeProject(core, { projectName: "New Project", integrationMode: "cli" });
 
 		const config = await core.filesystem.loadConfig();
 		assert.strictEqual(config?.schemaVersion, 2, "New projects should have schemaVersion 2");
