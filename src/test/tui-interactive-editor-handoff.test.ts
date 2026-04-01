@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { execSync as execSyncChild } from "node:child_process";
+import { execSync as execSyncChild, spawn } from "node:child_process";
 import { Core } from "../core/roadmap.ts";
 import type { RoadmapConfig, Proposal } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup, execSync } from "./test-utils.ts";
@@ -175,13 +175,15 @@ exit $exit_code
 `,
 	);
 
-	const child = execSyncChild(`expect -f ${expectScriptPath}`, {
+	const child = spawn("expect", ["-f", expectScriptPath], {
 		cwd: testDir,
 		stdio: ["pipe", "pipe", "pipe"],
 	});
 	const stdout = child.stdout?.toString() || "";
 	const stderr = child.stderr?.toString() || "";
-	const exitCode = child.status ?? 1;
+	const exitCode = await new Promise<number>((resolve) => {
+		child.on("close", (code) => resolve(code ?? 1));
+	});
 	const transcript = await readFile(transcriptPath, "utf-8").catch(() => "(no transcript captured)");
 
 	try {
