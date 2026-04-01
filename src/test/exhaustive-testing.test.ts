@@ -611,10 +611,10 @@ describe("Acceptance Integration", () => {
 		});
 	});
 
-	describe("validateCompleteTransition", () => {
+	describe("validateReachedTransition", () => {
 		it("allows complete when all checks pass", () => {
 			const store = { issues: [], updatedAt: "" };
-			const result = validateCompleteTransition([], [], store, "proposal-1");
+			const result = validateReachedTransition([], [], store, "proposal-1");
 
 			assert.equal(result.canReach, true);
 			assert.equal(result.reasons.length, 0);
@@ -636,7 +636,7 @@ describe("Acceptance Integration", () => {
 				updatedAt: "",
 			};
 
-			const result = validateCompleteTransition([], [], store, "proposal-1");
+			const result = validateReachedTransition([], [], store, "proposal-1");
 			assert.equal(result.canReach, false);
 			assert.ok(result.reasons.some((r) => r.includes("Blocked by")));
 		});
