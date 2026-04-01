@@ -192,7 +192,8 @@ export async function getProposalPath(proposalId: string, core?: Core | Proposal
 		}
 
 		// Fallback: search by prefix if configured
-		const config = await coreInstance.filesystem.loadConfig();
+		const fs = coreInstance.filesystem as any;
+		const config = await fs.loadConfig?.();
 		const configuredPrefix = config?.proposal_prefix || config?.prefixes?.proposal || DEFAULT_STATE_PREFIX;
 		const globPattern = buildGlobPattern(configuredPrefix);
 		const files = await Array.fromAsync(glob(globPattern, { cwd: coreInstance.filesystem.proposalsDir }));
@@ -233,7 +234,7 @@ function extractProposalBodyFromFilename(filename: string, prefix: string): stri
 	// We want to be greedy with digits but stop before the " - " title separator
 	const regex = new RegExp(`^${escapeRegex(prefix)}-?([^\\s-]+)`, "i");
 	const match = filename.match(regex);
-	return match ? match[1] : null;
+	return match ? (match[1] ?? null) : null;
 }
 
 /**
