@@ -11,6 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  action: __t.string(),
+  severity: __t.string(),
 };

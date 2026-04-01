@@ -10,7 +10,4 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  channel: __t.string(),
-  content: __t.string(),
-};
+export default {};

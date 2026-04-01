@@ -11,6 +11,10 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  artifactPath: __t.string(),
+  proposalId: __t.u64(),
+  sdbHash: __t.string(),
+  gitCommitSha: __t.string(),
+  status: __t.string(),
+  errorMessage: __t.option(__t.string()),
 };

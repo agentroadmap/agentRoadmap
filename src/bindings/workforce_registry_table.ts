@@ -10,7 +10,9 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  channel: __t.string(),
-  content: __t.string(),
-};
+export default __t.row({
+  identity: __t.string().primaryKey(),
+  agentId: __t.string().name("agent_id"),
+  role: __t.string(),
+  isActive: __t.bool().name("is_active"),
+});

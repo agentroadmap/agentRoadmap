@@ -10,323 +10,150 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const Ac = __t.object("Ac", {
+export const AgentMemory = __t.object("AgentMemory", {
   id: __t.u64(),
-  acId: __t.string(),
-  stepId: __t.string(),
-  description: __t.string(),
-  verified: __t.bool(),
-});
-export type Ac = __Infer<typeof Ac>;
-
-export const Adr = __t.object("Adr", {
-  id: __t.u64(),
-  stepId: __t.string(),
-  teamId: __t.option(__t.string()),
-  title: __t.string(),
-  decision: __t.string(),
-  rationale: __t.string(),
-  createdAt: __t.u64(),
-});
-export type Adr = __Infer<typeof Adr>;
-
-export const Agent = __t.object("Agent", {
-  id: __t.string(),
-  agentType: __t.string(),
-  name: __t.string(),
-  reportsTo: __t.option(__t.string()),
-  active: __t.bool(),
-  createdAt: __t.u64(),
-});
-export type Agent = __Infer<typeof Agent>;
-
-export const AgentBudget = __t.object("AgentBudget", {
-  agentId: __t.string(),
-  totalSpent: __t.f64(),
-  hardLimit: __t.f64(),
-  isFrozen: __t.bool(),
-});
-export type AgentBudget = __Infer<typeof AgentBudget>;
-
-export const AgentSkill = __t.object("AgentSkill", {
-  id: __t.u64(),
-  agentId: __t.string(),
-  skillId: __t.string(),
-});
-export type AgentSkill = __Infer<typeof AgentSkill>;
-
-export const Art = __t.object("Art", {
-  id: __t.u64(),
-  stateId: __t.string(),
-  artType: __t.string(),
-  uri: __t.string(),
-  hash: __t.string(),
-  agentId: __t.option(__t.string()),
-  createdAt: __t.u64(),
-});
-export type Art = __Infer<typeof Art>;
-
-export const Cfg = __t.object("Cfg", {
-  id: __t.u64(),
-  agentId: __t.string(),
-  section: __t.string(),
-  content: __t.string(),
+  agentIdentity: __t.string(),
+  scopeProposalId: __t.u64(),
+  key: __t.string(),
+  val: __t.string(),
   updatedAt: __t.u64(),
 });
-export type Cfg = __Infer<typeof Cfg>;
+export type AgentMemory = __Infer<typeof AgentMemory>;
 
-export const Chan = __t.object("Chan", {
-  key: __t.string(),
-  val: __t.string(),
-  updated: __t.u64(),
-});
-export type Chan = __Infer<typeof Chan>;
-
-export const Claim = __t.object("Claim", {
+export const AttachmentRegistry = __t.object("AttachmentRegistry", {
   id: __t.u64(),
-  name: __t.string(),
-  description: __t.string(),
-  createdBy: __t.string(),
-  createdAt: __t.u64(),
-});
-export type Claim = __Infer<typeof Claim>;
-
-export const Comp = __t.object("Comp", {
-  id: __t.u64(),
-  claimId: __t.string(),
-  stepId: __t.string(),
-  agentId: __t.string(),
-  claimedAt: __t.u64(),
-  expiresAt: __t.u64(),
-  active: __t.bool(),
-});
-export type Comp = __Infer<typeof Comp>;
-
-export const ContextCache = __t.object("ContextCache", {
-  id: __t.u64(),
-  name: __t.string(),
-  parentId: __t.option(__t.u64()),
-  description: __t.string(),
-  ownerAgentId: __t.option(__t.string()),
-});
-export type ContextCache = __Infer<typeof ContextCache>;
-
-export const Discussion = __t.object("Discussion", {
-  id: __t.u64(),
-  stepId: __t.string(),
-  agentId: __t.string(),
-  content: __t.string(),
-  noteType: __t.string(),
-  createdAt: __t.u64(),
-});
-export type Discussion = __Infer<typeof Discussion>;
-
-export const Event = __t.object("Event", {
-  id: __t.u64(),
-  eventId: __t.string(),
-  actor: __t.string(),
-  action: __t.string(),
-  stateId: __t.option(__t.string()),
-  payload: __t.string(),
+  proposalId: __t.u64(),
+  displayId: __t.string(),
+  fileName: __t.string(),
+  relativePath: __t.string(),
+  fileType: __t.string(),
+  contentHash: __t.string(),
+  visionSummary: __t.option(__t.string()),
   timestamp: __t.u64(),
 });
-export type Event = __Infer<typeof Event>;
+export type AttachmentRegistry = __Infer<typeof AttachmentRegistry>;
 
-export const Flow = __t.object("Flow", {
-  id: __t.u64(),
-  flowId: __t.string(),
-  stepId: __t.string(),
-  fromStatus: __t.string(),
-  toStatus: __t.string(),
-  reason: __t.string(),
-  changedBy: __t.string(),
-  timestamp: __t.u64(),
-});
-export type Flow = __Infer<typeof Flow>;
-
-export const Goal = __t.object("Goal", {
-  id: __t.u64(),
-  title: __t.string(),
-  description: __t.string(),
-  status: __t.string(),
-});
-export type Goal = __Infer<typeof Goal>;
-
-export const Mem = __t.object("Mem", {
-  id: __t.u64(),
-  agentId: __t.string(),
-  scope: __t.string(),
-  stateId: __t.option(__t.string()),
-  key: __t.string(),
-  val: __t.string(),
-  updated: __t.u64(),
-});
-export type Mem = __Infer<typeof Mem>;
-
-export const Member = __t.object("Member", {
-  id: __t.u64(),
-  teamId: __t.string(),
-  agentId: __t.string(),
-  role: __t.string(),
-  joinedAt: __t.u64(),
-});
-export type Member = __Infer<typeof Member>;
-
-export const Msg = __t.object("Msg", {
+export const MessageLedger = __t.object("MessageLedger", {
   id: __t.u64(),
   channelName: __t.string(),
-  sender: __t.string(),
+  senderIdentity: __t.string(),
   content: __t.string(),
   timestamp: __t.u64(),
-  msgType: __t.string(),
 });
-export type Msg = __Infer<typeof Msg>;
+export type MessageLedger = __Infer<typeof MessageLedger>;
 
-export const Note = __t.object("Note", {
-  id: __t.u64(),
-  noteId: __t.string(),
-  agentId: __t.string(),
-  msgId: __t.u64(),
-  noteType: __t.string(),
-  read: __t.bool(),
-  timestamp: __t.u64(),
-});
-export type Note = __Infer<typeof Note>;
-
-export const Privilege = __t.object("Privilege", {
-  id: __t.u64(),
-  agentId: __t.string(),
-  permission: __t.string(),
-  grantedBy: __t.string(),
-  grantedAt: __t.u64(),
-});
-export type Privilege = __Infer<typeof Privilege>;
-
-export const Prop = __t.object("Prop", {
-  id: __t.u64(),
-  title: __t.string(),
-  description: __t.string(),
-  proposedBy: __t.string(),
-  status: __t.string(),
-  stateId: __t.option(__t.string()),
-  createdAt: __t.u64(),
-});
-export type Prop = __Infer<typeof Prop>;
-
-export const Res = __t.object("Res", {
-  id: __t.u64(),
-  resId: __t.string(),
-  testId: __t.string(),
-  passed: __t.bool(),
-  duration: __t.f64(),
-  error: __t.string(),
-  timestamp: __t.u64(),
-});
-export type Res = __Infer<typeof Res>;
-
-export const Rev = __t.object("Rev", {
-  id: __t.u64(),
-  stepId: __t.string(),
-  reviewerId: __t.string(),
-  verdict: __t.string(),
-  rationale: __t.string(),
-  timestamp: __t.u64(),
-});
-export type Rev = __Infer<typeof Rev>;
-
-export const Sbx = __t.object("Sbx", {
-  containerId: __t.string(),
-  agentId: __t.string(),
-  token: __t.string(),
-  status: __t.string(),
-  createdAt: __t.u64(),
-  expiresAt: __t.u64(),
-});
-export type Sbx = __Infer<typeof Sbx>;
-
-export const Skill = __t.object("Skill", {
-  id: __t.u64(),
-  name: __t.string(),
-  description: __t.string(),
-  spec: __t.string(),
-});
-export type Skill = __Infer<typeof Skill>;
-
-export const StateNote = __t.object("StateNote", {
-  id: __t.u64(),
-  stepId: __t.string(),
-  agentId: __t.string(),
-  content: __t.string(),
-  noteType: __t.string(),
-  createdAt: __t.u64(),
-});
-export type StateNote = __Infer<typeof StateNote>;
-
-export const Step = __t.object("Step", {
+export const Proposal = __t.object("Proposal", {
   id: __t.u64(),
   displayId: __t.string(),
   parentId: __t.option(__t.u64()),
-  depth: __t.u64(),
-  compId: __t.option(__t.string()),
-  teamId: __t.option(__t.string()),
-  goalId: __t.option(__t.string()),
+  proposalType: __t.string(),
+  category: __t.string(),
+  domainId: __t.string(),
   title: __t.string(),
   status: __t.string(),
-  body: __t.string(),
-  description: __t.string(),
-  acceptanceCriteria: __t.string(),
-  implementationNotes: __t.string(),
-  finalSummary: __t.string(),
   priority: __t.string(),
-  labels: __t.string(),
-  dependencies: __t.string(),
-  assignee: __t.string(),
-  claimedBy: __t.option(__t.string()),
-  claimedAt: __t.option(__t.u64()),
+  bodyMarkdown: __t.option(__t.string()),
+  processLogic: __t.option(__t.string()),
+  maturityLevel: __t.option(__t.u32()),
+  repositoryPath: __t.option(__t.string()),
+  budgetLimitUsd: __t.f64(),
+  tags: __t.option(__t.string()),
   createdAt: __t.u64(),
   updatedAt: __t.u64(),
-  implementedBy: __t.string(),
-  reviewedBy: __t.string(),
-  validatedBy: __t.string(),
 });
-export type Step = __Infer<typeof Step>;
+export type Proposal = __Infer<typeof Proposal>;
 
-export const Sub = __t.object("Sub", {
+export const ProposalCriteria = __t.object("ProposalCriteria", {
   id: __t.u64(),
-  channelName: __t.string(),
-  agentId: __t.string(),
-  subscribedAt: __t.u64(),
-  lastReadId: __t.u64(),
+  proposalId: __t.u64(),
+  description: __t.string(),
+  isVerified: __t.bool(),
 });
-export type Sub = __Infer<typeof Sub>;
+export type ProposalCriteria = __Infer<typeof ProposalCriteria>;
 
-export const Team = __t.object("Team", {
+export const ProposalDecision = __t.object("ProposalDecision", {
   id: __t.u64(),
-  name: __t.string(),
-  focus: __t.string(),
+  proposalId: __t.u64(),
+  title: __t.string(),
+  decisionSummary: __t.string(),
+  rationale: __t.string(),
+  status: __t.string(),
+  createdAt: __t.u64(),
 });
-export type Team = __Infer<typeof Team>;
+export type ProposalDecision = __Infer<typeof ProposalDecision>;
 
-export const Test = __t.object("Test", {
+export const ProposalVersion = __t.object("ProposalVersion", {
   id: __t.u64(),
-  testId: __t.string(),
-  stepId: __t.string(),
-  name: __t.string(),
-  category: __t.string(),
-  file: __t.string(),
-});
-export type Test = __Infer<typeof Test>;
-
-export const TokenLedger = __t.object("TokenLedger", {
-  id: __t.u64(),
-  callId: __t.string(),
-  agentId: __t.string(),
-  modelName: __t.string(),
-  inputTokens: __t.u64(),
-  outputTokens: __t.u64(),
-  cachedTokens: __t.u64(),
-  totalUsd: __t.f64(),
+  proposalId: __t.u64(),
+  authorIdentity: __t.string(),
+  versionNumber: __t.u32(),
+  changeSummary: __t.string(),
+  bodyDelta: __t.option(__t.string()),
+  metadataDeltaJson: __t.string(),
+  gitCommitSha: __t.option(__t.string()),
   timestamp: __t.u64(),
 });
-export type TokenLedger = __Infer<typeof TokenLedger>;
+export type ProposalVersion = __Infer<typeof ProposalVersion>;
+
+export const SecurityAcl = __t.object("SecurityAcl", {
+  id: __t.u64(),
+  agentIdentity: __t.string(),
+  targetProposalId: __t.u64(),
+  permissionId: __t.string(),
+});
+export type SecurityAcl = __Infer<typeof SecurityAcl>;
+
+export const SecurityAuditLog = __t.object("SecurityAuditLog", {
+  id: __t.u64(),
+  actorIdentity: __t.string(),
+  action: __t.string(),
+  severity: __t.string(),
+  timestamp: __t.u64(),
+});
+export type SecurityAuditLog = __Infer<typeof SecurityAuditLog>;
+
+export const SpendingCaps = __t.object("SpendingCaps", {
+  agentIdentity: __t.string(),
+  dailyLimitUsd: __t.f64(),
+  totalSpentTodayUsd: __t.f64(),
+  isFrozen: __t.bool(),
+});
+export type SpendingCaps = __Infer<typeof SpendingCaps>;
+
+export const SpendingLog = __t.object("SpendingLog", {
+  id: __t.u64(),
+  proposalId: __t.u64(),
+  agentIdentity: __t.string(),
+  costUsd: __t.f64(),
+  timestamp: __t.u64(),
+});
+export type SpendingLog = __Infer<typeof SpendingLog>;
+
+export const SyncLedger = __t.object("SyncLedger", {
+  artifactPath: __t.string(),
+  proposalId: __t.u64(),
+  lastSdbHash: __t.string(),
+  lastGitCommit: __t.string(),
+  syncStatus: __t.string(),
+  lastSyncedAt: __t.u64(),
+  errorMessage: __t.option(__t.string()),
+});
+export type SyncLedger = __Infer<typeof SyncLedger>;
+
+export const WorkforcePulse = __t.object("WorkforcePulse", {
+  identity: __t.string(),
+  activeProposalId: __t.option(__t.u64()),
+  lastSeenAt: __t.u64(),
+  statusMessage: __t.string(),
+  isZombie: __t.bool(),
+});
+export type WorkforcePulse = __Infer<typeof WorkforcePulse>;
+
+export const WorkforceRegistry = __t.object("WorkforceRegistry", {
+  identity: __t.string(),
+  agentId: __t.string(),
+  role: __t.string(),
+  isActive: __t.bool(),
+});
+export type WorkforceRegistry = __Infer<typeof WorkforceRegistry>;
 

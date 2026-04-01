@@ -11,6 +11,7 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  scopeProposalId: __t.u64(),
+  key: __t.string(),
+  val: __t.string(),
 };

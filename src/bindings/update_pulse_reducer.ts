@@ -11,6 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  activeProposalId: __t.option(__t.u64()),
+  statusMessage: __t.string(),
 };

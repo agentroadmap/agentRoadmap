@@ -10,10 +10,7 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const RegisterAgentReducer = __t.object("RegisterAgentReducer", {
-  id: __t.string(),
-  agentType: __t.string(),
-  name: __t.string(),
-  reportsTo: __t.option(__t.string()),
-});
-export type RegisterAgentReducer = __Infer<typeof RegisterAgentReducer>;
+export default {
+  agentId: __t.string(),
+  role: __t.string(),
+};

@@ -1082,7 +1082,9 @@ export class RoadmapServer {
 				return Response.json({ error: "Proposal not found" }, { status: 404 });
 			}
 
-			await this.core.releaseProposal(proposalId);
+			// Get the claim agent or use a default
+			const agent = proposal.claim?.agent ?? "system";
+			await this.core.releaseClaim(proposalId, agent, { force: true });
 
 			// Notify listeners to refresh
 			this.broadcastProposalsUpdated();

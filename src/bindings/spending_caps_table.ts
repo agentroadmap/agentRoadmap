@@ -10,7 +10,9 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  channel: __t.string(),
-  content: __t.string(),
-};
+export default __t.row({
+  agentIdentity: __t.string().primaryKey().name("agent_identity"),
+  dailyLimitUsd: __t.f64().name("daily_limit_usd"),
+  totalSpentTodayUsd: __t.f64().name("total_spent_today_usd"),
+  isFrozen: __t.bool().name("is_frozen"),
+});

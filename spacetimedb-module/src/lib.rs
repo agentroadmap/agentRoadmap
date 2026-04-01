@@ -688,6 +688,7 @@ pub fn claim_proposal(
     let mut proposal = proposal;
     proposal.status = "Active".to_string();
     proposal.updated_at = now;
+    let display_id = proposal.display_id.clone();
     ctx.db.proposal().id().update(proposal);
 
     // Auto-version
@@ -718,7 +719,7 @@ pub fn claim_proposal(
 
     log::info!(
         "Claimed {}: {} → Active (budget: ${})",
-        proposal.display_id,
+        display_id,
         agent_identity,
         cost_estimate_usd
     );

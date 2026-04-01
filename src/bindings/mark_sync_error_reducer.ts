@@ -11,6 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  artifactPath: __t.string(),
+  errorMessage: __t.string(),
 };

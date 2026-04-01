@@ -10,7 +10,10 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  channel: __t.string(),
-  content: __t.string(),
-};
+export default __t.row({
+  identity: __t.string().primaryKey(),
+  activeProposalId: __t.option(__t.u64()).name("active_proposal_id"),
+  lastSeenAt: __t.u64().name("last_seen_at"),
+  statusMessage: __t.string().name("status_message"),
+  isZombie: __t.bool().name("is_zombie"),
+});

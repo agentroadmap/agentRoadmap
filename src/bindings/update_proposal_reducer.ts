@@ -11,6 +11,10 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  proposalId: __t.u64(),
+  title: __t.option(__t.string()),
+  bodyMarkdown: __t.option(__t.string()),
+  priority: __t.option(__t.string()),
+  tags: __t.option(__t.string()),
+  changeSummary: __t.string(),
 };

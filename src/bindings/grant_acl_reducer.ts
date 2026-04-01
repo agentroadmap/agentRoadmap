@@ -11,6 +11,7 @@ import {
 } from "spacetimedb";
 
 export default {
-  channel: __t.string(),
-  content: __t.string(),
+  agentIdentity: __t.string(),
+  targetProposalId: __t.u64(),
+  permissionId: __t.string(),
 };

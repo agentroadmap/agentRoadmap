@@ -10,9 +10,14 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const CreateProposalReducer = __t.object("CreateProposalReducer", {
+export default {
+  displayId: __t.string(),
+  proposalType: __t.string(),
+  category: __t.string(),
+  domainId: __t.string(),
   title: __t.string(),
-  description: __t.string(),
-  proposedBy: __t.string(),
-});
-export type CreateProposalReducer = __Infer<typeof CreateProposalReducer>;
+  priority: __t.string(),
+  bodyMarkdown: __t.option(__t.string()),
+  parentId: __t.option(__t.u64()),
+  budgetLimitUsd: __t.f64(),
+};
