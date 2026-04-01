@@ -2,6 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { execSync as execSyncChild } from "node:child_process";
 import { Core } from "../core/roadmap.ts";
 import type { RoadmapConfig, Proposal } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup, execSync } from "./test-utils.ts";
@@ -9,7 +10,7 @@ import { createUniqueTestDir, safeCleanup, execSync } from "./test-utils.ts";
 const CLI_PATH = process.env.TUI_TEST_CLI_PATH?.trim() || join(process.cwd(), "src", "cli.ts");
 const CLI_RUNTIME = process.env.TUI_TEST_CLI_RUNTIME?.trim() ?? "bun";
 const TRANSCRIPT_DIR = join(process.cwd(), "tmp", "tui-interactive-transcripts");
-const EXPECT_PATH = Bun.which("expect");
+const EXPECT_PATH = execSyncChild("which expect || echo ''", { encoding: "utf-8" }).trim() || null;
 const RUN_INTERACTIVE_TUI_TESTS = process.env.RUN_INTERACTIVE_TUI_TESTS === "1";
 
 function getSkipReason(): string | null {
@@ -174,18 +175,14 @@ exit $exit_code
 `,
 	);
 
-	const child = Bun.spawn(["expect", "-f", expectScriptPath], {
+	const child = execSyncChild(`expect -f ${expectScriptPath}`, {
 		cwd: testDir,
-		stdout: "pipe",
-		stderr: "pipe",
+		stdio: ["pipe", "pipe", "pipe"],
 	});
-	const stdoutPromise = child.stdout ? new Response(child.stdout).text() : Promise.resolve("");
-	const stderrPromise = child.stderr ? new Response(child.stderr).text() : Promise.resolve("");
-	const exitCode = await child.exited;
-	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
-	const transcript = await Bun.file(transcriptPath)
-		.text()
-		.catch(() => "(no transcript captured)");
+	const stdout = child.stdout?.toString() || "";
+	const stderr = child.stderr?.toString() || "";
+	const exitCode = child.status ?? 1;
+	const transcript = await readFile(transcriptPath, "utf-8").catch(() => "(no transcript captured)");
 
 	try {
 		assert.ok([0, 130].includes(exitCode));
