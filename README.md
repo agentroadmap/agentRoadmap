@@ -84,12 +84,12 @@ The enterprise is powered by a specialized workforce divided into **Squads**.
 ## 🏛️ Governance: The 9-Stage Lifecycle
 Every entity (Directive, Capability, Technical RFC, Component) must progress through the unified state machine:
 
-1.  **New:** Initial entry.
-2.  **Draft:** Active development.
+1.  **New:** Initial entry with visionary directive.
+2.  **Draft:** Research and enrichment of proposal development, define acceptance criteria.
 3.  **Review:** Peer and Skeptic analysis.
-4.  **Active:** Execution/Coding phase.
-5.  **Accepted:** Passes all `proposal_criteria`.
-6.  **Complete:** Merged into the physical architecture.
+4.  **Active:**  AI agents coding and unit testing phase.
+5.  **Accepted:** Passes all `proposal_criteria` and regression tests
+6.  **Complete:** Merged into the main, job delivered.
 7.  **Rejected / Abandoned / Replaced:** Historical archives.
 
 ---
