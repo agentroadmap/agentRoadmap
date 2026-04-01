@@ -47,7 +47,7 @@ describe('S147: Integration Test', () => {
     console.log('✅ Health check passed');
     
     // 6. Cleanup
-    await deregisterAgent({ instanceId, reason: 'test complete' });
+    await deregisterAgent({ agentId: instanceId, reason: 'test complete' });
     console.log('✅ Cleanup done');
     
     console.log('\n=== S147 Integration Test: ALL PASSED ===');
