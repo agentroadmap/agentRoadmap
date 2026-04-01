@@ -301,6 +301,7 @@ export interface StructuredSectionValues {
 	finalSummary?: string;
 	scopeSummary?: string;
 	proof?: string;
+	auditNotes?: string;
 }
 
 interface SectionValues extends StructuredSectionValues {}
