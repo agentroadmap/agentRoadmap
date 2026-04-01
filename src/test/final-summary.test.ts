@@ -96,7 +96,7 @@ describe("Final Summary", () => {
 			title: "Proposal without summary",
 		});
 
-		assert.ok(!proposal.rawContent.includes("## Final Summary"));
+		assert.ok(!proposal.rawContent?.includes("## Final Summary"));
 	});
 
 	it("ignores Final Summary examples nested inside Description", () => {
