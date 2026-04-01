@@ -51,7 +51,7 @@ describe("proposal-43: Continuous DAG Health Telemetry", () => {
 			const cycles = report.issues.filter((i) => i.type === "cycle");
 
 			assert.ok(cycles.length >= 1);
-			assert.equal(cycles[0].severity, "error");
+			assert.equal(cycles[0]!.severity, "error");
 		});
 
 		it("detects longer cycles", () => {
@@ -235,7 +235,7 @@ describe("proposal-43: Continuous DAG Health Telemetry", () => {
 			const missing = report.issues.filter((i) => i.type === "missing-dependency");
 
 			assert.equal(missing.length, 1);
-			assert.equal(missing[0].severity, "error");
+			assert.equal(missing[0]!.severity, "error");
 		});
 	});
 
