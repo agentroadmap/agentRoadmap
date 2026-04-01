@@ -256,7 +256,7 @@ describe("proposal-63: Agent Team Membership", () => {
 			const events = membership.getEvents({ type: "registered" });
 			assert.ok(events.length >= 1);
 
-			const event = events[0];
+			const event = events[0]!;
 			assert.ok(event.eventId);
 			assert.ok(event.agentId);
 			assert.ok(event.registrationId);
@@ -339,7 +339,7 @@ describe("proposal-63: Agent Team Membership", () => {
 				type: "deregistered",
 			});
 			assert.ok(events.length >= 1);
-			assert.ok(events[0].details.includes("Project completed"));
+			assert.ok(events[0]!.details.includes("Project completed"));
 		});
 
 		it("should reject deregistration of non-existent agent", async () => {
