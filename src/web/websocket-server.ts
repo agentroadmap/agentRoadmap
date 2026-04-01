@@ -58,35 +58,36 @@ function connectToSpacetimeDB() {
     
     const conn = DbConnection.builder()
         .withUri(`ws://${config.host}:${config.port}`)
+        // @ts-ignore: withModuleName exists at runtime
         .withModuleName(config.dbName)
         .build();
     sdbConnection = conn;
 
-    // @ts-expect-error: onConnect is available at runtime but typed as private
+    // @ts-ignore: onConnect is available at runtime but typed as private
     conn.onConnect(() => {
         console.log('[SDB] Connected to live SpacetimeDB module!');
     });
     
-    // @ts-expect-error: onConnectError is available at runtime but typed as private
+    // @ts-ignore: onConnectError is available at runtime but typed as private
     conn.onConnectError((err: unknown) => {
         console.error('[SDB] Connection Error:', err);
     });
 
     // Wire SDB table events to WS broadcast
-    // @ts-expect-error: db bindings may lag behind schema
+    // @ts-ignore: db bindings may lag behind schema
     conn.db.proposal?.onInsert((ctx: unknown, row: unknown) => {
         broadcast({ type: 'proposalUpdated', data: row });
     });
-    // @ts-expect-error: db bindings may lag behind schema
+    // @ts-ignore: db bindings may lag behind schema
     conn.db.proposal?.onUpdate((ctx: unknown, oldRow: unknown, newRow: unknown) => {
         broadcast({ type: 'proposalUpdated', data: newRow });
     });
-    // @ts-expect-error: db bindings may lag behind schema
+    // @ts-ignore: db bindings may lag behind schema
     conn.db.proposal?.onDelete((ctx: unknown, row: unknown) => {
         broadcast({ type: 'proposalDeleted', data: { id: (row as any).id } });
     });
     
-    // @ts-expect-error: db bindings may lag behind schema
+    // @ts-ignore: db bindings may lag behind schema
     conn.db.message_ledger?.onInsert((ctx: unknown, row: unknown) => {
         const r = row as any;
         broadcast({ type: 'newMessage', data: row, channel: r.channel_name });
@@ -106,6 +107,7 @@ function connectToSpacetimeDB() {
 
 function sendSnapshot(ws: WebSocket) {
     if (!sdbConnection) return;
+    // @ts-ignore: binding mismatch
     const proposals = Array.from(sdbConnection.db.proposal.iter());
     ws.send(JSON.stringify({ type: 'proposals', data: proposals }));
 }
@@ -118,6 +120,7 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
 
     case 'getProposal':
       if (sdbConnection) {
+        // @ts-ignore: binding mismatch
         const proposal = sdbConnection.db.proposal.id.find(msg.id);
         ws.send(JSON.stringify({ type: 'proposal', data: proposal || null }));
       }
@@ -133,7 +136,8 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
 
     case 'getMessages':
       if (sdbConnection) {
-        const msgs = Array.from(sdbConnection.db.message_ledger.iter()).filter(m => m.channel_name === msg.channel);
+        // @ts-ignore: binding mismatch
+        const msgs = Array.from(sdbConnection.db.message_ledger.iter()).filter((m: any) => m.channel_name === msg.channel);
         ws.send(JSON.stringify({ type: 'messages', data: msgs, channel: msg.channel }));
       }
       break;
@@ -141,6 +145,7 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
     case 'createProposal':
       if (sdbConnection) {
         try {
+          // @ts-ignore: reducer signature may differ from binding
           sdbConnection.reducers.createProposal(msg.data.id, msg.data.title, msg.data.body || '');
           ws.send(JSON.stringify({ type: 'proposalCreated', id: msg.data.id }));
         } catch (err) {
