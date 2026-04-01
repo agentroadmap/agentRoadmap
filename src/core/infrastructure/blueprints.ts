@@ -1,4 +1,4 @@
-import type { Proposal } from "../types/index.ts";
+import type { Proposal } from "../../types/index.ts";
 
 export type BlueprintType = "software" | "research" | "content" | "versatile" | "evolution";
 
@@ -9,6 +9,7 @@ export interface BlueprintProposal extends Partial<Proposal> {
 	dependsOnIds?: string[];
 	assignee?: string[];
 	requires?: string[];
+	labels?: string[];
 	/** This proposal represents the guiding Vision/Goal of the project */
 	isVision?: boolean;
 	/** This proposal represents the starting point of exploration */

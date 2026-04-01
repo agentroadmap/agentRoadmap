@@ -252,8 +252,8 @@ export class DynamicTeamBuilder {
 
 		for (let i = 0; i < proposals.length; i++) {
 			for (let j = i + 1; j < proposals.length; j++) {
-				const a = proposals[i];
-				const b = proposals[j];
+				const a = proposals[i]!;
+				const b = proposals[j]!;
 
 				// Compare approach types
 				const approachMatch =
@@ -362,13 +362,13 @@ export class DynamicTeamBuilder {
 
 		// Create team members from proposals
 		const members: TeamMember[] = [];
-		const ownerMember = this.proposalToMember(ownerProposal, "owner", 100);
+		const ownerMember = this.proposalToMember(ownerProposal!, "owner", 100);
 		members.push(ownerMember);
 
 		// Assign remaining proposers as contributors
 		for (let i = 1; i < sortedByComplexity.length; i++) {
 			const member = this.proposalToMember(
-				sortedByComplexity[i],
+				sortedByComplexity[i]!,
 				i === 1 ? "contributor" : "contributor",
 				Math.floor(60 / (sortedByComplexity.length - 1)),
 			);
@@ -387,7 +387,7 @@ export class DynamicTeamBuilder {
 			proposalId,
 			status: "forming",
 			members,
-			ownerId: ownerProposal.agentId,
+			ownerId: ownerProposal!.agentId,
 			coordinationStrategy: strategy,
 			leaseChain,
 			proposalIds: proposals.map((p) => p.proposalId),
@@ -400,7 +400,7 @@ export class DynamicTeamBuilder {
 		};
 
 		this.teams.set(teamId, team);
-		this.recordEvent(teamId, "formed", ownerProposal.agentId, {
+		this.recordEvent(teamId, "formed", ownerProposal!.agentId, {
 			memberCount: members.length,
 			strategy,
 		});
@@ -635,8 +635,8 @@ export class DynamicTeamBuilder {
 
 		// Activate first lease chain entry if using that strategy
 		if (team.coordinationStrategy === "lease-chain" && team.leaseChain.length > 0) {
-			team.leaseChain[0].status = "active";
-			team.leaseChain[0].startedAt = new Date().toISOString();
+			team.leaseChain[0]!.status = "active";
+			team.leaseChain[0]!.startedAt = new Date().toISOString();
 		}
 
 		this.recordEvent(teamId, "activated", team.ownerId, {
@@ -702,7 +702,7 @@ export class DynamicTeamBuilder {
 			return { success: false, message: "No active lease in chain" };
 		}
 
-		const current = team.leaseChain[currentIndex];
+		const current = team.leaseChain[currentIndex]!;
 		if (current.agentId !== fromAgentId) {
 			return {
 				success: false,
@@ -718,7 +718,7 @@ export class DynamicTeamBuilder {
 		// Activate next entry
 		const nextIndex = currentIndex + 1;
 		if (nextIndex < team.leaseChain.length) {
-			const next = team.leaseChain[nextIndex];
+			const next = team.leaseChain[nextIndex]!;
 			next.status = "active";
 			next.startedAt = new Date().toISOString();
 
