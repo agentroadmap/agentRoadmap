@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SECURITY-CHILD-054
+display_id: RFC-20260401-SECURITY-CHILD-054
+proposal_type: TECHNICAL
 title: "Authorization & Access Control"
 status: Draft
 category: child

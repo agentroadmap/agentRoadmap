@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-MESSAGES-PULSE
+display_id: RFC-20260401-MESSAGES-PULSE
+proposal_type: COMPONENT
 title: "Group Pulse & Messaging"
 status: Draft
 assignee: []

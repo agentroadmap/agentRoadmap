@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SECURITY-CHILD-056
+display_id: RFC-20260401-SECURITY-CHILD-056
+proposal_type: TECHNICAL
 title: "Federation PKI & Host Authentication"
 status: Draft
 category: child

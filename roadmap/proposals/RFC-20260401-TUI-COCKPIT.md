@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-TUI-COCKPIT
+display_id: RFC-20260401-TUI-COCKPIT
+proposal_type: COMPONENT
 title: "TUI & WebSash Command Center"
 status: Draft
 assignee: []

@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SECURITY
+display_id: RFC-20260401-SECURITY
+proposal_type: TECHNICAL
 title: "Security & Access Control"
 status: Draft
 assignee: []

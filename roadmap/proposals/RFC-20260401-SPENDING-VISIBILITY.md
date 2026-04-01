@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SPENDING-VISIBILITY
+display_id: RFC-20260401-SPENDING-VISIBILITY
+proposal_type: COMPONENT
 title: "Financial Visibility & Monitoring"
 status: Draft
 assignee: []

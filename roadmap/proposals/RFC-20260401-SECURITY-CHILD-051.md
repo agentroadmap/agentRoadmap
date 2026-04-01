@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SECURITY-CHILD-051
+display_id: RFC-20260401-SECURITY-CHILD-051
+proposal_type: TECHNICAL
 title: "Agent Identity & Authentication Protocol"
 status: Draft
 category: child

@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-PIPELINE-VERIFICATION
+display_id: RFC-20260401-PIPELINE-VERIFICATION
+proposal_type: TECHNICAL
 title: "Pipeline Verification & QA"
 status: Draft
 assignee: []

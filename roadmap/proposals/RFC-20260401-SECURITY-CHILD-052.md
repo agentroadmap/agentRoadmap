@@ -1,5 +1,7 @@
 ---
 id: RFC-20260401-SECURITY-CHILD-052
+display_id: RFC-20260401-SECURITY-CHILD-052
+proposal_type: TECHNICAL
 title: "Secrets Management & Scanning"
 status: Draft
 category: child
