@@ -299,7 +299,8 @@ export class ContentStore {
 			for (const decision of decisions) {
 				const decisionsDir = this.filesystem.decisionsDir;
 				const decisionFiles: string[] = [];
-				for await (const file of readdir(decisionsDir)) {
+				const files = await readdir(decisionsDir);
+				for (const file of files) {
 					if (file.startsWith(`decision-${decision.id} -`)) {
 						decisionFiles.push(file);
 					}

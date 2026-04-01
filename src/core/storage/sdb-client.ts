@@ -62,7 +62,7 @@ export async function getSdbConfig(): Promise<SdbConfig> {
     let port = 3000;
     let dbName = "roadmap2";
 
-    if (config?.database?.provider === "spacetime" || config?.database?.provider === "spacetimedb") {
+    if (config?.database?.provider === "spacetime") {
         host = config.database.host || host;
         port = config.database.port || port;
         dbName = config.database.name || dbName;
