@@ -197,7 +197,7 @@ export class NoteHandlers {
 					.map((v) => v.trim().replace(/"/g, ""));
 				const obj: any = {};
 				headers.forEach((h, i) => {
-					obj[h] = values[i];
+					obj[h] = values[i]!;
 				});
 				return obj;
 			});

@@ -145,7 +145,7 @@ export class SdbMessageHandlers {
       return lines.slice(1).map(line => {
         const values = line.split('|').map(v => v.trim().replace(/"/g, ''));
         const obj: any = {};
-        headers.forEach((h, i) => { obj[h] = values[i]; });
+        headers.forEach((h, i) => { obj[h] = values[i]!; });
         return obj;
       });
     } catch {

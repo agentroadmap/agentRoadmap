@@ -105,6 +105,7 @@ interface ProposalQueryOptions {
 	query?: string;
 	limit?: number;
 	includeCrossBranch?: boolean;
+	status?: string;
 }
 
 /** Local budget configuration (.roadmap/budget.json) */
@@ -3987,7 +3988,7 @@ export class Core {
 			name: agent.name,
 			identity: agent.identity,
 			capabilities: agent.capabilities || [],
-			trustScore: existingIndex >= 0 ? agents[existingIndex].trustScore : 100, // Default trust
+			trustScore: existingIndex >= 0 ? agents[existingIndex]!.trustScore : 100, // Default trust
 			lastSeen: now,
 			status: agent.status || "idle",
 			availability: agent.availability,
@@ -4120,7 +4121,7 @@ export class Core {
 
 			// Parse events from the end (most recent first)
 			for (let i = lines.length - 1; i >= 0 && events.length < limit; i--) {
-				const line = lines[i].trim();
+				const line = lines[i]?.trim();
 				if (line) {
 					try {
 						events.push(JSON.parse(line) as PulseEvent);
@@ -4423,7 +4424,7 @@ export class Core {
 	 */
 	async emitEvent(actor: string, action: string, proposalId?: string, payload?: string): Promise<void> {
 		try {
-			const { callReducerSync } = await import("./sdb-client.ts");
+			const { callReducerSync } = await import("./storage/sdb-client.ts");
 			callReducerSync("emit_event", [actor, action, proposalId || null, payload || ""]);
 		} catch (_err) {
 			// Ignore SDB errors
@@ -4495,7 +4496,7 @@ export class Core {
 		}, autoCommit);
 
 		// Archive/Delete source
-		await this.fs.deleteProposal(source.id);
+		await this.fs.archiveProposal(source.id);
 		
 		await this.emitPulse({
 			type: "proposal_reached", // Using reached as a proxy for 'merged'

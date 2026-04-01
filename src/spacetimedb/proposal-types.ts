@@ -158,6 +158,7 @@ export interface PaginationOptions {
 /** Full query options */
 export interface ProposalQueryOptions {
 	filter?: ProposalQueryFilter;
+	status?: string;
 	sort?: ProposalSortOptions;
 	pagination?: PaginationOptions;
 }
