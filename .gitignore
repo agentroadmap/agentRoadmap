@@ -39,4 +39,4 @@ tmp/
 
 # Package managers
 yarn.lock
-package-lock.json   # remove this line if you want to commit the lockfile
+package-lock.json   # remove this line if you want to commit the lockfilesrc/web/styles/style.css
