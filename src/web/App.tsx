@@ -39,13 +39,13 @@ export default function App() {
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
           <Switch>
         <Route path="/">
-          <DashboardPage proposals={proposals as Proposal[]} />
+          <DashboardPage proposals={proposals as unknown as Proposal[]} />
         </Route>
         <Route path="/board">
           <BoardPage
             proposals={proposals}
             statuses={STATUSES}
-            onProposalClick={(p) => handleProposalClick(p as Proposal)}
+            onProposalClick={(p) => handleProposalClick(p as unknown as Proposal)}
           />
         </Route>
         <Route path="/proposals">
@@ -93,7 +93,7 @@ export default function App() {
       </Switch>
       {activeFeature && (
         <ProposalDetailsModal
-          proposal={proposals.find(p => p.id === activeFeature) as Proposal | undefined}
+          proposal={proposals.find(p => p.id === activeFeature) as unknown as Proposal | undefined}
           isOpen={true}
           onClose={() => setActiveFeature(null)}
         />

@@ -244,7 +244,7 @@ const AgentDashboard: React.FC<AgentDashboardProps> = ({ proposals }) => {
 						Active Proposal
 					</p>
 					<p className="text-xl font-bold text-gray-600 dark:text-gray-300 mt-2 truncate">
-						{claims.length > 0 ? claims[0].proposalId : "None"}
+						{claims.length > 0 ? claims[0]!.proposalId : "None"}
 					</p>
 				</div>
 			</div>
