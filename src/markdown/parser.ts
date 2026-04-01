@@ -245,7 +245,7 @@ export function parseProposal(content: string): Proposal {
 		proofItems,
 		parentProposalId: frontmatter.parent_proposal_id ? String(frontmatter.parent_proposal_id) : undefined,
 		subproposals: Array.isArray(frontmatter.subproposals) ? frontmatter.subproposals.map(String) : undefined,
-		type: frontmatter.type ? String(frontmatter.type).toLowerCase() : undefined,
+		type: frontmatter.type ? String(frontmatter.type).toLowerCase() as "terminal" | "transitional" | "operational" | "spike" | "incident" : undefined,
 		hype:
 			extractStructuredSection(rawContent, "hype") ||
 			(frontmatter.hype ? String(frontmatter.hype) : undefined),
