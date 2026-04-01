@@ -22,10 +22,10 @@ describe("Status Change Callbacks", () => {
 			});
 
 			assert.strictEqual(result.success, true);
-			assert.ok(result.output.includes("Proposal: proposal-123"));
-			assert.ok(result.output.includes("Old: Potential"));
-			assert.ok(result.output.includes("New: Active"));
-			assert.ok(result.output.includes("Title: Test Proposal"));
+			assert.ok(result.output?.includes("Proposal: proposal-123"));
+			assert.ok(result.output?.includes("Old: Potential"));
+			assert.ok(result.output?.includes("New: Active"));
+			assert.ok(result.output?.includes("Title: Test Proposal"));
 		});
 
 		test("returns success false for failing command", async () => {
@@ -67,7 +67,7 @@ describe("Status Change Callbacks", () => {
 			});
 
 			assert.strictEqual(result.success, false);
-			assert.ok(result.error.includes("error message"));
+			assert.ok(result.error?.includes("error message"));
 		});
 
 		test("handles special characters in variables", async () => {
@@ -81,7 +81,7 @@ describe("Status Change Callbacks", () => {
 			});
 
 			assert.strictEqual(result.success, true);
-			assert.ok(result.output.includes('Proposal with "quotes" and $pecial chars'));
+			assert.ok(result.output?.includes('Proposal with "quotes" and $pecial chars'));
 		});
 	});
 
