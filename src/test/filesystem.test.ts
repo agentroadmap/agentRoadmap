@@ -551,7 +551,7 @@ Invalid content`,
 			});
 
 			const docFiles = await Array.fromAsync(
-				globSync("doc-*.md", { cwd: filesystem.docsDir, follow: true }),
+				globSync("doc-*.md", { cwd: filesystem.docsDir }),
 			);
 			assert.strictEqual(docFiles.length, 1);
 			assert.strictEqual(docFiles[0], "doc-1 - API-Guide-Updated.md");
@@ -602,9 +602,10 @@ Invalid content`,
 			});
 
 			const canonicalFiles = await Array.fromAsync(
-				globSync("doc-*.md", { cwd: filesystem.docsDir, follow: true }),
+				globSync("doc-*.md", { cwd: filesystem.docsDir }),
 			);
-			expect(canonicalFiles.some((file) => file.startsWith("doc-0009"))).toBe(true);
+			const fileNames = canonicalFiles.map((d: any) => typeof d === 'string' ? d : d.name);
+			expect(fileNames.some((file: string) => file.startsWith("doc-0009"))).toBe(true);
 		});
 	});
 
