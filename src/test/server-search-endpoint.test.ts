@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { FileSystem } from "../file-system/operations.ts";
 import { RoadmapServer } from "../server/index.ts";
 import type { Decision, Document, Proposal } from "../types/index.ts";
@@ -259,7 +260,7 @@ describe("RoadmapServer search endpoint", () => {
 	});
 
 	it("resolves numeric directive aliases to zero-padded legacy directive IDs", async () => {
-		await Bun.write(
+		writeFileSync(
 			join(filesystem.directivesDir, "m-01 - legacy-release.md"),
 			`---
 id: m-01
@@ -298,7 +299,7 @@ Directive: Legacy Release
 	});
 
 	it("prefers canonical IDs when zero-padded and canonical directive IDs both exist", async () => {
-		await Bun.write(
+		writeFileSync(
 			join(filesystem.directivesDir, "m-1 - canonical-release.md"),
 			`---
 id: m-1
@@ -310,7 +311,7 @@ title: "Canonical Release"
 Directive: Canonical Release
 `,
 		);
-		await Bun.write(
+		writeFileSync(
 			join(filesystem.directivesDir, "m-01 - zero-padded-release.md"),
 			`---
 id: m-01
@@ -338,7 +339,7 @@ Directive: Zero-padded Release
 	});
 
 	it("prefers archived directive IDs over active title matches for ID-shaped proposal inputs", async () => {
-		await Bun.write(
+		writeFileSync(
 			join(filesystem.archiveDirectivesDir, "m-0 - archived-id.md"),
 			`---
 id: m-0
@@ -350,7 +351,7 @@ title: "Archived source"
 Directive: Archived source
 `,
 		);
-		await Bun.write(
+		writeFileSync(
 			join(filesystem.directivesDir, "m-2 - active-id-shaped-title.md"),
 			`---
 id: m-2

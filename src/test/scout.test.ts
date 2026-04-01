@@ -54,7 +54,7 @@ Test description for 1.0
 		];
 		const gaps = scout.findGaps(proposals);
 		assert.equal(gaps.length, 1);
-		assert.ok(gaps[0].includes("Cap X"));
+		assert.ok(gaps[0]!.includes("Cap X"));
 	});
 
 	it("should suggest directive based on depth", () => {
@@ -69,13 +69,13 @@ Test description for 1.0
 	});
 
 	it("should generate proposals for unimplemented unlocks", () => {
-		const proposals: scout.ProposalInfo[] = [
+		const inputProposals: scout.ProposalInfo[] = [
 			{ id: "1", title: "S1", status: "Complete", dependencies: [], labels: ["existing"], unlocks: ["New Tech"], needs_capabilities: [] }
 		];
-		const proposals = scout.generateProposals(proposals);
+		const proposals = scout.generateProposals(inputProposals);
 		assert.equal(proposals.length, 1);
-		assert.equal(proposals[0].title, "Implement New Tech");
-		assert.equal(proposals[0].type, "proposal");
+		assert.equal(proposals[0]!.title, "Implement New Tech");
+		assert.equal(proposals[0]!.type, "proposal");
 	});
 
 	it("should detect bottlenecks and generate obstacle proposals", () => {
