@@ -16,7 +16,7 @@ export function useHealthCheck() {
 		}
 
 		// Check if already connected or connecting
-		if (wsRef.current && (wsRef.current.readyProposal === WebSocket.OPEN || wsRef.current.readyProposal === WebSocket.CONNECTING)) {
+		if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
 			return;
 		}
 
@@ -84,7 +84,7 @@ export function useHealthCheck() {
 			clearTimeout(connectTimer);
 			
 			// Cleanup on unmount
-			if (wsRef.current && wsRef.current.readyProposal === WebSocket.OPEN) {
+			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
 				wsRef.current.close();
 				wsRef.current = null;
 			}

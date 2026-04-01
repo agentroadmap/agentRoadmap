@@ -71,7 +71,7 @@ export const sdbApi = {
   },
 
   // Proposals (from SpacetimeDB 'prop' table)
-  async fetchProposals(): Promise<any[]> {
+  async fetchProposalsFromProp(): Promise<any[]> {
     return queryDb('SELECT propId, title, status, authorId, summary, votes FROM prop') || [];
   },
 

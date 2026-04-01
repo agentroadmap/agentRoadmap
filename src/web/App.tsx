@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Route, Switch } from 'wouter'
-import { useWebSocket, type Proposal } from './hooks/useWebSocket'
+import { useWebSocket } from './hooks/useWebSocket'
+import type { Proposal } from '../types'
 
 import Layout from './components/Layout'
 import DashboardPage from './components/DashboardPage'
@@ -33,14 +34,16 @@ export default function App() {
   }
 
   return (
-    <Layout connected={connected} statuses={STATUSES} proposalCount={proposals.length}>
-      <Switch>
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
+          <Switch>
         <Route path="/">
-          <DashboardPage proposals={proposals} agents={agents} />
+          <DashboardPage proposals={proposals as Proposal[]} agents={agents} />
         </Route>
         <Route path="/board">
           <BoardPage
-            proposals={proposals}
+            proposals={proposals as Proposal[]}
             statuses={STATUSES}
             onProposalClick={handleProposalClick}
           />
@@ -88,10 +91,12 @@ export default function App() {
       </Switch>
       {activeFeature && (
         <ProposalDetailsModal
-          proposal={proposals.find(p => p.id === activeFeature)}
+          proposal={proposals.find(p => p.id === activeFeature) as Proposal | undefined}
           onClose={() => setActiveFeature(null)}
         />
       )}
-    </Layout>
+        </main>
+      </div>
+    </div>
   )
 }

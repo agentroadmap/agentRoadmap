@@ -70,8 +70,8 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 		it("AC#1: should track proposals in group pulse", () => {
 			const pulse = manager.getGroupPulse({ type: "proposal" });
 			assert.ok(pulse.length >= 1);
-			assert.equal(pulse[0].agentId, "agent-alice");
-			assert.ok(pulse[0].content.includes("New Feature Proposal"));
+			assert.equal(pulse[0]!.agentId, "agent-alice");
+			assert.ok(pulse[0]!.content.includes("New Feature Proposal"));
 		});
 	});
 
@@ -253,7 +253,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 		before(() => {
 			// Find an available backlog item
 			const available = manager.getAvailableBacklog();
-			backlogItemId = available[0].itemId;
+			backlogItemId = available[0]!.itemId;
 		});
 
 		it("AC#4: should allow leasing a backlog item for 48h default", () => {
@@ -284,7 +284,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 		it("AC#4: should allow leasing with custom duration", () => {
 			// First release the lease
 			const leases = manager.getAgentLeases("agent-nancy");
-			manager.releaseLease(leases[0].leaseId, "agent-nancy");
+			manager.releaseLease(leases[0]!.leaseId, "agent-nancy");
 
 			// Now lease with custom duration (1 hour)
 			const oneHour = 60 * 60 * 1000;
@@ -311,7 +311,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 				return;
 			}
 
-			const item = available[0];
+			const item = available[0]!;
 			const shortDuration = 100; // 100ms
 			const lease = manager.leaseItem(item.itemId, "agent-pat", {
 				durationMs: shortDuration,
@@ -339,7 +339,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 		before(() => {
 			const available = manager.getAvailableBacklog();
 			if (available.length > 0) {
-				const lease = manager.leaseItem(available[0].itemId, "agent-quincy");
+				const lease = manager.leaseItem(available[0]!.itemId, "agent-quincy");
 				leaseId = lease.leaseId;
 				heartbeatToken = lease.heartbeatToken || "";
 			}

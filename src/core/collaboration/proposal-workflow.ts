@@ -22,7 +22,7 @@ export type ReviewType = "product-market-fit" | "technical-feasibility";
 /**
  * Proposal status values
  */
-export type ProposalStatus = "proposed" | "approved" | "rejected";
+export type ProposalStatus = "proposed" | "approved" | "rejected" | "in-review";
 
 /**
  * A review from PM or Architect

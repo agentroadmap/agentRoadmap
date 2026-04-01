@@ -25,6 +25,7 @@ interface ProposalWizardValues {
 	documentation: string;
 	dependencies: string;
 	verificationProposalments: string;
+	auditNotes: string;
 }
 
 export interface ProposalWizardProposalOption {

@@ -47,7 +47,7 @@ export default function BoardPage({
     const highlight = searchParams.get('highlight');
     if (highlight) {
       setHighlightProposalId(highlight);
-      setSearchParams(params => {
+      setSearchParams((params: URLSearchParams) => {
         params.delete('highlight');
         return params;
       }, { replace: true });
@@ -61,7 +61,7 @@ export default function BoardPage({
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(laneStorageKey, mode);
     }
-    setSearchParams(params => {
+    setSearchParams((params: URLSearchParams) => {
       if (mode === 'none') {
         params.delete('lane');
       } else {

@@ -5,6 +5,7 @@
  * Third view accessible via Tab in the board.
  */
 
+// @ts-ignore - blessed types may not be installed
 import type blessed from "blessed";
 import { getRecentEvents } from '../core/messaging/event-stream.ts';
 
@@ -50,7 +51,7 @@ export function renderCubicDashboard(
 	const { cubics, agents, models } = data;
 
 	// Clear screen
-	screen.children.forEach((child) => child.destroy());
+	screen.children.forEach((child: any) => child.destroy());
 
 	// Main container
 	const container = (screen as any).box({
@@ -169,8 +170,8 @@ export function renderCubicDashboard(
 	if (recentEvents.length > 0) {
 		const eventLine = recentEvents
 			.map((e) => {
-				const icon = { proposal_accepted: "📋", proposal_claimed: "✋", proposal_coding: "💻", proposal_complete: "🎉", proposal_merged: "🔀", proposal_pushed: "🚀", agent_online: "🟢", handoff: "🤝" }[e.type] || "📌";
-				return `${icon} ${e.message}`;
+				const icon: Record<string, string> = { proposal_accepted: "📋", proposal_claimed: "✋", proposal_coding: "💻", proposal_complete: "🎉", proposal_merged: "🔀", proposal_pushed: "🚀", agent_online: "🟢", agent_offline: "🔴", handoff: "🤝", cubic_phase_change: "🔄", custom: "✨", heartbeat: "💓", message: "💬", proposal_reviewing: "👀", review_failed: "❌", review_passed: "✅", review_requested: "🔔" };
+				return `${icon[e.type] || "📌"} ${e.message}`;
 			})
 			.join(" │ ");
 		eventsBox.setContent(eventLine);

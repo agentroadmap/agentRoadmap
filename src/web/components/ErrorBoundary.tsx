@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface ErrorBoundaryProposal {
+interface ErrorBoundaryState {
 	hasError: boolean;
 	error?: Error;
 	errorInfo?: React.ErrorInfo;
@@ -40,13 +40,13 @@ const DefaultErrorFallback: React.FC<{ error?: Error; resetError: () => void }> 
 	</div>
 );
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryProposal> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
 	constructor(props: ErrorBoundaryProps) {
 		super(props);
-		this.proposal = { hasError: false };
+		this.state = { hasError: false };
 	}
 
-	static getDerivedProposalFromError(error: Error): ErrorBoundaryProposal {
+	static getDerivedStateFromError(error: Error): ErrorBoundaryState {
 		return {
 			hasError: true,
 			error,
@@ -54,7 +54,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 	}
 
 	override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-		this.setProposal({
+		this.setState({
 			error,
 			errorInfo,
 		});
@@ -69,7 +69,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 	}
 
 	resetError = () => {
-		this.setProposal({
+		this.setState({
 			hasError: false,
 			error: undefined,
 			errorInfo: undefined,
@@ -77,9 +77,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 	};
 
 	override render() {
-		if (this.proposal.hasError) {
+		if (this.state.hasError) {
 			const FallbackComponent = this.props.fallback || DefaultErrorFallback;
-			return <FallbackComponent error={this.proposal.error} resetError={this.resetError} />;
+			return <FallbackComponent error={this.state.error} resetError={this.resetError} />;
 		}
 
 		return this.props.children;

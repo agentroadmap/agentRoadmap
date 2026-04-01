@@ -25,7 +25,6 @@ export type LeaseStatus = "active" | "expired" | "released" | "revoked";
 
 export interface Proposal {
 	proposalId: string;
-	proposalId: string;
 	title: string;
 	description: string;
 	proposedBy: string;
@@ -81,7 +80,6 @@ export interface LeaseRenewalProof {
 
 export interface BacklogItem {
 	itemId: string;
-	proposalId?: string;
 	proposalId: string;
 	title: string;
 	description: string;
@@ -167,7 +165,6 @@ export class ProposalLeaseManager {
 		}
 
 		const proposal: Proposal = {
-			proposalId: `PROP-${randomUUID().slice(0, 8)}`,
 			proposalId: options.proposalId,
 			title: options.title,
 			description: options.description,
@@ -649,7 +646,6 @@ export class ProposalLeaseManager {
 	private addToBacklog(proposal: Proposal): BacklogItem {
 		const item: BacklogItem = {
 			itemId: `BKLOG-${randomUUID().slice(0, 8)}`,
-			proposalId: proposal.proposalId,
 			proposalId: proposal.proposalId,
 			title: proposal.title,
 			description: proposal.description,

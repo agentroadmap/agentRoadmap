@@ -146,7 +146,7 @@ export class LeaseBacklogManager {
       title,
       proposer,
       proposedAt: new Date().toISOString(),
-      status: "Proposed",
+      status: "proposed",
       reviews: [],
       notes: `Proposed by ${proposer}`,
     };
@@ -191,13 +191,13 @@ export class LeaseBacklogManager {
     );
 
     if (hasPmApproval && hasArchitectApproval) {
-      proposal.status = "Approved";
+      proposal.status = "approved";
       proposal.approvedBy = [reviewer].join(", ");
       proposal.approvedAt = review.timestamp;
     } else if (proposal.reviews.some((r) => r.decision === "rejected")) {
-      proposal.status = "Rejected";
+      proposal.status = "rejected";
     } else {
-      proposal.status = "Under Review";
+      proposal.status = "in-review";
     }
 
     this.proposals.set(proposalId, proposal);
@@ -222,7 +222,7 @@ export class LeaseBacklogManager {
       throw new Error(`No proposal found for ${proposalId}`);
     }
 
-    if (proposal.status !== "Approved") {
+    if (proposal.status !== "approved") {
       throw new Error(`Proposal ${proposalId} is not approved (status: ${proposal.status})`);
     }
 
@@ -578,10 +578,10 @@ export class LeaseBacklogManager {
 
     return {
       totalProposals: proposals.length,
-      pendingReview: proposals.filter((p) => p.status === "Under Review" || p.status === "Proposed")
+      pendingReview: proposals.filter((p) => p.status === "in-review" || p.status === "proposed")
         .length,
-      approved: proposals.filter((p) => p.status === "Approved").length,
-      rejected: proposals.filter((p) => p.status === "Rejected").length,
+      approved: proposals.filter((p) => p.status === "approved").length,
+      rejected: proposals.filter((p) => p.status === "rejected").length,
       totalBacklog: items.length,
       available: items.filter((i) => i.status === "available").length,
       leased: items.filter((i) => i.status === "leased").length,
