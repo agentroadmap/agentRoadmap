@@ -1,6 +1,6 @@
 // sdb-sdk-loader.ts - Connect to SDB directly (port 3000)
 
-import type { Proposal, Directive } from "../types/index.ts";
+import type { Proposal, Directive } from "../../types/index.ts";
 import { getSdbConfig, querySdbSync } from "./sdb-client.ts";
 import { AcceptanceCriteriaManager, extractStructuredSection } from "../markdown/structured-sections.ts";
 import WebSocket from "ws";
