@@ -18,8 +18,8 @@ API key protection, pre-commit scanning, key rotation. Protects secrets from exf
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Old State Reference
-- **STATE-052**: Secrets Management & Scanning
-- **Dependencies**: STATE-051 (agent identity for key ownership)
+- **PROP-SEC-052**: Secrets Management & Scanning
+- **Dependencies**: PROP-SEC-051 (agent identity for key ownership)
 - **Blocks**: All states handling secrets
 
 ## Acceptance Criteria
