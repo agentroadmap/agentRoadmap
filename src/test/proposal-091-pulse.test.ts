@@ -143,7 +143,7 @@ describe("analyzeArtifacts", () => {
   it("should detect all artifacts in complete proposal", () => {
     const artifacts = analyzeArtifacts(SAMPLE_STATE_CONTENT);
     
-    assert.ok(artifacts.completeDate, "Should detect complete_date");
+    assert.ok(artifacts.reachedDate, "Should detect complete_date");
     assert.ok(artifacts.finalSummary, "Should detect final summary");
     assert.ok(artifacts.proofReferences, "Should detect proof");
     assert.ok(artifacts.implementationNotes, "Should detect implementation notes");
@@ -153,7 +153,7 @@ describe("analyzeArtifacts", () => {
   it("should detect missing artifacts in minimal proposal", () => {
     const artifacts = analyzeArtifacts(MINIMAL_STATE_CONTENT);
     
-    assert.ok(!artifacts.completeDate, "Should not detect complete_date");
+    assert.ok(!artifacts.reachedDate, "Should not detect complete_date");
     assert.ok(!artifacts.finalSummary, "Should not detect final summary");
     assert.ok(!artifacts.proofReferences, "Should not detect proof");
     assert.ok(!artifacts.implementationNotes, "Should not detect implementation notes");
@@ -163,7 +163,7 @@ describe("analyzeArtifacts", () => {
   it("should detect completed_date as alternative to complete_date", () => {
     const content = "completed_date: 2026-03-25";
     const artifacts = analyzeArtifacts(content);
-    assert.ok(artifacts.completeDate, "Should detect completed_date");
+    assert.ok(artifacts.reachedDate, "Should detect completed_date");
   });
 
   it("should detect Summary section as alternative to Final Summary", () => {
@@ -188,7 +188,7 @@ describe("analyzeArtifacts", () => {
 describe("calculateTransitionQuality", () => {
   it("should return good for sequential forward transition with artifacts", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -201,7 +201,7 @@ describe("calculateTransitionQuality", () => {
 
   it("should return warning for missing artifacts (sequential transition)", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: false,
+      reachedDate: false,
       finalSummary: false,
       proofReferences: false,
       implementationNotes: false,
@@ -215,7 +215,7 @@ describe("calculateTransitionQuality", () => {
 
   it("should return fast-tracked for quick completion", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -229,7 +229,7 @@ describe("calculateTransitionQuality", () => {
 
   it("should return skipped for non-sequential transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -243,7 +243,7 @@ describe("calculateTransitionQuality", () => {
 
   it("should return warning for backward transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -258,7 +258,7 @@ describe("calculateTransitionQuality", () => {
 describe("generateAdvisories", () => {
   it("should generate no advisories for clean transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -271,7 +271,7 @@ describe("generateAdvisories", () => {
 
   it("should warn on non-sequential transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -288,7 +288,7 @@ describe("generateAdvisories", () => {
 
   it("should warn on missing final summary", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: false,
       proofReferences: true,
       implementationNotes: true,
@@ -305,7 +305,7 @@ describe("generateAdvisories", () => {
 
   it("should warn on missing proof", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: false,
       implementationNotes: true,
@@ -322,7 +322,7 @@ describe("generateAdvisories", () => {
 
   it("should warn on fast transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -337,7 +337,7 @@ describe("generateAdvisories", () => {
 
   it("should warn on backward transition", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: true,
       proofReferences: true,
       implementationNotes: true,
@@ -352,7 +352,7 @@ describe("generateAdvisories", () => {
 
   it("should allow all advisories to be overridden", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: false,
+      reachedDate: false,
       finalSummary: false,
       proofReferences: false,
       implementationNotes: false,
@@ -396,7 +396,7 @@ describe("createPulseRecord", () => {
       SAMPLE_STATE_CONTENT,
     );
 
-    assert.ok(record.artifactsPresent.completeDate);
+    assert.ok(record.artifactsPresent.reachedDate);
     assert.ok(record.artifactsPresent.finalSummary);
     assert.ok(record.artifactsPresent.proofReferences);
     assert.ok(record.artifactsPresent.implementationNotes);
@@ -453,7 +453,7 @@ describe("formatAdvisories", () => {
 describe("formatArtifactStatus", () => {
   it("should format artifact checklist", () => {
     const artifacts: ArtifactStatus = {
-      completeDate: true,
+      reachedDate: true,
       finalSummary: false,
       proofReferences: true,
       implementationNotes: false,
@@ -479,7 +479,7 @@ describe("pulseRecordHash", () => {
       advisories: [],
       overridden: false,
       artifactsPresent: {
-        completeDate: true,
+        reachedDate: true,
         finalSummary: true,
         proofReferences: true,
         implementationNotes: true,
@@ -505,7 +505,7 @@ describe("pulseRecordHash", () => {
       advisories: [],
       overridden: false,
       artifactsPresent: {
-        completeDate: true,
+        reachedDate: true,
         finalSummary: true,
         proofReferences: true,
         implementationNotes: true,
@@ -652,7 +652,7 @@ describe("PulseStorage", () => {
       advisories: [],
       overridden: false,
       artifactsPresent: {
-        completeDate: true,
+        reachedDate: true,
         finalSummary: true,
         proofReferences: true,
         implementationNotes: true,
@@ -681,7 +681,7 @@ describe("PulseStorage", () => {
         advisories: [],
         overridden: false,
         artifactsPresent: {
-          completeDate: true,
+          reachedDate: true,
           finalSummary: true,
           proofReferences: true,
           implementationNotes: true,
@@ -707,7 +707,7 @@ describe("PulseStorage", () => {
         overridden: true,
         overrideRationale: "Will add later",
         artifactsPresent: {
-          completeDate: true,
+          reachedDate: true,
           finalSummary: true,
           proofReferences: false,
           implementationNotes: true,
@@ -724,7 +724,7 @@ describe("PulseStorage", () => {
         advisories: [],
         overridden: false,
         artifactsPresent: {
-          completeDate: true,
+          reachedDate: true,
           finalSummary: true,
           proofReferences: true,
           implementationNotes: true,
@@ -763,7 +763,7 @@ describe("PulseStorage", () => {
         advisories: [],
         overridden: false,
         artifactsPresent: {
-          completeDate: true,
+          reachedDate: true,
           finalSummary: true,
           proofReferences: true,
           implementationNotes: true,
@@ -780,7 +780,7 @@ describe("PulseStorage", () => {
         advisories: [],
         overridden: false,
         artifactsPresent: {
-          completeDate: true,
+          reachedDate: true,
           finalSummary: true,
           proofReferences: true,
           implementationNotes: true,
@@ -815,7 +815,7 @@ describe("PulseStorage", () => {
       advisories: [],
       overridden: false,
       artifactsPresent: {
-        completeDate: true,
+        reachedDate: true,
         finalSummary: true,
         proofReferences: true,
         implementationNotes: true,
