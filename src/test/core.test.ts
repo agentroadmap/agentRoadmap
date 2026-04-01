@@ -358,10 +358,11 @@ describe("Core", () => {
 		it("updates a document title without leaving the previous file behind", async () => {
 			await core.createDocument(baseDocument, false);
 
-			const [initialFile] = await Array.fromAsync(
+			const initialFiles = await Array.fromAsync(
 				globSync("doc-*.md", { cwd: core.filesystem.docsDir }),
 			);
-			const initialFileName = typeof initialFile === 'string' ? initialFile : initialFile?.name;
+			const initialFile = initialFiles[0];
+			const initialFileName = typeof initialFile === 'string' ? initialFile : (initialFile as any)?.name;
 			assert.strictEqual(initialFileName, "doc-1 - Operations-Guide.md");
 
 			const documents = await core.filesystem.listDocuments();
