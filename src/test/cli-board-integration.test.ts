@@ -88,7 +88,7 @@ Test proposal for board CLI integration.`,
 
 	it("should properly handle cross-branch proposal resolution", async () => {
 		// Test the function that was missing filesystem parameter
-		const { getLatestProposalProposalsForIds } = await import("../core/cross-branch-proposals.ts");
+		const { getLatestProposalProposalsForIds } = await import("../core/dag/cross-branch-proposals.ts");
 
 		const proposals = await core.filesystem.listProposals();
 		const proposalIds = proposals.map((t) => t.id);

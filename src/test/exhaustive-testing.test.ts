@@ -23,7 +23,7 @@ import {
 	resolveIssue,
 	saveIssues,
 	wontFixIssue,
-} from "../core/issue-tracker.ts";
+} from "../core/pipeline/issue-tracker.ts";
 // Test discovery
 import {
 	categorizeTestFile,

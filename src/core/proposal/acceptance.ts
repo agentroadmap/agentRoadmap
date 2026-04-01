@@ -11,7 +11,7 @@
  * Issue blocking: Proposals with open critical/major test issues cannot reach Reached.
  */
 
-import { getBlockingIssues, type IssueStore } from "./issue-tracker.ts";
+import { getBlockingIssues, type IssueStore } from "../pipeline/issue-tracker.ts";
 
 export type ProofType = "command-output" | "test-result" | "artifact" | "commit" | "validation-summary";
 export type Verifier = "builder" | "peer-tester" | "coordinator";

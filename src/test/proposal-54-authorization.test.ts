@@ -10,8 +10,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test, beforeEach, afterEach } from "node:test";
-import type { AccessAuditEvent } from "../core/authorization.ts";
-import { AuthorizationService } from "../core/authorization.ts";
+import type { AccessAuditEvent } from "../core/security/authorization.ts";
+import { AuthorizationService } from "../core/security/authorization.ts";
 
 describe("proposal-54: Authorization & Access Control", () => {
 	let tempDir: string;

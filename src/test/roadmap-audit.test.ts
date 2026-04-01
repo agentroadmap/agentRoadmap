@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { type ProposalInfo, auditRoadmap } from "../core/scout.ts";
+import { type ProposalInfo, auditRoadmap } from "../core/dag/scout.ts";
 
 describe("Roadmap Audit", () => {
 	test("identifies orphan proposals", () => {

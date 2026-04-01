@@ -16,7 +16,7 @@ import {
 	type CubicAgent,
 	type PhaseSkill,
 	type HandoffPayload,
-} from "../core/cubic-architecture.ts";
+} from "../core/orchestration/cubic-architecture.ts";
 
 describe("proposal-090: Cubic Architecture", () => {
 	// AC#1: CubicPhase and CubicConfig

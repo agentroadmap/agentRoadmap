@@ -18,7 +18,7 @@ import {
 	type QualitySignals,
 	type PulseMessage,
 } from "../core/handoff-protocol.ts";
-import { CubicPhase } from "../core/cubic-architecture.ts";
+import { CubicPhase } from "../core/orchestration/cubic-architecture.ts";
 
 describe("proposal-094: Creative Phase Handoff Protocol", () => {
 	// AC#1: G1-G4 Handoff Points

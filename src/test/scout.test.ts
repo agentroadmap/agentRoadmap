@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import * as scout from "../core/scout.ts";
+import * as scout from "../core/dag/scout.ts";
 
 const TEST_DIR = join(process.cwd(), "tmp", "test-scout");
 const STATES_DIR = join(TEST_DIR, "roadmap", "proposals");

@@ -13,13 +13,13 @@ import {
   SecretsScanner,
   generatePreCommitHook,
   SECRET_PATTERNS,
-} from "../core/secrets-manager.ts";
+} from "../core/security/secrets-manager.ts";
 import type {
   VaultConfig,
   SecretEntry,
   SecretMatch,
   ScanResult,
-} from "../core/secrets-manager.ts";
+} from "../core/security/secrets-manager.ts";
 
 // ===== TEST UTILITIES =====
 

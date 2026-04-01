@@ -8,8 +8,8 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { ObstaclePipeline } from "../core/obstacle-pipeline.ts";
-import type { Obstacle } from "../core/obstacle-pipeline.ts";
+import { ObstaclePipeline } from "../core/pipeline/obstacle-pipeline.ts";
+import type { Obstacle } from "../core/pipeline/obstacle-pipeline.ts";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 

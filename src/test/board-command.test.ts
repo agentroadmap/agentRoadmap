@@ -201,7 +201,7 @@ This is another test proposal for board testing.`,
 	describe("Cross-branch proposal resolution", () => {
 		it("should handle getLatestProposalProposalsForIds with proper parameters", async () => {
 			// Test the function that was missing the filesystem parameter
-			const { getLatestProposalProposalsForIds } = await import("../core/cross-branch-proposals.ts");
+			const { getLatestProposalProposalsForIds } = await import("../core/dag/cross-branch-proposals.ts");
 
 			const proposals = await core.filesystem.listProposals();
 			const proposalIds = proposals.map((t) => t.id);

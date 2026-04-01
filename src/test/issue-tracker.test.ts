@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { rmSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import * as issueTracker from "../core/issue-tracker.ts";
+import * as issueTracker from "../core/pipeline/issue-tracker.ts";
 
 const TEST_DIR = join(process.cwd(), "tmp", "test-issue-tracker");
 
