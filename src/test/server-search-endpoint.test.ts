@@ -398,7 +398,7 @@ Directive: m-0
 		});
 		assert.strictEqual(conflictCreate.status, 400);
 		const conflictPayload = (await conflictCreate.json()) as { error?: string };
-		assert.ok(conflictPayload.error.includes("already exists"));
+		assert.ok(conflictPayload.error?.includes("already exists"));
 
 		const numericAliasConflict = await fetch(`http://127.0.0.1:${serverPort}/api/directives`, {
 			method: "POST",

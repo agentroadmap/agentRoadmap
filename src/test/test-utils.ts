@@ -263,6 +263,7 @@ function makeAsyncResolvesMatchers(actual: unknown): AsyncMatchers {
 interface ExpectFn {
 	(actual: unknown): FullMatchers;
 	any(ctor: Function): ExpectAnyMatcher;
+	arrayContaining(arr: unknown[]): unknown;
 }
 
 export const expect: ExpectFn = Object.assign(
