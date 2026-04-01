@@ -384,7 +384,7 @@ describe("MCP directive tools", () => {
 		assert.strictEqual(directives[0]?.title, "Release 2.0");
 
 		const directiveFiles = await Array.fromAsync(
-			globSync("m-*.md", { cwd: server.filesystem.directivesDir, follow: true }),
+			globSync("m-*.md", { cwd: server.filesystem.directivesDir }),
 		);
 		const fileNames = directiveFiles.map((d: any) => typeof d === 'string' ? d : d.name);
 		assert.ok(fileNames.includes("m-0 - release-2.0.md"));
@@ -423,7 +423,7 @@ describe("MCP directive tools", () => {
 		});
 
 		const directiveFilesBefore = await Array.fromAsync(
-			globSync("m-*.md", { cwd: server.filesystem.directivesDir, follow: true }),
+			globSync("m-*.md", { cwd: server.filesystem.directivesDir }),
 		);
 		const fileNamesBefore = directiveFilesBefore.map((d: any) => typeof d === 'string' ? d : d.name);
 		assert.strictEqual(fileNamesBefore.length, 1);
