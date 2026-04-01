@@ -435,7 +435,7 @@ describe("proposal-54: Authorization-Access-Control", () => {
 		});
 
 		it("previewTransition returns valid options", () => {
-			const preview = previewTransition(ac, "Potential");
+			const preview = previewTransition(ac, "Potential", "Active");
 			assert.equal(preview.valid, false); // "Potential" is not "to"
 			assert.ok(Array.isArray(preview.validOptions));
 		});

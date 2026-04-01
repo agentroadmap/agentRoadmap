@@ -1347,8 +1347,7 @@ export class RoadmapServer {
 	// Directive handlers
 	private async handleListDirectives(): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
-			const directives = store.getDirectives();
+			const directives = await this.core.fs.listDirectives();
 			return Response.json(directives);
 		} catch (error) {
 			console.error("Error listing directives:", error);
