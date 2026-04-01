@@ -44,7 +44,7 @@ describe("Skill Registry Module", () => {
 		assert.ok(fetched);
 		assert.equal(fetched?.agentId, "agent-1");
 		assert.equal(fetched?.skills.length, 1);
-		assert.equal(fetched?.skills[0].id, "ts");
+		assert.equal(fetched?.skills[0]?.id, "ts");
 	});
 
 	it("should persist data to SQLite", () => {
@@ -72,8 +72,8 @@ describe("Skill Registry Module", () => {
 		const matches = registry.searchBySkill({ requiredSkills: ["ts"], minLevel: "advanced" });
 		
 		assert.equal(matches.length, 1);
-		assert.equal(matches[0].profile.agentId, "expert-ts");
-		assert.ok(matches[0].score > 50);
+		assert.equal(matches[0]!.profile.agentId, "expert-ts");
+		assert.ok(matches[0]!.score > 50);
 	});
 
 	it("should handle availability", () => {
