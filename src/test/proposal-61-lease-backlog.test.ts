@@ -20,7 +20,7 @@ import {
   type BacklogItem,
   type Lease,
   type HeartbeatProof,
-} from "../core/lease-backlog.ts";
+} from "../core/collaboration/lease-backlog.ts";
 
 const TEST_STORAGE = join(import.meta.dirname, "..", "test-temp", "lease-backlog-test");
 

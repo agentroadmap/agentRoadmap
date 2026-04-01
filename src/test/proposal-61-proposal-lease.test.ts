@@ -15,7 +15,7 @@ import {
 	type Proposal,
 	type Lease,
 	type BacklogItem,
-} from "../core/proposal-lease.ts";
+} from "../core/collaboration/proposal-lease.ts";
 
 describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 	let tempDir: string;

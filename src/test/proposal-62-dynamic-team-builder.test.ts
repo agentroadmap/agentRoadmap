@@ -13,7 +13,7 @@ import {
 	DynamicTeamBuilder,
 	type ProposalOverlap,
 	type Team,
-} from "../core/dynamic-team-builder.ts";
+} from "../core/collaboration/dynamic-team-builder.ts";
 import {
 	AgentProposalSystem,
 	createApproach,
@@ -21,7 +21,7 @@ import {
 	type AgentProposal,
 	type ImplementationApproach,
 	type ComplexityEstimate,
-} from "../core/agent-proposals.ts";
+} from "../core/collaboration/agent-proposals.ts";
 
 describe("proposal-62: Dynamic Team Building", () => {
 	let builder: DynamicTeamBuilder;
@@ -40,7 +40,7 @@ describe("proposal-62: Dynamic Team Building", () => {
 			const agentId = `agent-${String.fromCharCode(97 + i)}`;
 			proposals.push({
 				proposalId: `prop-${proposalId}-${agentId}`,
-				proposalId,
+				targetProposalId,
 				agentId,
 				title: `Proposal ${i + 1}`,
 				summary: `Implementation approach ${i + 1}`,

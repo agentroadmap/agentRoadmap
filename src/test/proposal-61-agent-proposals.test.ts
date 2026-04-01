@@ -20,7 +20,7 @@ import {
 	createComplexityEstimate,
 	type ImplementationApproach,
 	type ComplexityEstimate,
-} from "../core/agent-proposals.ts";
+} from "../core/collaboration/agent-proposals.ts";
 
 describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 	let system: AgentProposalSystem;
@@ -163,7 +163,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 			// Filter by agent
 			const alphaProposals = system.getProposals({ agentId: "agent-alpha" });
 			assert.equal(alphaProposals.length, 1);
-			assert.equal(alphaProposals[0].agentId, "agent-alpha");
+			assert.equal(alphaProposals[0]!.agentId, "agent-alpha");
 
 			// Filter by status
 			const pendingProposals = system.getProposals({ status: "pending" });
@@ -344,7 +344,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 
 			assert.equal(rejected.status, "rejected");
 			assert.equal(rejected.feedback.length, 1);
-			assert.equal(rejected.feedback[0].severity, "blocker");
+			assert.equal(rejected.feedback[0]!.severity, "blocker");
 		});
 
 		it("prevents reviewing already reviewed proposal", () => {
@@ -408,7 +408,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 
 			const pending = system.getPendingProposals();
 			assert.equal(pending.length, 1);
-			assert.equal(pending[0].proposalId, "proposal-1");
+			assert.equal(pending[0]!.proposalId, "proposal-1");
 		});
 
 		it("computes review statistics", () => {
@@ -638,7 +638,7 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 
 			const alphaLeases = system.getAgentLeases("agent-alpha");
 			assert.equal(alphaLeases.length, 1);
-			assert.equal(alphaLeases[0].proposalId, "proposal-1");
+			assert.equal(alphaLeases[0]!.proposalId, "proposal-1");
 		});
 	});
 
@@ -671,9 +671,9 @@ describe("proposal-61: Agent Proposal & Lease-Based Backlog System", () => {
 
 			const feedback = system.getProposalFeedback(proposal.proposalId);
 			assert.equal(feedback.length, 2);
-			assert.equal(feedback[0].category, "approach");
-			assert.equal(feedback[0].severity, "blocker");
-			assert.ok(feedback[0].suggestion);
+			assert.equal(feedback[0]!.category, "approach");
+			assert.equal(feedback[0]!.severity, "blocker");
+			assert.ok(feedback[0]!.suggestion);
 		});
 
 		it("gets feedback across proposals for a proposal", () => {

@@ -14,7 +14,7 @@ import {
 	calculateSimpleSkillMatch,
 	type ProjectRequirements,
 	type Team,
-} from "../core/team-builder.ts";
+} from "../core/collaboration/team-builder.ts";
 
 describe("proposal-62: Dynamic Team Building", () => {
 	let tempDir: string;

@@ -89,7 +89,7 @@ export interface AgentProposal {
 	/** Unique proposal ID */
 	proposalId: string;
 	/** Proposal this proposal targets */
-	proposalId: string;
+	targetProposalId: string;
 	/** Proposing agent */
 	agentId: string;
 	/** Proposal title */
@@ -131,7 +131,7 @@ export interface ProposalLease {
 	/** Agent holding the lease */
 	agentId: string;
 	/** Proposal that led to this lease */
-	proposalId?: string;
+	sourceProposalId?: string;
 	/** When lease started */
 	leasedAt: string;
 	/** When lease expires */
@@ -148,8 +148,6 @@ export interface ProposalHistoryEntry {
 	entryId: string;
 	/** What happened */
 	event: "submitted" | "approved" | "rejected" | "withdrawn" | "claimed" | "expired";
-	/** Which proposal */
-	proposalId: string;
 	/** Which proposal */
 	proposalId: string;
 	/** Agent involved */
@@ -243,7 +241,7 @@ export class AgentProposalSystem {
 		const now = new Date().toISOString();
 		const proposal: AgentProposal = {
 			proposalId: generateId("PROP"),
-			proposalId,
+			targetProposalId: proposalId,
 			agentId,
 			title: options.title,
 			summary: options.summary,
@@ -504,7 +502,6 @@ export class AgentProposalSystem {
 		const lease: ProposalLease = {
 			proposalId: proposal.proposalId,
 			agentId: proposal.agentId,
-			proposalId: proposal.proposalId,
 			leasedAt: now.toISOString(),
 			expiresAt: expiresAt.toISOString(),
 			status: "active",
@@ -596,7 +593,6 @@ export class AgentProposalSystem {
 			entryId: generateId("HIST"),
 			event: "expired",
 			proposalId: lease.proposalId ?? "no-proposal",
-			proposalId: lease.proposalId,
 			agentId: revokedBy,
 			timestamp: new Date().toISOString(),
 			metadata: { action: "revoked", reason, previousAgent: lease.agentId },
@@ -650,16 +646,16 @@ export class AgentProposalSystem {
 	}
 
 	/**
-	 * Get feedback for all proposals for a given proposal.
+	 * Get feedback for all proposals targeting a given proposal.
 	 */
-	getProposalFeedback(proposalId: string): Array<{
+	getFeedbackForTarget(targetProposalId: string): Array<{
 		proposalId: string;
 		agentId: string;
 		feedback: ProposalFeedbackItem[];
 		status: ProposalStatus;
 	}> {
 		return Array.from(this.proposals.values())
-			.filter((p) => p.proposalId === proposalId && p.feedback.length > 0)
+			.filter((p) => p.targetProposalId === targetProposalId && p.feedback.length > 0)
 			.map((p) => ({
 				proposalId: p.proposalId,
 				agentId: p.agentId,
@@ -896,7 +892,6 @@ export class AgentProposalSystem {
 		this.history.push({
 			entryId: generateId("HIST"),
 			event,
-			proposalId: proposal.proposalId,
 			proposalId: proposal.proposalId,
 			agentId: proposal.agentId,
 			timestamp: new Date().toISOString(),
