@@ -81,7 +81,7 @@ describe("MCP proposal_complete", () => {
 		assert.strictEqual(activeProposal, null);
 
 		const completedFiles = await Array.fromAsync(
-			globSync("proposal-1*.md", { cwd: server.filesystem.completedDir, follow: true }),
+			(globSync as any)("proposal-1*.md", { cwd: server.filesystem.completedDir, follow: true }),
 		);
 		assert.strictEqual(completedFiles.length, 1);
 	});

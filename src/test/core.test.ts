@@ -544,7 +544,7 @@ describe("Core", () => {
 	});
 
 	describe("directory accessor integration", () => {
-		it("should use FileSystem directory accessors for git operations", async () => {
+		it("should use FileSystem directory accessors for git operations", { timeout: 10000 }, async () => {
 			await core.initializeProject("Accessor Test");
 
 			const proposal: Proposal = {
@@ -571,6 +571,6 @@ describe("Core", () => {
 			const createdProposal = allFiles.find((t) => t.id === "proposal-ACCESSOR");
 			assert.notStrictEqual(createdProposal, undefined);
 			assert.strictEqual(createdProposal?.title, "Accessor Test Proposal");
-		}, 10000);
+		});
 	});
 });
