@@ -120,8 +120,8 @@ process.exit(0);
 		assert.ok(result.proposal?.updatedDate);
 
 		const proposalContent = await core.getProposalContent(proposalId);
-		assert.ok(proposalContent.includes("updated_date:"));
-		assert.ok(proposalContent.includes("Edited from test"));
+		assert.ok(proposalContent?.includes("updated_date:"));
+		assert.ok(proposalContent?.includes("Edited from test"));
 	});
 
 	it("returns editor_failed without mutating metadata when editor exits non-zero", async () => {
