@@ -100,7 +100,7 @@ describe("filterBoardColumns", () => {
 			{ status: "Done", proposals: [createProposal("proposal-2", "Done")] },
 		];
 
-		const result = filterBoardColumns(columns, { hideEmpty: true, hideAbandoned: true });
+		const result = filterBoardColumns(columns, { hideEmpty: true });
 		expect(result.length).toBe(2);
 		expect(result[0]?.status).toBe("Active");
 		expect(result[1]?.status).toBe("Done");
