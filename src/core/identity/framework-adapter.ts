@@ -372,7 +372,7 @@ export class FrameworkAdapterImpl {
 		// Check if node:test is used (no external dep needed for Node.js)
 		if (patterns.runner === "none" && detection.typescript) {
 			// Check for test scripts
-			const scripts = detection.packageJson.scripts ?? {};
+			const scripts = (detection.packageJson.scripts ?? {}) as Record<string, string>;
 			if (scripts.test?.includes("node --test")) {
 				patterns.runner = "node-test";
 				patterns.filePatterns = ["**/*.test.ts", "**/*.test.js"];
