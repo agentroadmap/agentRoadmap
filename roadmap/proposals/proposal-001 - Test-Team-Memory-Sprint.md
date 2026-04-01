@@ -1,9 +1,10 @@
 ---
 id: PROPOSAL-001
 title: 'Test: Team Memory Sprint'
-status: New
+status: Abandoned
 assignee: []
 created_date: '2026-04-01 19:48'
+updated_date: '2026-04-01 19:48'
 labels: []
 dependencies: []
 ---
