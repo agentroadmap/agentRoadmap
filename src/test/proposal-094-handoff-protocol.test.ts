@@ -260,10 +260,11 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitIntent(intent);
 
 			assert.ok(received);
-			assert.equal(received!.fromPhase, CubicPhase.Design);
-			assert.equal(received!.toPhase, CubicPhase.Build);
-			assert.equal(received!.type, "intent");
-			assert.equal(received!.gate, HandoffGate.G1);
+			const msg = received as PulseMessage;
+			assert.equal(msg.fromPhase, CubicPhase.Design);
+			assert.equal(msg.toPhase, CubicPhase.Build);
+			assert.equal(msg.type, "intent");
+			assert.equal(msg.gate, HandoffGate.G1);
 		});
 
 		it("routes architect feedback to build team", () => {
@@ -286,8 +287,9 @@ describe("proposal-094: Creative Phase Handoff Protocol", () => {
 			engine.submitArchitectFeedback(feedback);
 
 			assert.ok(received);
-			assert.equal(received!.type, "feedback");
-			assert.equal(received!.priority, "normal");
+			const msg2 = received as PulseMessage;
+			assert.equal(msg2.type, "feedback");
+			assert.equal(msg2.priority, "normal");
 		});
 
 		it("routes implementation narrative to QA team", () => {
