@@ -44,7 +44,7 @@ function rowToProposal(row: any): Proposal {
   return {
     id: String(row.display_id || row.id),
     title: String(row.title),
-    body: bodyText,
+    rawContent: bodyText,
     description: String(row.description || "") || extractStructuredSection(bodyText, "description") || "",
     implementationPlan: extractStructuredSection(bodyText, "implementationPlan") || undefined,
     implementationNotes: String(row.implementation_notes || "") || extractStructuredSection(bodyText, "implementationNotes") || "",
