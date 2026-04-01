@@ -67,7 +67,7 @@ describe("Multi-Proposal Coverage Tests", () => {
 
 			await core.updateProposalFromInput(proposal.id, {
 				addVerificationProposalments: [
-					{ text: "OAuth flow completes within 500ms", role: "builder", verified: true },
+					{ text: "OAuth flow completes within 500ms", role: "builder", checked: true },
 				],
 			});
 
