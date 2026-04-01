@@ -257,7 +257,7 @@ export class MapProjection {
 				SELECT id, title, status, assignee, priority, directive, labels, dependencies
 				FROM proposals
 				ORDER BY id
-			`).all() as ProposalRow[];
+			`).all() as unknown as ProposalRow[];
 			db.close();
 			return rows;
 		} catch {

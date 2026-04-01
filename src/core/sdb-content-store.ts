@@ -59,7 +59,7 @@ function sdbRowToProposal(row: SDBProposalRow): Proposal {
 		parentId: row.parentId ? `PROP-${row.parentId}` : undefined,
 		body: row.bodyMarkdown ?? undefined,
 		budgetLimit: row.budgetLimitUsd,
-	} as Proposal;
+	} as unknown as Proposal;
 }
 
 /**
@@ -90,7 +90,7 @@ export class SDBContentStore {
 			// Build connection
 			this.conn = await DbConnection.builder()
 				.withUri(this.config.serverUri)
-				.withModuleName(this.config.dbName)
+				.withDatabaseName(this.config.dbName)
 				.onConnect((conn: DbConnection) => {
 					// Subscribe to all proposals
 					conn.subscriptionBuilder()

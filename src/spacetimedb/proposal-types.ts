@@ -181,7 +181,7 @@ export const DEFAULT_PRIORITY: ProposalPriority = "medium";
 export const DEFAULT_STATUS: DatabaseProposalStatus = "drafts";
 
 /** Default maturity for new proposals */
-export const DEFAULT_MATURITY: ProposalMaturity = "potential";
+export const DEFAULT_MATURITY: ProposalMaturity = "skeleton";
 
 // ===================== Proposal Lifecycle Transitions (STATE-085) ==================
 
