@@ -10,7 +10,7 @@
 import { McpError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
-import { DynamicTeamBuilder } from "../../../core/collaboration/dynamic-team-builder.ts";
+import { DynamicTeamBuilder } from "../../../core/collaboration/team-builder.ts";
 import { createRequirement } from "../../../core/collaboration/team-builder.ts";
 import { AgentTeamMembership } from "../../../core/collaboration/agent-team-membership.ts";
 import { ProposalLeaseManager, createHeartbeatProof } from "../../../core/collaboration/proposal-lease.ts";
