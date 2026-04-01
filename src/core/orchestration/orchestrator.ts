@@ -1,5 +1,5 @@
 import { http } from "node:http";
-import { type Proposal, type Task } from "../../types/index.ts";
+import { type Proposal } from "../../types/index.ts";
 
 const DB_ID = 'c2000e5eeac07a3c99a0925d7ebdc968cb1b04ab560c7875c154d8eccb69e79e';
 
