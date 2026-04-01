@@ -79,13 +79,13 @@ Test description for 1.0
 	});
 
 	it("should detect bottlenecks and generate obstacle proposals", () => {
-		const proposals: scout.ProposalInfo[] = [
+		const input: scout.ProposalInfo[] = [
 			{ id: "B", title: "Bottleneck", status: "Potential", dependencies: [], labels: [], unlocks: [] },
 			{ id: "1", title: "S1", status: "Potential", dependencies: ["B"], labels: [], unlocks: [] },
 			{ id: "2", title: "S2", status: "Potential", dependencies: ["B"], labels: [], unlocks: [] },
 			{ id: "3", title: "S3", status: "Potential", dependencies: ["B"], labels: [], unlocks: [] }
 		];
-		const proposals = scout.generateProposals(proposals);
+		const proposals = scout.generateProposals(input);
 		const bottleneck = proposals.find(p => p.type === "obstacle");
 		assert.ok(bottleneck);
 		assert.ok(bottleneck?.title.includes("Bottleneck"));
@@ -98,9 +98,9 @@ Test description for 1.0
 		
 		const result = scout.auditRoadmap([s1, s2, sOrphan]);
 		assert.equal(result.orphans.length, 1);
-		assert.equal(result.orphans[0].id, "proposal-99");
+		assert.equal(result.orphans[0]!.id, "proposal-99");
 		assert.equal(result.deadEnds.length, 1);
-		assert.equal(result.deadEnds[0].id, "proposal-2");
+		assert.equal(result.deadEnds[0]!.id, "proposal-2");
 	});
 
 	it("should detect broken dependencies in audit", () => {
