@@ -299,10 +299,10 @@ export class RoadmapServer {
 		}
 	}
 
-	private handleSubscribe(ws: WebSocket, channel: string) {
+	private async handleSubscribe(ws: WebSocket, channel: string) {
 		const subs = this.channelSubscriptions.get(ws);
 		if (!subs || subs.has(channel)) return;
-		const unsubscribe = this.core.watchMessages({
+		const unsubscribe = await this.core.watchMessages({
 			channel,
 			onMessage: (msg) => {
 				try {

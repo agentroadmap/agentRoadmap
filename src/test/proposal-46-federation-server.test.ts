@@ -425,7 +425,7 @@ describe("proposal-46: Multi-Host Federation Server", () => {
 			serverB.processMessage(updateMsg);
 
 			assert.ok(receivedUpdate, "Should have received proposal update");
-			assert.equal(receivedUpdate.title, "Updated Title");
+			assert.equal((receivedUpdate as any).title, "Updated Title");
 		});
 
 		it("creates sync snapshot with checksum", () => {
