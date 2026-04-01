@@ -2,6 +2,8 @@
 id: RFC-20260401-MOBILE-VISIONARY
 display_id: RFC-20260401-MOBILE-VISIONARY
 proposal_type: COMPONENT
+category: 
+domain_id: 
 title: "Visionary Command Schema"
 status: Draft
 assignee: []

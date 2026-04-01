@@ -2,6 +2,8 @@
 id: RFC-20260401-MESSAGING
 display_id: RFC-20260401-MESSAGING
 proposal_type: COMPONENT
+category: 
+domain_id: 
 title: "Messaging & Synchronization"
 status: Draft
 assignee: []

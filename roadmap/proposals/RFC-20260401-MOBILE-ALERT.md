@@ -2,6 +2,8 @@
 id: RFC-20260401-MOBILE-ALERT
 display_id: RFC-20260401-MOBILE-ALERT
 proposal_type: COMPONENT
+category: 
+domain_id: 
 title: "Mobile Alert System"
 status: Draft
 assignee: []

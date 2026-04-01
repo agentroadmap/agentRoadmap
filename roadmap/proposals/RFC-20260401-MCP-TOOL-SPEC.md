@@ -2,6 +2,8 @@
 id: RFC-20260401-MCP-TOOL-SPEC
 display_id: RFC-20260401-MCP-TOOL-SPEC
 proposal_type: TECHNICAL
+category: 
+domain_id: 
 title: "MCP Tool Specification v2.1"
 status: Draft
 assignee: []
