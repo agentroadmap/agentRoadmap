@@ -25,7 +25,7 @@ interface ProposalWizardValues {
 	documentation: string;
 	dependencies: string;
 	verificationProposalments: string;
-	auditNotes: string;
+	// auditNotes removed - now tracked in SecurityAuditLog table
 }
 
 export interface ProposalWizardProposalOption {
@@ -278,7 +278,7 @@ const clackPromptRunner: ProposalWizardPromptRunner = async (question) => {
 			const wasEmptyBeforeKeypress = previousInput.length === 0;
 			const isEmptyAfterKeypress = textPrompt.userInput.length === 0;
 			if (question.allowBackspaceNavigation && wasEmptyBeforeKeypress && isEmptyAfterKeypress) {
-				textPrompt.prompt = "submit";
+				textPrompt.state = "submit";
 				textPrompt.value = WIZARD_BACKSPACE_NAVIGATION as unknown as string;
 				return;
 			}
@@ -480,14 +480,6 @@ async function runProposalWizardValues(params: {
 			},
 			{
 				type: "text",
-				name: "auditNotes",
-				message:
-					params.mode === "create"
-						? `Audit Notes (${SINGLE_LINE_PROMPT_GUIDANCE})`
-						: `Audit Notes (${SINGLE_LINE_PROMPT_GUIDANCE}; blank keeps current value)`,
-			},
-			{
-				type: "text",
 				name: "references",
 				message:
 					params.mode === "create"
@@ -560,7 +552,6 @@ async function runProposalWizardValues(params: {
 			verificationProposalments: values.verificationProposalments,
 			implementationPlan: values.implementationPlan,
 			implementationNotes: values.implementationNotes,
-			auditNotes: values.auditNotes,
 			references: values.references,
 			documentation: values.documentation,
 			dependencies: values.dependencies,
@@ -621,6 +612,7 @@ function toInitialWizardValues(input: { title?: string } & Partial<Proposal>): P
 		documentation: formatListInput(input.documentation),
 		dependencies: formatListInput(input.dependencies),
 		verificationProposalments: formatChecklistInput(input.verificationProposalments),
+		auditNotes: input.auditNotes ?? "",
 	};
 }
 
@@ -678,7 +670,6 @@ export async function runProposalCreateWizard(
 		...(verificationProposalments.length > 0 && { verificationProposalments }),
 		...(values.implementationPlan.trim().length > 0 && { implementationPlan: values.implementationPlan }),
 		...(values.implementationNotes.trim().length > 0 && { implementationNotes: values.implementationNotes }),
-		...(values.auditNotes.trim().length > 0 && { auditNotes: values.auditNotes }),
 	};
 	return input;
 }
