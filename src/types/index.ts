@@ -488,6 +488,10 @@ export interface RoadmapConfig {
 		};
 	};
 	relay?: RelayConfig;
+	coordination?: {
+		heartbeatIntervalMs?: number;
+		claimExpiryMs?: number;
+	};
 }
 
 export interface DatabaseConfig {
