@@ -3147,10 +3147,6 @@ export class Core {
 		}
 	}
 
-	async listProposalsWithMetadata(
-		includeBranchMeta = false,
-	): Promise<Array<Proposal & { lastModified?: Date; branch?: string }>> {
-
 	/**
 	 * Get completed proposals older than a specified number of days
 	 */
