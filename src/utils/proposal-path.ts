@@ -194,7 +194,7 @@ export async function getProposalPath(proposalId: string, core?: Core | Proposal
 		// Fallback: search by prefix if configured
 		const fs = coreInstance.filesystem as any;
 		const config = await fs.loadConfig?.();
-		const configuredPrefix = config?.proposal_prefix || config?.prefixes?.proposal || DEFAULT_STATE_PREFIX;
+		const configuredPrefix = config?.prefixes?.proposal || DEFAULT_STATE_PREFIX;
 		const globPattern = buildGlobPattern(configuredPrefix);
 		const files = await Array.fromAsync(glob(globPattern, { cwd: coreInstance.filesystem.proposalsDir }));
 		const proposalFile = findMatchingFile(files, proposalId, configuredPrefix);

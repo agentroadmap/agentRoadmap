@@ -238,12 +238,12 @@ const clackPromptRunner: ProposalWizardPromptRunner = async (question) => {
 			validate: question.validate,
 			render() {
 				const withGuide = clack.settings.withGuide;
-				const header = `${withGuide ? `${picocolors.gray(clack.S_BAR)}\n` : ""}${clack.symbol(this.prompt)}  ${question.message}\n`;
+				const header = `${withGuide ? `${picocolors.gray(clack.S_BAR)}\n` : ""}${clack.symbol(this.state)}  ${question.message}\n`;
 				const placeholder = picocolors.inverse(picocolors.hidden("_"));
 				const inputValue = this.userInput.length > 0 ? this.userInputWithCursor : placeholder;
 				const submittedValue = String(this.value ?? "");
 
-				switch (this.prompt) {
+				switch (this.state) {
 					case "error": {
 						const linePrefix = withGuide ? `${picocolors.yellow(clack.S_BAR)}  ` : "";
 						const footer = withGuide ? picocolors.yellow(clack.S_BAR_END) : "";
