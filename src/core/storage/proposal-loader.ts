@@ -9,6 +9,7 @@
  */
 
 import { DEFAULT_DIRECTORIES } from "../../constants/index.ts";
+import type { ProposalDirectoryType } from "../dag/cross-branch-proposals.ts";
 import type { GitOperations } from "../../git/operations.ts";
 import { parseProposal } from "../../markdown/parser.ts";
 import type { RoadmapConfig, Proposal } from "../../types/index.ts";

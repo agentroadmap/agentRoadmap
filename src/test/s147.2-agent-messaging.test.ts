@@ -4,8 +4,8 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { registerAgent } from '../core/agent-registry/index.ts';
-import { sendMessage, getMessages, acknowledgeMessage, getMessage, getReplyChain, clearMessages } from '../core/agent-messaging/index.ts';
+import { registerAgent } from '../core/identity/agent-registry/index.ts';
+import { sendMessage, getMessages, acknowledgeMessage, getMessage, getReplyChain, clearMessages } from '../core/messaging/agent-messaging/index.ts';
 
 describe('S147.2: 1:1 Agent-to-Agent Messaging', () => {
   

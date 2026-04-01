@@ -3,6 +3,7 @@ import type { Decision, Document, Proposal } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import {
 	AcceptanceCriteriaManager,
+	type StructuredSectionValues,
 	VerificationProposalmentsManager,
 	getStructuredSections,
 	updateStructuredSections,
