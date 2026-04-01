@@ -587,7 +587,6 @@ export class AuditLog {
       result: params.result,
       details: params.details,
       previousHash: this.lastHash,
-      hash: "", // Will be computed
     };
 
     const hash = this.computeHash(entry, this.lastHash);
