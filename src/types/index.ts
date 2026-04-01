@@ -28,6 +28,7 @@ export interface ProposalClaim {
 	expires: string;
 	lastHeartbeat?: string;
 	heartbeatIntervalMs?: number;
+	message?: string;
 }
 
 export interface ActivityLogEntry {
@@ -128,6 +129,8 @@ export interface Proposal {
 	origin?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-proposal callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+	/** Budget limit in USD for this proposal (from SDB budget_limit_usd) */
+	budgetLimitUsd?: number;
 }
 
 export type ProposalMaturity = "skeleton" | "contracted" | "audited";
@@ -291,6 +294,9 @@ export interface ProposalUpdateInput {
 	claim?: ProposalClaim | null;
 	rationale?: string;
 	rawContent?: string;
+	auditNotes?: string;
+	appendAuditNotes?: string[];
+	clearAuditNotes?: boolean;
 }
 
 export interface ProposalListFilter {

@@ -106,6 +106,15 @@ interface ProposalQueryOptions {
 	includeCrossBranch?: boolean;
 }
 
+/** Local budget configuration (.roadmap/budget.json) */
+interface BudgetConfig {
+	agents?: Record<string, {
+		dailyLimitUsd: number;
+		totalSpentTodayUsd: number;
+		isFrozen: boolean;
+	}>;
+}
+
 export type TuiProposalEditFailureReason = "not_found" | "read_only" | "editor_failed";
 
 export interface TuiProposalEditResult {
@@ -242,7 +251,7 @@ export class Core {
 	 */
 	private getIdRegistry(): IdRegistry {
 		if (!this.idRegistry) {
-			this.idRegistry = new IdRegistry(this.fs.projectRoot);
+			this.idRegistry = new IdRegistry(this.fs.rootDir);
 		}
 		return this.idRegistry;
 	}
@@ -255,6 +264,20 @@ export class Core {
 			this.rateLimiter = new RateLimiter(this.fs.projectRoot);
 		}
 		return this.rateLimiter;
+	}
+
+	/**
+	 * Load budget configuration from .roadmap/budget.json (local agent spending limits).
+	 * Returns null if no config exists (unlimited budget for local dev).
+	 */
+	async loadBudgetConfig(): Promise<BudgetConfig | null> {
+		try {
+			const budgetPath = join(this.fs.rootDir, ".roadmap", "budget.json");
+			const content = await readFile(budgetPath, "utf-8");
+			return JSON.parse(content) as BudgetConfig;
+		} catch {
+			return null; // No config = unlimited (safe default)
+		}
 	}
 
 	async getContentStore(): Promise<ContentStore> {
@@ -2358,9 +2381,30 @@ export class Core {
 		agent: string,
 		options?: { durationMinutes?: number; message?: string; force?: boolean; autoCommit?: boolean },
 	): Promise<Proposal> {
-		// STATE-44: Check rate limit before claiming (unless force=true)
+		// Check budget before claiming (unless force=true)
 		if (!options?.force) {
 			const proposal = await this.fs.loadProposal(proposalId);
+			
+			// Budget guard: check if proposal has a budget limit and agent can afford it
+			if (proposal?.budgetLimitUsd && proposal.budgetLimitUsd > 0) {
+				const budgetConfig = await this.loadBudgetConfig();
+				if (budgetConfig) {
+					const agentBudget = budgetConfig.agents?.[agent];
+					if (agentBudget?.isFrozen) {
+						throw new Error(`Budget: Agent '${agent}' spending is frozen`);
+					}
+					if (agentBudget && agentBudget.dailyLimitUsd > 0) {
+						const remaining = agentBudget.dailyLimitUsd - agentBudget.totalSpentTodayUsd;
+						if (proposal.budgetLimitUsd > remaining) {
+							throw new Error(
+								`Budget exceeded for '${agent}': $${agentBudget.totalSpentTodayUsd.toFixed(2)} spent of $${agentBudget.dailyLimitUsd.toFixed(2)} daily limit (need $${proposal.budgetLimitUsd.toFixed(2)})`,
+							);
+						}
+					}
+				}
+			}
+
+			// STATE-44: Check rate limit before claiming
 			const priority = proposal?.priority ?? "medium";
 			const rateLimiter = this.getRateLimiter();
 			const check = rateLimiter.canClaim(agent, proposalId, priority);
