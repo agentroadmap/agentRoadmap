@@ -326,9 +326,11 @@ export class FrameworkAdapterImpl {
 	 * AC#4: Testing patterns adapt to project setup
 	 */
 	loadTestingPatterns(detection: ProjectDetection): TestingPatterns {
-		const allDeps = {
-			...(detection.packageJson.dependencies ?? {}),
-			...(detection.packageJson.devDependencies ?? {}),
+		const deps = detection.packageJson.dependencies as Record<string, string> | undefined;
+		const devDeps = detection.packageJson.devDependencies as Record<string, string> | undefined;
+		const allDeps: Record<string, string> = {
+			...(deps ?? {}),
+			...(devDeps ?? {}),
 		};
 
 		const patterns: TestingPatterns = {
