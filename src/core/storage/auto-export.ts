@@ -69,7 +69,7 @@ function autoCommit(message: string): void {
     execSync('git push', { cwd: process.cwd() });
     console.log(`[AutoExport] Committed: ${message}`);
   } catch (e) {
-    console.log(`[AutoExport] Commit failed: ${e.message}`);
+    console.log(`[AutoExport] Commit failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

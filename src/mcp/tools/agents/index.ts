@@ -7,7 +7,7 @@
 
 import { updateReporting, grantPrivilege, revokePrivilege } from "./handlers.ts";
 import type { McpServer } from "../../server.ts";
-import type { McpToolHandler } from "../../types.ts";
+import type { McpToolHandler, CallToolResult } from "../../types.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import { AgentPoolHandlers } from "./handlers.ts";
 import {
@@ -139,7 +139,7 @@ export function registerAgentTools(server: McpServer): void {
 	server.addTool(poolStatsTool);
 
 	// ── agent_update_reporting ──────────────────────────────────────────────
-	const reportingTool: McpToolHandler = createSimpleValidatedTool(
+	const reportingTool = createSimpleValidatedTool(
 		{
 			name: "agent_update_reporting",
 			description: "Update who an agent reports to in the reporting hierarchy.",
@@ -153,11 +153,11 @@ export function registerAgentTools(server: McpServer): void {
 			},
 		},
 		{ type: "object", properties: { agentId: { type: "string" }, managerId: { type: "string" } } },
-		async (input: any) => updateReporting(input as any),
+		async (input: any) => updateReporting(input as any) as Promise<CallToolResult>,
 	);
 
 	// ── privilege_grant ─────────────────────────────────────────────────────
-	const grantTool: McpToolHandler = createSimpleValidatedTool(
+	const grantTool = createSimpleValidatedTool(
 		{
 			name: "privilege_grant",
 			description: "Grant a privilege (read/edit/claim/review/admin/budget) to an agent.",
@@ -172,11 +172,11 @@ export function registerAgentTools(server: McpServer): void {
 			},
 		},
 		{ type: "object", properties: { agentId: { type: "string" }, permission: { type: "string" }, grantedBy: { type: "string" } } },
-		async (input: any) => grantPrivilege(input as any),
+		async (input: any) => grantPrivilege(input as any) as Promise<CallToolResult>,
 	);
 
 	// ── privilege_revoke ────────────────────────────────────────────────────
-	const revokeTool: McpToolHandler = createSimpleValidatedTool(
+	const revokeTool = createSimpleValidatedTool(
 		{
 			name: "privilege_revoke",
 			description: "Revoke a privilege by ID.",
@@ -187,7 +187,7 @@ export function registerAgentTools(server: McpServer): void {
 			},
 		},
 		{ type: "object", properties: { privilegeId: { type: "number" } } },
-		async (input: any) => revokePrivilege(input as any),
+		async (input: any) => revokePrivilege(input as any) as Promise<CallToolResult>,
 	);
 
 	server.addTool(reportingTool);

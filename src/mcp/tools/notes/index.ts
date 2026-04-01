@@ -14,7 +14,7 @@ export function registerNoteTools(server: McpServer, projectRoot: string): void 
 			inputSchema: noteCreateSchema,
 		},
 		noteCreateSchema,
-		async (args) => handlers.createNote(args),
+		async (args) => handlers.createNote(args as { proposal_id: string; content: string; note_type?: string; author?: string }),
 	);
 
 	const listTool = createSimpleValidatedTool(
@@ -24,7 +24,7 @@ export function registerNoteTools(server: McpServer, projectRoot: string): void 
 			inputSchema: noteListSchema,
 		},
 		noteListSchema,
-		async (args) => handlers.listNotes(args),
+		async (args) => handlers.listNotes(args as { proposal_id: string; note_type?: string; limit?: number }),
 	);
 
 	const deleteTool = createSimpleValidatedTool(
@@ -34,7 +34,7 @@ export function registerNoteTools(server: McpServer, projectRoot: string): void 
 			inputSchema: noteDeleteSchema,
 		},
 		noteDeleteSchema,
-		async (args) => handlers.deleteNote(args),
+		async (args) => handlers.deleteNote(args as { note_id: number; proposal_id?: string }),
 	);
 
 	const displayTool = createSimpleValidatedTool(
@@ -44,7 +44,7 @@ export function registerNoteTools(server: McpServer, projectRoot: string): void 
 			inputSchema: noteDisplaySchema,
 		},
 		noteDisplaySchema,
-		async (args) => handlers.displayNotes(args),
+		async (args) => handlers.displayNotes(args as { proposal_id: string; note_type?: string }),
 	);
 
 	server.addTool(createTool);

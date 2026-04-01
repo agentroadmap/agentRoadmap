@@ -205,7 +205,7 @@ export class AuditTrail {
 		limit?: number;
 	}): MigrationAuditEvent[] {
 		let sql = "SELECT * FROM audit_events WHERE 1=1";
-		const params: unknown[] = [];
+		const params: any[] = [];
 
 		if (filters.agentId) {
 			sql += " AND agent_id = ?";
@@ -269,7 +269,7 @@ export class AuditTrail {
 		const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
 		const stmt = this.db.prepare("DELETE FROM audit_events WHERE timestamp < ?");
 		const result = stmt.run(cutoff);
-		return result.changes;
+		return Number(result.changes);
 	}
 }
 
@@ -563,7 +563,7 @@ export class AgentTokenStore {
 		`);
 
 		const result = stmt.run(agentId);
-		return result.changes;
+		return Number(result.changes);
 	}
 
 	/**
@@ -575,7 +575,7 @@ export class AgentTokenStore {
 		`);
 
 		const result = stmt.run();
-		return result.changes;
+		return Number(result.changes);
 	}
 }
 
