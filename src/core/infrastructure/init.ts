@@ -10,7 +10,7 @@ import {
 import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
 import type { RoadmapConfig } from "../../types/index.ts";
 import { BLUEPRINTS, type BlueprintType } from "./blueprints.ts";
-import type { Core } from "./roadmap.ts";
+import type { Core } from "../roadmap.ts";
 
 export const MCP_SERVER_NAME = "roadmap";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Roadmap.md#-mcp-integration-model-context-protocol";
