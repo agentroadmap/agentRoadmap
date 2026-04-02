@@ -106,12 +106,12 @@ export class SdbProposalHandlers {
       const domain_id = args.domain_id || "GENERAL";
       const title = args.title;
       const priority = args.priority || "Medium";
-      const body_markdown = args.description || null;
-      const parent_id = args.parent_id || null;
+      const body_markdown = args.description || "";
+      const parent_id = args.parent_id ? args.parent_id.toString() : "";
       const budget_limit_usd = args.budget_limit_usd || 0;
       
       await this.callReducer('create_proposal', [
-        proposal_type, category, domain_id, title, priority, body_markdown, parent_id, budget_limit_usd
+        proposal_type, category, domain_id, title, priority, body_markdown, parent_id, budget_limit_usd.toString()
       ]);
       
       return {
@@ -167,11 +167,11 @@ export class SdbProposalHandlers {
   }): Promise<CallToolResult> {
     try {
       const proposalId = args.proposalId;
-      const title = args.title || null;
-      const body_markdown = args.body_markdown || null;
-      const priority = args.priority || null;
-      const maturity_level = args.maturity_level !== undefined ? args.maturity_level.toString() : null;
-      const tags = args.tags || null;
+      const title = args.title || "";
+      const body_markdown = args.body_markdown || "";
+      const priority = args.priority || "";
+      const maturity_level = args.maturity_level !== undefined ? args.maturity_level.toString() : "";
+      const tags = args.tags || "";
       const change_summary = args.change_summary;
       
       await this.callReducer('update_proposal', [
