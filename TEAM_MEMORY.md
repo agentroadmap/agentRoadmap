@@ -59,11 +59,12 @@
 
 - **Proposals in SDB:** 40 (22 root + 15 children + 3 test)
 - **Proposals in markdown:** 37 files in roadmap/proposals/
-- **MCP server:** Running on port 6421
+- **MCP server:** Running on port 6421 (with prop_* tools)
 - **TypeScript errors:** 0 (main codebase)
-- **Display IDs:** Still old random names (need to be P001, P002 format)
-- **Maturity levels:** All None (should be 0 for new proposals)
+- **Display IDs:** Still old random names (RFC-20260401-BUSINESS-DESIGN)
+- **Maturity levels:** All set to 0 (New) ✅
 - **Body content:** Empty for all proposals (need to populate from markdown)
+- **MCP tools renamed:** prop_list, prop_get, prop_create, prop_update, prop_complete
 
 ## Next Steps
 
