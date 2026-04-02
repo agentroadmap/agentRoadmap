@@ -1,0 +1,58 @@
+# Team Memory - AgentRoadmap
+
+## Architecture Principles
+
+### Data Flow
+- **SDB (SpacetimeDB)** = Source of truth for proposals
+- **Markdown files** = Export/backup format for Git
+- **Correct flow:** Create proposal via MCP → SDB → Export to markdown → Git
+
+### Git Strategy
+- **origin** → gitlab.local (development, daily pushes)
+- **github** → github.com (publishing, long-term sustainment)
+- **Convention:** Gilbert handles git operations as Git Workflow Master (not a hard rule)
+
+### MCP Server
+- **Database:** roadmap2 (SDB name)
+- **Port:** 6421 (HTTP health endpoint)
+- **Transport:** stdio (for Claude Code) + HTTP (health only)
+- **Config:** `config.yml` in project root
+
+### Config Structure
+- **Init-time values:** Set during `roadmap init` (project name, database, MCP port)
+- **Runtime values:** Discovered or overridden at runtime (SDB URL, component maturity)
+- **Component metadata:** Status/maturity stored in SDB, not config
+
+### Proposal System
+- **Primary key:** `id` (auto-incremented by SDB)
+- **Display ID:** Human-readable (e.g., RFC-20260401-SECURITY)
+- **Maturity levels:** 0-3 universal scale (0=New, 1=Active, 2=Complete, 3=Mature)
+- **Types:** DIRECTIVE, CAPABILITY, TECHNICAL, COMPONENT, OPS_ISSUE
+
+### Hardcoding Prevention
+- **Script:** `npm run check:hardcoded` catches hardcoded database names/URLs
+- **ESLint:** Use config/env vars for external dependencies
+- **Convention:** No hardcoded DB names, ports, or URLs in code
+
+## Key Decisions (2026-04-01)
+
+1. **Maturity model:** 0-3 universal scale across all statuses
+2. **Terminology:** "proposal" not "state" (schema change)
+3. **Config design:** Structured with database, MCP, git sections
+4. **Git push:** Convention for Gilbert to handle, not hard rule
+5. **Issue tracking:** Use MCP/SDB proposals internally, GitHub after public release
+6. **Duplicate prevention:** Check for duplicate proposals before inserting
+
+## Current Status
+
+- **Proposals in SDB:** 0 (need to create via MCP)
+- **Proposals in markdown:** 37 files in roadmap/proposals/
+- **MCP server:** Running on port 6421
+- **TypeScript errors:** 0 (main codebase)
+
+## Next Steps
+
+1. Create all 37 proposals in SDB via MCP
+2. Export to markdown for Git backup
+3. Update config.yml with structured format
+4. Fix hardcoded database names in source code
