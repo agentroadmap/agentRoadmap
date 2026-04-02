@@ -61,6 +61,9 @@
 - **Proposals in markdown:** 37 files in roadmap/proposals/
 - **MCP server:** Running on port 6421
 - **TypeScript errors:** 0 (main codebase)
+- **Display IDs:** Still old random names (need to be P001, P002 format)
+- **Maturity levels:** All None (should be 0 for new proposals)
+- **Body content:** Empty for all proposals (need to populate from markdown)
 
 ## Next Steps
 
