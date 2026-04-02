@@ -359,7 +359,7 @@ export async function exportAll(): Promise<string> {
   index += `- [Messages](messages/) — Agent communication logs\n`;
   index += `- [DAG](dag/) — Dependency graph visualization\n\n`;
   index += `## Source\n\n`;
-  index += `All data sourced from SpacetimeDB (agent-roadmap-v2).\n`;
+  index += `All data sourced from SpacetimeDB (${process.env.SDB_NAME ?? "roadmap2"}).\n`;
   index += `Markdown files are Git artifacts — edit via MCP/CLI, not directly.\n`;
   
   writeFileSync(join(exportDir, "README.md"), index);
