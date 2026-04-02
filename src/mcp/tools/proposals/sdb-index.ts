@@ -48,11 +48,21 @@ const proposalUpdateSchema: JsonSchema = {
     title: { type: "string", description: "New title" },
     body_markdown: { type: "string", description: "New body content" },
     priority: { type: "string", enum: ["Strategic", "High", "Medium", "Low"], description: "New priority" },
-    maturity_level: { type: "number", enum: [0, 1, 2, 3], description: "Maturity: 0=New, 1=Active, 2=Complete, 3=Mature" },
+    maturity_level: { type: "number" as const, description: "Maturity: 0=New, 1=Active, 2=Complete, 3=Mature" },
     tags: { type: "string", description: "Comma-separated tags" },
     change_summary: { type: "string", description: "What changed (for version history)" },
   },
   required: ["proposalId", "change_summary"],
+};
+
+const proposalTransitionSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID (e.g., P001)" },
+    new_status: { type: "string", enum: ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected"], description: "New status to transition to" },
+    change_summary: { type: "string", description: "Reason for transition" },
+  },
+  required: ["proposalId", "new_status", "change_summary"],
 };
 
 const proposalCompleteSchema: JsonSchema = {
@@ -91,10 +101,16 @@ export function registerSdbProposalTools(server: McpServer, projectRoot: string)
   ));
 
   server.addTool(createSimpleValidatedTool(
+    { name: "prop_transition", description: "Transition proposal status (New→Draft→Review→Active→Complete)", inputSchema: proposalTransitionSchema },
+    proposalTransitionSchema,
+    (input) => handlers.transitionProposal(input as { proposalId: string; new_status: string; change_summary: string }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
     { name: "prop_complete", description: "Mark a proposal as complete", inputSchema: proposalCompleteSchema },
     proposalCompleteSchema,
     (input) => handlers.completeProposal(input as { proposalId: string }),
   ));
 
-  console.log('[Proposals] Registered 5 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_complete');
+  console.log('[Proposals] Registered 6 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete');
 }
