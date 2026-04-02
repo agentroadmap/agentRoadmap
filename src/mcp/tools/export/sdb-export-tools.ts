@@ -14,7 +14,7 @@ import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 
 import { join } from "node:path";
 import { requireProjectRoot } from "../../../utils/project-root.ts";
 
-const DB_NAME = "agent-roadmap-v2";
+const DB_NAME = process.env.SDB_NAME ?? "roadmap2";
 
 async function getExportPaths() {
   const projectRoot = await requireProjectRoot();

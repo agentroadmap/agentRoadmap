@@ -6,7 +6,7 @@
 import { execSync } from 'child_process';
 import { querySdbSync } from '../../core/storage/sdb-client.ts';
 
-const DB_NAME = 'agent-roadmap-v2';
+const DB_NAME = process.env.SDB_NAME ?? "roadmap2";
 
 // Helper to query SpacetimeDB
 function queryDb(sql: string): any[] {

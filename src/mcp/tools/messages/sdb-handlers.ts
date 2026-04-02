@@ -134,7 +134,7 @@ export class SdbMessageHandlers {
     const { execSync } = await import('child_process');
     try {
       const result = execSync(
-        `spacetime sql --server local agent-roadmap-v2 "${sql}"`,
+        `spacetime sql --server local ${process.env.SDB_NAME ?? "roadmap2"} "${sql}"`,
         { encoding: 'utf8', cwd: this.projectRoot }
       );
       // Parse tabular output (simplified)
@@ -159,7 +159,7 @@ export class SdbMessageHandlers {
     // Arguments are already JSON-encoded strings
     const argsStr = args.join(' ');
     execSync(
-      `spacetime call --server local agent-roadmap-v2 ${name} ${argsStr}`,
+      `spacetime call --server local ${process.env.SDB_NAME ?? "roadmap2"} ${name} ${argsStr}`,
       { encoding: 'utf8', cwd: this.projectRoot, stdio: 'pipe' }
     );
   }

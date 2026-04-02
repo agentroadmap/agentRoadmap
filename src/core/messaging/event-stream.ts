@@ -7,7 +7,7 @@
 
 import { querySdbSync } from "../storage/sdb-client.ts";
 
-const DB_NAME = "agent-roadmap-v2";
+const DB_NAME = process.env.SDB_NAME ?? "roadmap2";
 
 /** Event types for proposal lifecycle */
 export type EventType =

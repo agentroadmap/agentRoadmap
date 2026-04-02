@@ -127,7 +127,7 @@ export class SdbProposalHandlers {
   private async querySql(sql: string): Promise<any[]> {
     try {
       const result = execSync(
-        `spacetime sql --server local agent-roadmap-v2 "${sql}"`,
+        `spacetime sql --server local ${process.env.SDB_NAME ?? "roadmap2"} "${sql}"`,
         { encoding: 'utf8', cwd: this.projectRoot }
       );
       const lines = result.trim().split('\n').filter(l => !l.includes('WARNING'));
@@ -149,7 +149,7 @@ export class SdbProposalHandlers {
   private async callReducer(name: string, args: string[]): Promise<void> {
     const argsStr = args.map(a => `"${a}"`).join(' ');
     execSync(
-      `spacetime call --server local agent-roadmap-v2 ${name} ${argsStr}`,
+      `spacetime call --server local ${process.env.SDB_NAME ?? "roadmap2"} ${name} ${argsStr}`,
       { encoding: 'utf8', cwd: this.projectRoot, stdio: 'pipe' }
     );
   }
