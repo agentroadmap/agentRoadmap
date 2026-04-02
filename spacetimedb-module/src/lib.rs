@@ -304,6 +304,7 @@ pub fn update_proposal(
     title: Option<String>,
     body_markdown: Option<String>,
     priority: Option<String>,
+    maturity_level: Option<u32>,
     tags: Option<String>,
     change_summary: String,
 ) {
@@ -322,6 +323,10 @@ pub fn update_proposal(
     if let Some(p) = priority {
         metadata_changes.push_str(&format!("\"priority\":\"{}\",", p));
         proposal.priority = p;
+    }
+    if let Some(m) = maturity_level {
+        metadata_changes.push_str(&format!("\"maturity_level\":{},", m));
+        proposal.maturity_level = Some(m);
     }
     if let Some(ref tags) = tags {
         proposal.tags = Some(tags.clone());
