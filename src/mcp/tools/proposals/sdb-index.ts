@@ -73,6 +73,32 @@ const proposalCompleteSchema: JsonSchema = {
   required: ["proposalId"],
 };
 
+const proposalAcAddSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID (e.g., P001)" },
+    description: { type: "string", description: "Acceptance criteria description" },
+  },
+  required: ["proposalId", "description"],
+};
+
+const proposalAcCheckSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID (e.g., P001)" },
+    criteriaId: { type: "number", description: "Criteria ID to mark as verified" },
+  },
+  required: ["proposalId", "criteriaId"],
+};
+
+const proposalAcRemoveSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    criteriaId: { type: "number", description: "Criteria ID to remove" },
+  },
+  required: ["criteriaId"],
+};
+
 export function registerSdbProposalTools(server: McpServer, projectRoot: string): void {
   const handlers = new SdbProposalHandlers(server, projectRoot);
 
@@ -112,5 +138,23 @@ export function registerSdbProposalTools(server: McpServer, projectRoot: string)
     (input) => handlers.completeProposal(input as { proposalId: string }),
   ));
 
-  console.log('[Proposals] Registered 6 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete');
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_ac_add", description: "Add acceptance criteria to a proposal", inputSchema: proposalAcAddSchema },
+    proposalAcAddSchema,
+    (input) => handlers.addCriteria(input as { proposalId: string; description: string }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_ac_check", description: "Mark acceptance criteria as verified", inputSchema: proposalAcCheckSchema },
+    proposalAcCheckSchema,
+    (input) => handlers.checkCriteria(input as { proposalId: string; criteriaId: number }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_ac_remove", description: "Remove acceptance criteria", inputSchema: proposalAcRemoveSchema },
+    proposalAcRemoveSchema,
+    (input) => handlers.removeCriteria(input as { criteriaId: number }),
+  ));
+
+  console.log('[Proposals] Registered 9 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete, prop_ac_add, prop_ac_check, prop_ac_remove');
 }
