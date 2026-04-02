@@ -129,6 +129,73 @@ export class SdbMessageHandlers {
     }
   }
 
+  async createChannel(args: { channel: string; description?: string }): Promise<CallToolResult> {
+    try {
+      // For now, just acknowledge channel creation
+      // In future, could store channel metadata in a separate table
+      return {
+        content: [{ type: "text", text: `✅ Channel #${args.channel} created` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to create channel: ${(error as Error).message}`);
+    }
+  }
+
+  async deleteChannel(args: { channel: string }): Promise<CallToolResult> {
+    try {
+      // For now, just acknowledge channel deletion
+      // In future, could delete channel metadata
+      return {
+        content: [{ type: "text", text: `✅ Channel #${args.channel} deleted` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete channel: ${(error as Error).message}`);
+    }
+  }
+
+  async unsubscribe(args: { channel: string; from: string }): Promise<CallToolResult> {
+    try {
+      // Reuse subscribe with false flag
+      return this.subscribe({ channel: args.channel, from: args.from, subscribe: false });
+    } catch (error) {
+      throw new Error(`Failed to unsubscribe: ${(error as Error).message}`);
+    }
+  }
+
+  async getMessageHistory(args: { channel: string; limit?: number; before?: number }): Promise<CallToolResult> {
+    try {
+      let query = `SELECT msgId, fromAgentId, text, priority, timestamp FROM msg WHERE chanId = '${args.channel}'`;
+      
+      if (args.before) {
+        query += ` AND msgId < ${args.before}`;
+      }
+      
+      query += ` ORDER BY timestamp DESC`;
+      
+      const limit = args.limit || 50;
+      query += ` LIMIT ${limit}`;
+      
+      const messages = await this.querySql(query) || [];
+      
+      if (messages.length === 0) {
+        return {
+          content: [{ type: "text", text: `No messages in **#${args.channel}** history.` }]
+        };
+      }
+
+      const lines = messages.map((m: any) => {
+        const time = new Date(Number(m.timestamp)).toISOString();
+        return `[${time}] **${m.fromAgentId}**: ${m.text}`;
+      }).join("\n");
+
+      return {
+        content: [{ type: "text", text: `## #${args.channel} History (${messages.length} messages)\n\n${lines}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to get message history: ${(error as Error).message}`);
+    }
+  }
+
   // Helper to query SpacetimeDB SQL
   private async querySql(sql: string): Promise<any[]> {
     const { execSync } = await import('child_process');

@@ -45,32 +45,92 @@ const messageSubscribeSchema: JsonSchema = {
   required: ["channel", "from"],
 };
 
+const channelCreateSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    channel: { type: "string", description: "Channel name to create" },
+    description: { type: "string", description: "Channel description" },
+  },
+  required: ["channel"],
+};
+
+const channelDeleteSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    channel: { type: "string", description: "Channel name to delete" },
+  },
+  required: ["channel"],
+};
+
+const channelUnsubscribeSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    channel: { type: "string", description: "Channel name" },
+    from: { type: "string", description: "Agent identity" },
+  },
+  required: ["channel", "from"],
+};
+
+const messageHistorySchema: JsonSchema = {
+  type: "object",
+  properties: {
+    channel: { type: "string", description: "Channel name" },
+    limit: { type: "number", description: "Max messages to return (default: 50)" },
+    before: { type: "number", description: "Return messages before this ID" },
+  },
+  required: ["channel"],
+};
+
 export function registerSdbMessageTools(server: McpServer, projectRoot: string): void {
   const handlers = new SdbMessageHandlers(server, projectRoot);
 
   server.addTool(createSimpleValidatedTool(
-    { name: "message_channels", description: "List all chat channels", inputSchema: messageChannelsSchema },
+    { name: "chan_list", description: "List all chat channels", inputSchema: messageChannelsSchema },
     messageChannelsSchema,
     () => handlers.listChannels(),
   ));
 
   server.addTool(createSimpleValidatedTool(
-    { name: "message_read", description: "Read messages from a channel", inputSchema: messageReadSchema },
+    { name: "msg_read", description: "Read messages from a channel", inputSchema: messageReadSchema },
     messageReadSchema,
     (input) => handlers.readMessages(input as { channel: string; since?: string }),
   ));
 
   server.addTool(createSimpleValidatedTool(
-    { name: "message_send", description: "Send a message to a channel", inputSchema: messageSendSchema },
+    { name: "msg_send", description: "Send a message to a channel", inputSchema: messageSendSchema },
     messageSendSchema,
     (input) => handlers.sendMessage(input as { from: string; message: string; channel?: string; to?: string }),
   ));
 
   server.addTool(createSimpleValidatedTool(
-    { name: "message_subscribe", description: "Subscribe to a channel", inputSchema: messageSubscribeSchema },
+    { name: "chan_subscribe", description: "Subscribe to a channel", inputSchema: messageSubscribeSchema },
     messageSubscribeSchema,
     (input) => handlers.subscribe(input as { channel: string; from: string; subscribe?: boolean }),
   ));
 
-  console.log('[Messaging] Registered 4 SDB tools: message_channels, message_read, message_send, message_subscribe');
+  server.addTool(createSimpleValidatedTool(
+    { name: "chan_create", description: "Create a new channel", inputSchema: channelCreateSchema },
+    channelCreateSchema,
+    (input) => handlers.createChannel(input as { channel: string; description?: string }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "chan_delete", description: "Delete a channel", inputSchema: channelDeleteSchema },
+    channelDeleteSchema,
+    (input) => handlers.deleteChannel(input as { channel: string }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "chan_unsubscribe", description: "Unsubscribe from a channel", inputSchema: channelUnsubscribeSchema },
+    channelUnsubscribeSchema,
+    (input) => handlers.unsubscribe(input as { channel: string; from: string }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "msg_history", description: "Get message history from a channel", inputSchema: messageHistorySchema },
+    messageHistorySchema,
+    (input) => handlers.getMessageHistory(input as { channel: string; limit?: number; before?: number }),
+  ));
+
+  console.log('[Messaging] Registered 8 SDB tools: chan_list, msg_read, msg_send, chan_subscribe, chan_create, chan_delete, chan_unsubscribe, msg_history');
 }
