@@ -34,7 +34,7 @@ export function registerSdbMilestoneTools(server: McpServer, projectRoot: string
     async (input) => {
       const args = input as { id: string; name: string; dueDate?: string };
       try {
-        execSync(`spacetime call --server local agent-roadmap-v2 create_step "${args.id}" "${args.name}" ""`, { encoding: 'utf8', cwd: projectRoot, stdio: 'pipe' });
+        execSync(`spacetime call --server local ${process.env.SDB_NAME ?? "roadmap2"} create_step "${args.id}" "${args.name}" ""`, { encoding: 'utf8', cwd: projectRoot, stdio: 'pipe' });
         return { content: [{ type: "text", text: `✅ Created directive: ${args.id}` }] };
       } catch (error) {
         throw new Error(`Failed: ${(error as Error).message}`);
@@ -47,7 +47,7 @@ export function registerSdbMilestoneTools(server: McpServer, projectRoot: string
 
 async function querySql(sql: string): Promise<any[]> {
   try {
-    const result = execSync(`spacetime sql --server local agent-roadmap-v2 "${sql}"`, { encoding: 'utf8' });
+    const result = execSync(`spacetime sql --server local ${process.env.SDB_NAME ?? "roadmap2"} "${sql}"`, { encoding: 'utf8' });
     const lines = result.trim().split('\n').filter(l => !l.includes('WARNING'));
     if (lines.length < 2) return [];
     const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
