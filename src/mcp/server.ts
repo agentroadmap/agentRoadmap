@@ -16,18 +16,9 @@ import { getPackageName } from "../utils/app-info.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
-import { registerAgentTools } from "./tools/agents/index.ts";
-import { registerDocumentTools } from "./tools/documents/index.ts";
 import { registerExportTools } from "./tools/export/sdb-export-mcp.ts";
-import { registerKnowledgeTools } from "./tools/knowledge/index.ts";
-import { registerMessageTools } from "./tools/messages/index.ts";
-import { registerMilestoneTools } from "./tools/milestones/index.ts";
-import { registerProtocolTools } from "./tools/protocol/index.ts";
-import { registerTeamTools } from "./tools/teams/index.ts";
-import { registerProposalTools } from "./tools/proposals/index.ts";
 import { registerNoteTools } from "./tools/notes/index.ts";
 import { registerTestingTools } from "./tools/testing/index.ts";
-import { registerWorkflowTools } from "./tools/workflow/index.ts";
 import { registerSdbMessageTools } from "./tools/messages/sdb-index.ts";
 import { registerSdbProposalTools } from "./tools/proposals/sdb-index.ts";
 import { registerSdbAgentTools } from "./tools/agents/sdb-index.ts";
@@ -342,18 +333,17 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 
 	// Normal mode: full tools and resources
 	registerWorkflowResources(server);
-	registerWorkflowTools(server);
-	registerProposalTools(server, config);
+	registerSdbWorkflowTools(server, projectRoot);
+	registerSdbProposalTools(server, projectRoot);
 	registerSdbMessageTools(server, projectRoot);
 	registerNoteTools(server, projectRoot);
-	registerMilestoneTools(server);
-	registerDocumentTools(server, config);
-	registerMessageTools(server);
-	registerAgentTools(server);
-	registerKnowledgeTools(server);
-	registerProtocolTools(server);
-  registerExportTools(server);
-	await registerTeamTools(server);
+	registerSdbMilestoneTools(server, projectRoot);
+	registerSdbDocumentTools(server, projectRoot);
+	registerSdbKnowledgeTools(server, projectRoot);
+	registerSdbProtocolTools(server, projectRoot);
+	registerExportTools(server);
+	registerSdbTeamTools(server, projectRoot);
+	registerSdbAgentTools(server, projectRoot);
 	registerTestingTools(server);
 
 	// Start background maintenance tasks

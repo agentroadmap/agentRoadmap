@@ -139,7 +139,7 @@ async function sendPing(agentId: string): Promise<void> {
         jsonrpc: '2.0',
         method: 'tools/call',
         params: {
-          name: 'message_send',
+          name: 'msg_send',
           arguments: { channel, content: '[PING]', msg_type: 'ping' },
         },
       }),

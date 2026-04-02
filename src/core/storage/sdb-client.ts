@@ -7,8 +7,10 @@
 
 import { FileSystem } from "../../file-system/operations.ts";
 import { execSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
+// @ts-ignore — js-yaml has no type declarations
+import { load as parseYaml } from "js-yaml";
 
 export interface SdbConfig {
     host: string;
@@ -19,13 +21,41 @@ export interface SdbConfig {
 }
 
 export function getSdbConfigSync(): SdbConfig {
+    const defaults: SdbConfig = {
+        host: "127.0.0.1",
+        port: 3000,
+        dbName: "roadmap2",
+        httpUri: "http://127.0.0.1:3000/v1/database/roadmap2/sql",
+        wsUri: "ws://127.0.0.1:3000/v1/database/roadmap2/subscribe"
+    };
+
     try {
+        // Try config.yaml first (nested format with database section)
+        const yamlPath = join(process.cwd(), "roadmap", "config.yaml");
+        if (existsSync(yamlPath)) {
+            const content = readFileSync(yamlPath, "utf-8");
+            const cfg = parseYaml(content) as any;
+            if (cfg?.database) {
+                const host = cfg.database.host || defaults.host;
+                const port = cfg.database.port || defaults.port;
+                const dbName = cfg.database.name || defaults.dbName;
+                return {
+                    host,
+                    port,
+                    dbName,
+                    httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
+                    wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+                };
+            }
+        }
+
+        // Fallback: parse flat config.yml for database section
         const configPath = join(process.cwd(), "roadmap", "config.yml");
         const content = readFileSync(configPath, "utf-8");
-        
-        let host = "127.0.0.1";
-        let port = 3000;
-        let dbName = "roadmap2";
+
+        let host = defaults.host;
+        let port = defaults.port;
+        let dbName = defaults.dbName;
 
         const dbSection = content.match(/database:([\s\S]*?)(?=\n\w|$)/);
         if (dbSection) {
@@ -44,37 +74,63 @@ export function getSdbConfigSync(): SdbConfig {
             wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
         };
     } catch {
-        return {
-            host: "127.0.0.1",
-            port: 3000,
-            dbName: "roadmap2",
-            httpUri: "http://127.0.0.1:3000/v1/database/roadmap2/sql",
-            wsUri: "ws://127.0.0.1:3000/v1/database/roadmap2/subscribe"
-        };
+        return defaults;
     }
 }
 
 export async function getSdbConfig(): Promise<SdbConfig> {
-    const fs = new FileSystem(process.cwd());
-    const config = await fs.loadConfig();
-    
-    let host = "127.0.0.1";
-    let port = 3000;
-    let dbName = "roadmap2";
-
-    if (config?.database?.provider === "spacetime") {
-        host = config.database.host || host;
-        port = config.database.port || port;
-        dbName = config.database.name || dbName;
-    }
-
-    return {
-        host,
-        port,
-        dbName,
-        httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
-        wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+    const defaults: SdbConfig = {
+        host: "127.0.0.1",
+        port: 3000,
+        dbName: "roadmap2",
+        httpUri: "http://127.0.0.1:3000/v1/database/roadmap2/sql",
+        wsUri: "ws://127.0.0.1:3000/v1/database/roadmap2/subscribe"
     };
+
+    try {
+        // Try config.yaml first
+        const yamlPath = join(process.cwd(), "roadmap", "config.yaml");
+        if (existsSync(yamlPath)) {
+            const content = readFileSync(yamlPath, "utf-8");
+            const cfg = parseYaml(content) as any;
+            if (cfg?.database) {
+                const host = cfg.database.host || defaults.host;
+                const port = cfg.database.port || defaults.port;
+                const dbName = cfg.database.name || defaults.dbName;
+                return {
+                    host,
+                    port,
+                    dbName,
+                    httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
+                    wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+                };
+            }
+        }
+
+        // Fallback to flat config
+        const fs = new FileSystem(process.cwd());
+        const config = await fs.loadConfig();
+
+        let host = defaults.host;
+        let port = defaults.port;
+        let dbName = defaults.dbName;
+
+        if (config?.database?.provider === "spacetime") {
+            host = config.database.host || host;
+            port = config.database.port || port;
+            dbName = config.database.name || dbName;
+        }
+
+        return {
+            host,
+            port,
+            dbName,
+            httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
+            wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+        };
+    } catch {
+        return defaults;
+    }
 }
 
 /**

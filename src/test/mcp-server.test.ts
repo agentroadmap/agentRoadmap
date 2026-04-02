@@ -237,9 +237,9 @@ describe("McpServer bootstrap", () => {
 			"document_create",
 			"document_update",
 			"document_search",
-			"message_channels",
-			"message_read",
-			"message_send",
+			"chan_list",
+			"msg_read",
+			"msg_send",
 		]);
 
 		const resources = await server.testInterface.listResources();

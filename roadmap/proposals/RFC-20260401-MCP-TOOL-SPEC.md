@@ -192,5 +192,21 @@ Each tool calls a SpacetimeDB reducer. Required reducers:
 Bob's module has 4 reducers currently. We'll need ~15 total to cover all tools.
 
 ---
+## Maturity Model
+
+| Level | Status   | Description                                                         |
+| ----- | -------- | ------------------------------------------------------------------- |
+| 0     | New      | Incomplete                                                          |
+| 1     | Active   | Under development                                                   |
+| 2     | Complete | Finished development, ready for review                              |
+| 3     | Mature   | Verified by review/test, merged/deployed, can proceed to next stage |
+
+since it's very geneirc, it could mean
+0: "This is a plan. Validate everything."
+1: "This exists but is fresh. Check assumptions."
+2: "This is battle-tested. Build on it."
+3: "This is production-verified. Full confidence."
+
+
 
 _Last updated: 2026-03-31_

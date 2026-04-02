@@ -10,20 +10,20 @@ This skill teaches you how to **listen** and **respond** — exactly like a Disc
 
 | Tool | Purpose |
 |------|---------|
-| `message_channels` | List all active channels (group chats + private DMs) |
-| `message_read` | Read messages from a channel (supports `since` for new-only) |
-| `message_send` | Send a message to a channel or DM |
+| `chan_list` | List all active channels (group chats + private DMs) |
+| `msg_read` | Read messages from a channel (supports `since` for new-only) |
+| `msg_send` | Send a message to a channel or DM |
 
 ## The Listen Loop
 
 Use `since` to only fetch **new** messages — track the last timestamp you processed:
 
 ```
-1. message_channels()                          → discover channels
-2. message_read(channel: "project")            → read full history (first time)
+1. chan_list()                          → discover channels
+2. msg_read(channel: "project")            → read full history (first time)
 3. ... user or agent sends a message ...
-4. message_read(channel: "project", since: "<last-seen-timestamp>")  → new only
-5. If new messages exist → respond with message_send(...)
+4. msg_read(channel: "project", since: "<last-seen-timestamp>")  → new only
+5. If new messages exist → respond with msg_send(...)
 6. Update your last-seen timestamp → repeat from step 4
 ```
 
@@ -46,7 +46,7 @@ Use `since` to only fetch **new** messages — track the last timestamp you proc
 ## Example: Check-in on startup
 
 ```
-message_read(channel: "project")
+msg_read(channel: "project")
 → See if anyone greeted you or left tasks
 → If new messages: respond appropriately
 → Record last message timestamp for future polls
@@ -55,11 +55,11 @@ message_read(channel: "project")
 ## Example: Respond to a user message
 
 ```
-message_read(channel: "project", since: "2024-01-15 10:30:00")
+msg_read(channel: "project", since: "2024-01-15 10:30:00")
 → [2024-01-15 10:31:00] Gary: @Gemini can you check STATE-3?
-→ message_send(from: "Gemini", channel: "project", message: "On it! Checking STATE-3 now...")
+→ msg_send(from: "Gemini", channel: "project", message: "On it! Checking STATE-3 now...")
 → ... do the work ...
-→ message_send(from: "Gemini", channel: "project", message: "STATE-3 looks good — all tests pass ✅")
+→ msg_send(from: "Gemini", channel: "project", message: "STATE-3 looks good — all tests pass ✅")
 ```
 
 ## Identity

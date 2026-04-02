@@ -103,10 +103,16 @@ pub struct AttachmentRegistry {
 
 #[table(accessor = workforce_registry, public)]
 pub struct WorkforceRegistry {
-    #[primary_key]
     pub identity: String,               // Cryptographic SDB Identity
+    #[primary_key]
     pub agent_id: String,               // Readable ID (e.g., 'CODE-01')
+    pub name: String,                   // Human-readable name
     pub role: String,
+    pub clearance_level: u8,            // 1-5 (5 = Human-Level)
+    #[auto_inc]
+    pub squad_id: u32,                  // Team assignment
+    pub workspace: String,              // Assigned workspace path
+    pub api_key: String,                // Authentication key
     pub is_active: bool,
 }
 
@@ -186,6 +192,16 @@ pub struct MessageLedger {
     pub sender_identity: String,
     pub content: String,
     pub timestamp: u64,
+}
+
+#[table(accessor = subscription, public)]
+pub struct Subscription {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub agent_identity: String,
+    pub channel_name: String,
+    pub subscribed_at: u64,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -557,12 +573,17 @@ pub fn record_decision(
 // ── Workforce ──
 
 #[reducer]
-pub fn register_agent(ctx: &ReducerContext, agent_id: String, role: String) {
+pub fn register_agent(ctx: &ReducerContext, agent_id: String, name: String, role: String, clearance_level: u8, squad_id: u32, workspace: String, api_key: String) {
     let identity = ctx.sender().to_string();
     ctx.db.workforce_registry().insert(WorkforceRegistry {
         identity,
         agent_id,
+        name,
         role,
+        clearance_level: clearance_level.min(5), // Max 5
+        squad_id,
+        workspace,
+        api_key,
         is_active: true,
     });
 }
@@ -596,9 +617,9 @@ pub fn update_pulse(
 #[reducer]
 pub fn retire_agent(ctx: &ReducerContext) {
     let identity = ctx.sender().to_string();
-    if let Some(mut agent) = ctx.db.workforce_registry().identity().find(&identity) {
+    if let Some(mut agent) = ctx.db.workforce_registry().agent_id().find(&identity) {
         agent.is_active = false;
-        ctx.db.workforce_registry().identity().update(agent);
+        ctx.db.workforce_registry().agent_id().update(agent);
     }
 }
 
@@ -938,6 +959,103 @@ pub fn send_message(ctx: &ReducerContext, channel: String, content: String) {
         content,
         timestamp: now,
     });
+}
+
+#[reducer]
+pub fn subscribe_channel(ctx: &ReducerContext, channel: String, subscribe: bool) {
+    let identity = ctx.sender().to_string();
+    let now = ctx.timestamp.to_micros_since_unix_epoch() as u64;
+    
+    // Store subscription in agent_memory for now
+    let key = format!("subscribed_to_{}", channel);
+    if subscribe {
+        ctx.db.agent_memory().insert(AgentMemory {
+            id: 0,
+            agent_identity: identity,
+            scope_proposal_id: 0,
+            key,
+            val: "true".to_string(),
+            updated_at: now,
+        });
+    } else {
+        // Remove subscription
+        let ids_to_delete: Vec<u64> = ctx
+            .db
+            .agent_memory()
+            .iter()
+            .filter(|m| m.agent_identity == identity && m.key == key)
+            .map(|m| m.id)
+            .collect();
+
+        for id in ids_to_delete {
+            ctx.db.agent_memory().id().delete(id);
+        }
+    }
+}
+
+// ── Proposal Deletion ──
+
+#[reducer]
+pub fn delete_proposal(ctx: &ReducerContext, proposal_id: u64) {
+    // Guard: Only allow deletion of test proposals
+    let proposal = match ctx.db.proposal().id().find(proposal_id) {
+        Some(p) => p,
+        None => {
+            log::warn!("Proposal {} not found", proposal_id);
+            return;
+        }
+    };
+
+    // Only allow deletion of test proposals
+    if !proposal.display_id.starts_with("TEST") && !proposal.display_id.starts_with("DIR-001") {
+        log::warn!(
+            "Cannot delete {}: not a test proposal",
+            proposal.display_id
+        );
+        return;
+    }
+
+    // Delete associated records
+    let criteria_ids: Vec<u64> = ctx
+        .db
+        .proposal_criteria()
+        .iter()
+        .filter(|c| c.proposal_id == proposal_id)
+        .map(|c| c.id)
+        .collect();
+
+    for id in criteria_ids {
+        ctx.db.proposal_criteria().id().delete(id);
+    }
+
+    let decision_ids: Vec<u64> = ctx
+        .db
+        .proposal_decision()
+        .iter()
+        .filter(|d| d.proposal_id == proposal_id)
+        .map(|d| d.id)
+        .collect();
+
+    for id in decision_ids {
+        ctx.db.proposal_decision().id().delete(id);
+    }
+
+    let version_ids: Vec<u64> = ctx
+        .db
+        .proposal_version()
+        .iter()
+        .filter(|v| v.proposal_id == proposal_id)
+        .map(|v| v.id)
+        .collect();
+
+    for id in version_ids {
+        ctx.db.proposal_version().id().delete(id);
+    }
+
+    // Delete the proposal
+    ctx.db.proposal().id().delete(proposal_id);
+
+    log::info!("Deleted proposal: {}", proposal.display_id);
 }
 
 // ── Sync & Export ──

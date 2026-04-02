@@ -70,7 +70,7 @@ export const WORKFLOW_GUIDES: WorkflowGuideDefinition[] = [
 		resourceText: MCP_CHAT_SKILL,
 		toolName: "get_chat_skill",
 		toolDescription:
-			"Retrieve the chat skill guide: how to listen to channels and respond to messages using message_read, message_send, and message_channels tools",
+			"Retrieve the chat skill guide: how to listen to channels and respond to messages using msg_read, msg_send, and chan_list tools",
 	},
 ];
 

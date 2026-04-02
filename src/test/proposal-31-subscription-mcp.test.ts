@@ -1,7 +1,7 @@
 /**
  * proposal-31: Channel Subscription MCP Integration Tests
  *
- * Verifies message_subscribe MCP tool is properly exposed
+ * Verifies chan_subscribe MCP tool is properly exposed
  */
 
 import assert from "node:assert";
@@ -81,7 +81,7 @@ describe("proposal-31: Channel Subscription MCP Integration", () => {
 		});
 	});
 
-	describe("AC #5: message_subscribe MCP tool", () => {
+	describe("AC #5: chan_subscribe MCP tool", () => {
 		it("subscription handler works correctly", async () => {
 			// This tests the same logic as the MCP tool handler
 			await core.subscribeToChannel("agent1", "public");

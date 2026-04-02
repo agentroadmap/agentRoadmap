@@ -186,5 +186,19 @@ export function registerSdbProposalTools(server: McpServer, projectRoot: string)
     (input) => handlers.releaseProposal(input as { proposalId: string }),
   ));
 
-  console.log('[Proposals] Registered 11 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete, prop_ac_add, prop_ac_check, prop_ac_remove, prop_claim, prop_release');
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_delete", description: "Delete a test proposal", inputSchema: proposalDeleteSchema },
+    proposalDeleteSchema,
+    (input) => handlers.deleteProposal(input as { proposalId: string }),
+  ));
+
+  console.log('[Proposals] Registered 12 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete, prop_ac_add, prop_ac_check, prop_ac_remove, prop_claim, prop_release, prop_delete');
 }
+
+const proposalDeleteSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID to delete" },
+  },
+  required: ["proposalId"],
+};

@@ -99,7 +99,7 @@ export function registerMessageTools(server: McpServer): void {
 
 	const channelsTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "message_channels",
+			name: "chan_list",
 			description: "List all available chat channels (group chats and private DMs) in this project.",
 			inputSchema: messageChannelsSchema,
 		},
@@ -109,7 +109,7 @@ export function registerMessageTools(server: McpServer): void {
 
 	const readTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "message_read",
+			name: "msg_read",
 			description:
 				"Read messages from a chat channel. Use the 'since' parameter with the last message timestamp to fetch only new messages — this is how you listen for replies.",
 			inputSchema: messageReadSchema,
@@ -120,7 +120,7 @@ export function registerMessageTools(server: McpServer): void {
 
 	const sendTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "message_send",
+			name: "msg_send",
 			description: "Send a message to a group chat channel or a private DM with another agent.",
 			inputSchema: messageSendSchema,
 		},
@@ -130,7 +130,7 @@ export function registerMessageTools(server: McpServer): void {
 
 	const subscribeTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "message_subscribe",
+			name: "chan_subscribe",
 			description:
 				"Subscribe or unsubscribe from a channel to receive push notifications when new messages arrive. Subscriptions persist across sessions.",
 			inputSchema: messageSubscribeSchema,

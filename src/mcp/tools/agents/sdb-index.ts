@@ -1,76 +1,47 @@
-import { execSync } from 'child_process';
-import { resolve } from 'path';
+import type { McpServer } from "../../server.ts";
+import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
+import type { JsonSchema } from "../../validation/validators.ts";
+import { SdbAgentHandlers } from "./sdb-handlers.ts";
 
-const projectRoot = process.cwd();
+const agentRegisterSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", description: "Agent ID (e.g., 'andy', 'carter')" },
+    agentType: { type: "string", enum: ["human", "agent", "manager", "worker"], description: "Agent type" },
+    name: { type: "string", description: "Display name" },
+    reportsTo: { type: "string", description: "Manager's agent ID (optional)" }
+  },
+  required: ["id", "agentType", "name"]
+};
 
-export const agentTools = [
-  {
-    name: "agent_register",
-    description: "Register a new agent (human, agent, manager, worker)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Agent ID (e.g., 'andy', 'carter')" },
-        agentType: { type: "string", enum: ["human", "agent", "manager", "worker"], description: "Agent type" },
-        name: { type: "string", description: "Display name" },
-        reportsTo: { type: "string", description: "Manager's agent ID (optional)" }
-      },
-      required: ["id", "agentType", "name"]
-    }
+const agentGetSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    agentId: { type: "string", description: "Agent ID" }
   },
-  {
-    name: "agent_update_reporting",
-    description: "Update who an agent reports to",
-    inputSchema: {
-      type: "object",
-      properties: {
-        agentId: { type: "string", description: "Agent ID" },
-        managerId: { type: "string", description: "New manager ID (null for top-level)" }
-      },
-      required: ["agentId"]
-    }
-  },
-  {
-    name: "privilege_grant",
-    description: "Grant a privilege to an agent",
-    inputSchema: {
-      type: "object",
-      properties: {
-        agentId: { type: "string", description: "Agent ID" },
-        permission: { type: "string", enum: ["read", "edit", "claim", "review", "admin", "budget"], description: "Permission to grant" },
-        grantedBy: { type: "string", description: "Who is granting this" }
-      },
-      required: ["agentId", "permission", "grantedBy"]
-    }
-  },
-  {
-    name: "privilege_revoke",
-    description: "Revoke a privilege",
-    inputSchema: {
-      type: "object",
-      properties: {
-        privilegeId: { type: "number", description: "Privilege ID to revoke" }
-      },
-      required: ["privilegeId"]
-    }
-  },
-  {
-    name: "agent_get",
-    description: "Get agent details including reporting and privileges",
-    inputSchema: {
-      type: "object",
-      properties: {
-        agentId: { type: "string", description: "Agent ID" }
-      },
-      required: ["agentId"]
-    }
-  }
-];
+  required: ["agentId"]
+};
 
-export function registerSdbAgentTools(server: any, projectRoot: string): void {
-  // Register the basic tools
-  for (const tool of agentTools) {
-    server.addTool(tool);
-  }
-  console.log(`[Agents] Registered ${agentTools.length} SDB agent tools`);
+export function registerSdbAgentTools(server: McpServer, projectRoot: string): void {
+  const handlers = new SdbAgentHandlers(server, projectRoot);
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "agent_register", description: "Register a new agent", inputSchema: agentRegisterSchema },
+    agentRegisterSchema,
+    (input) => handlers.registerAgent(input as any),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "agent_get", description: "Get agent details", inputSchema: agentGetSchema },
+    agentGetSchema,
+    (input) => handlers.listAgents(input as any), // listAgents is the closest in handlers.ts
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "agent_workload", description: "Get agent workload (active claims)", inputSchema: agentGetSchema },
+    agentGetSchema,
+    (input) => handlers.getWorkload(input as { agentId: string }),
+  ));
+
+  console.log('[Agents] Registered SDB agent tools: agent_register, agent_get, agent_workload');
 }

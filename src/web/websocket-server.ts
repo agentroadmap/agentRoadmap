@@ -19,6 +19,16 @@ export function startWebSocketServer(port: number = 3001): void {
   const server = createServer();
   wss = new WebSocketServer({ server });
 
+  // Handle WebSocket server errors
+  wss.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[WS] Port ${port} already in use, WebSocket server disabled`);
+      wss = null;
+    } else {
+      console.error('[WS] WebSocket server error:', err);
+    }
+  });
+
   wss.on('connection', (ws: WebSocket) => {
     clients.add(ws);
     console.log('[WS] Client connected');
@@ -49,6 +59,15 @@ export function startWebSocketServer(port: number = 3001): void {
     console.log(`[WS] WebSocket server running on port ${port}`);
   });
 
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[WS] Port ${port} already in use, WebSocket server disabled`);
+      wss = null;
+    } else {
+      console.error('[WS] Server error:', err);
+    }
+  });
+
   // Start live subscription to SDB
   connectToSpacetimeDB();
 }
@@ -58,8 +77,7 @@ function connectToSpacetimeDB() {
     
     const conn = DbConnection.builder()
         .withUri(`ws://${config.host}:${config.port}`)
-        // @ts-ignore: withModuleName exists at runtime
-        .withModuleName(config.dbName)
+        .withDatabaseName(config.dbName)
         .build();
     sdbConnection = conn;
 

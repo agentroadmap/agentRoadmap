@@ -278,6 +278,20 @@ export class SdbProposalHandlers {
     }
   }
 
+  async deleteProposal(args: { proposalId: string }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('delete_proposal', [
+        args.proposalId
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Deleted proposal ${args.proposalId}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete proposal: ${(error as Error).message}`);
+    }
+  }
+
   // Helper to call SpacetimeDB reducer
   private async callReducer(name: string, args: string[]): Promise<void> {
     const argsStr = args.map(a => `"${a}"`).join(' ');

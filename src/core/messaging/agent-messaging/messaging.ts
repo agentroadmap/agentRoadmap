@@ -80,7 +80,7 @@ export async function getMessages(filter: MessageFilter): Promise<AgentMessage[]
         jsonrpc: '2.0',
         method: 'tools/call',
         params: {
-          name: 'message_read',
+          name: 'msg_read',
           arguments: { channel },
         },
       }),
@@ -193,7 +193,7 @@ async function sendToChannel(channel: string, content: string): Promise<void> {
         jsonrpc: '2.0',
         method: 'tools/call',
         params: {
-          name: 'message_send',
+          name: 'msg_send',
           arguments: { channel, content, msg_type: 'agent' },
         },
       }),

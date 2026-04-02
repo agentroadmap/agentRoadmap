@@ -44,7 +44,8 @@ function registerStartCommand(mcpCmd: Command): void {
 				await server.connect();
 				await server.start();
 
-			// Start WebSocket server for board\n			startWebSocketServer(3001);
+			// Start WebSocket server for board
+			startWebSocketServer(3001);
 
 				if (options.debug) {
 					if (runtimeCwd.source !== "process") {

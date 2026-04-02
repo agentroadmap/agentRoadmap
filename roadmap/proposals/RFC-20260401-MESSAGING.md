@@ -11,7 +11,7 @@ assignee: []
 created_date: "2026-04-01 20:21"
 updated_date: "2026-04-01 20:21"
 labels: ["messaging", "sync", "communication"]
-dependencies: ["RFC-20260401-DATA-MODEL", "RFC-20260401-MOBILE-VISIONARY"]
+dependencies: ["RFC-20260401-DATA-MODEL"]
 ---
 
 ## Description

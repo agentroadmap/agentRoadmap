@@ -117,8 +117,8 @@ export class SdbMessageHandlers {
       const action = args.subscribe !== false ? 'subscribe' : 'unsubscribe';
       
       await this.callReducer('subscribe_channel', [
-        args.from,
-        args.channel
+        args.channel,
+        args.subscribe !== false
       ]);
 
       return {

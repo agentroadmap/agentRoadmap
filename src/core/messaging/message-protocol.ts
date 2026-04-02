@@ -4,7 +4,7 @@
  * Standard protocol for agents to communicate asynchronously via the roadmap
  * messaging system. Enables collaboration without real-time dependencies.
  *
- * AC#1: Agents can send messages to channels ✅ (existing message_send tool)
+ * AC#1: Agents can send messages to channels ✅ (existing msg_send tool)
  * AC#2: Messages persisted in markdown files ✅ (existing markdown storage)
  * AC#3: Agent mentions trigger notifications (this file)
  * AC#4: Message threading supported (this file)

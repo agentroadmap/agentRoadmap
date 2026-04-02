@@ -63,7 +63,7 @@
 		"build:css": "node ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/web/styles/source.css -o src/web/styles/style.css --minify",
 		"build": "npm run build:css && node scripts/build-dist.cjs",
 		"cli": "npm run build:css && node --import jiti/register src/cli.ts",
-		"mcp": "node src/cli.ts mcp start",
+		"mcp": "node --import jiti/register src/cli.ts mcp start",
 		"update-nix": "sh scripts/update-nix.sh",
 		"release": "git push github main --tags && git push origin main --tags",
 		"release:patch": "npm version patch && npm run sync-deps && npm run release",

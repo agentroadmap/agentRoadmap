@@ -26,7 +26,15 @@ export class SdbAgentHandlers {
 
   async registerAgent(args: { name: string; role?: string; skills?: string[] }): Promise<CallToolResult> {
     try {
-      await this.callReducer('register_agent', [args.name, args.role || 'agent', '']);
+      await this.callReducer('register_agent', [
+        args.name,                        // agent_id
+        args.name,                        // name
+        args.role || 'agent',             // role
+        '1',                              // clearance_level (string for CLI)
+        '0',                              // squad_id
+        '',                               // workspace
+        ''                                // api_key
+      ]);
       return { content: [{ type: "text", text: `✅ Registered agent: ${args.name}` }] };
     } catch (error) {
       throw new Error(`Failed to register agent: ${(error as Error).message}`);

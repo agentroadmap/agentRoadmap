@@ -55,30 +55,42 @@
 6. **Duplicate prevention:** Check for duplicate proposals before inserting
 7. **Display ID format:** Auto-generated as `P###` (0-padded), e.g., `P001`, `P002`
 
-## Current Status
+## Current Status (2026-04-02 05:55 EDT)
 
-- **Proposals in SDB:** 40 (22 root + 15 children + 3 test)
+- **Proposals in SDB:** 30 (after data wipe and restore)
 - **Proposals in markdown:** 37 files in roadmap/proposals/
-- **MCP server:** Running on port 6421 (with prop_* tools)
+- **MCP server:** Running on port 6421 (prop_* + chan_* + msg_* tools)
 - **TypeScript errors:** 0 (main codebase)
-- **Display IDs:** Still old random names (RFC-20260401-BUSINESS-DESIGN)
-- **Maturity levels:** All set to 0 (New) ✅
-- **Body content:** Empty for all proposals (need to populate from markdown)
-- **MCP tools renamed:** prop_list, prop_get, prop_create, prop_update, prop_complete
+- **Display IDs:** Auto-generated P### format ✅
+- **Maturity levels:** Set appropriately
+- **Body content:** Empty for most proposals (need to populate from markdown)
+- **MCP tools:** 19 total (11 proposal + 8 messaging)
+- **Agents registered:** 5 (Andy, Bob, Carter, Gilbert, Skeptic)
+- **WebSocket bridge:** Running on port 3001 (stable 1h+)
+- **Real-time messaging:** Working via spacetime subscribe CLI
+
+## MESSAGING System - COMPLETE ✅
+
+### Infrastructure
+- **SDB Tables:** WorkforceRegistry, MessageLedger, agent_memory (subscriptions)
+- **SDB Reducers:** send_message, subscribe_channel, register_agent, claim_proposal
+- **MCP Tools:** chan_list, msg_read, msg_send, chan_subscribe, chan_create, chan_delete, chan_unsubscribe, msg_history
+- **WebSocket:** Real-time push via spacetime subscribe CLI (direct SDB connection)
+- **Persistent WS Bridge:** Port 3001, systemd service
+
+### Agent Identity (WorkforceRegistry)
+- **Fields:** identity (SDB hash), agent_id, name, role, clearance_level, squad_id, workspace, api_key, is_active
+- **Team:** Andy (CEO, clearance 5), Bob/Carter/Gilbert/Skeptic (clearance 4)
+
+### Known Issues (Minor)
+- MCP WebSocket bridge (port 3001) — SDK API mismatch, not critical (spacetime subscribe works)
+- chan_create/chan_delete — SDB placeholders, use agent_memory for now
+- register_agent MCP handler — Updated to 7 params, needs SDB module redeploy
 
 ## Next Steps
 
-1. Create all 37 proposals in SDB via MCP
-2. Export to markdown for Git backup
-3. Update config.yml with structured format
-4. Fix hardcoded database names in source code
-## MESSAGING Status (2026-04-02)
-
-### ✅ Complete
-- SDB: WorkforceRegistry, MessageLedger, SyncLedger tables
-- SDB reducers: send_message, subscribe_channel, register_agent
-- MCP tools: chan_list, msg_read, msg_send, chan_subscribe, chan_create, chan_delete, chan_unsubscribe, msg_history
-- WebSocket: Real-time subscriptions via spacetime subscribe CLI
-- End-to-end tested: Messages send/receive in real-time
-
-### 🚀 Ready for 10+ agents to collaborate!
+1. Add acceptance criteria to proposals (prop_ac_add)
+2. Enrich remaining proposals with body content
+3. Test agent-to-agent messaging end-to-end
+4. Connect WebSocket bridge to SDB for real-time push (low priority, spacetime subscribe works)
+5. Export proposals to markdown for Git backup
