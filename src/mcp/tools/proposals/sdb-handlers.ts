@@ -186,6 +186,66 @@ export class SdbProposalHandlers {
     }
   }
 
+  async transitionProposal(args: { proposalId: string; new_status: string; change_summary: string }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('transition_proposal', [
+        args.proposalId,
+        args.new_status,
+        args.change_summary
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Transitioned proposal ${args.proposalId} to ${args.new_status}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to transition proposal: ${(error as Error).message}`);
+    }
+  }
+
+  async addCriteria(args: { proposalId: string; description: string }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('add_criteria', [
+        args.proposalId,
+        args.description
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Added acceptance criteria to proposal ${args.proposalId}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to add criteria: ${(error as Error).message}`);
+    }
+  }
+
+  async checkCriteria(args: { proposalId: string; criteriaId: number }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('check_criteria', [
+        args.proposalId,
+        args.criteriaId.toString()
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Marked criteria ${args.criteriaId} as verified` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to check criteria: ${(error as Error).message}`);
+    }
+  }
+
+  async removeCriteria(args: { criteriaId: number }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('remove_criteria', [
+        args.criteriaId.toString()
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Removed criteria ${args.criteriaId}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to remove criteria: ${(error as Error).message}`);
+    }
+  }
+
   // Helper to call SpacetimeDB reducer
   private async callReducer(name: string, args: string[]): Promise<void> {
     const argsStr = args.map(a => `"${a}"`).join(' ');
