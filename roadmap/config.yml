@@ -1,5 +1,6 @@
 project_name: "AgentRoadmap"
-default_status: "Potential"
+sdb_database: "roadmap2"
+default_status: "New"
 statuses: ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned"]
 labels: ["feature", "bugfix", "refactor", "docs"]
 date_format: yyyy-mm-dd
