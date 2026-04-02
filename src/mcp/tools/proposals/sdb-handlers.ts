@@ -34,25 +34,23 @@ export class SdbProposalHandlers {
 
   async listProposals(args: { status?: string; assignee?: string; limit?: number }): Promise<CallToolResult> {
     try {
-      let query = "SELECT id, title, status, assignee, priority FROM step";
+      let query = "SELECT id, display_id, title, status, proposal_type, maturity_level FROM proposal";
       const conditions: string[] = [];
       
       if (args.status) conditions.push(`status = '${args.status}'`);
-      if (args.assignee) conditions.push(`assignee LIKE '%${args.assignee}%'`);
       
       if (conditions.length > 0) {
         query += " WHERE " + conditions.join(" AND ");
       }
       
-      // Note: SpacetimeDB SQL doesn't support LIMIT in all versions
       const proposals = await this.querySql(query);
       
       if (!proposals || proposals.length === 0) {
         return { content: [{ type: "text", text: "No proposals found." }] };
       }
 
-      const lines = proposals.map((s: any) => 
-        `- **${s.id}**: ${s.title} [${s.status || 'draft'}]`
+      const lines = proposals.map((p: any) => 
+        `- **${p.display_id}**: ${p.title} [${p.status}] (${p.proposal_type}) M${p.maturity_level || 0}`
       ).join("\n");
 
       return {
@@ -65,21 +63,25 @@ export class SdbProposalHandlers {
 
   async getProposal(args: { proposalId: string }): Promise<CallToolResult> {
     try {
-      const proposals = await this.querySql(`SELECT * FROM step WHERE id = '${args.proposalId}'`);
+      const proposals = await this.querySql(`SELECT * FROM proposal WHERE display_id = '${args.proposalId}' OR id = '${args.proposalId}'`);
       
       if (!proposals || proposals.length === 0) {
         return { content: [{ type: "text", text: `Proposal ${args.proposalId} not found.` }] };
       }
 
-      const proposal = proposals[0];
+      const p = proposals[0];
       const output = [
-        `## ${proposal.id}: ${proposal.title}`,
+        `## ${p.display_id}: ${p.title}`,
         ``,
-        `**Status:** ${proposal.status || 'draft'}`,
-        `**Assignee:** ${proposal.assignee || 'unassigned'}`,
-        `**Priority:** ${proposal.priority || 'medium'}`,
+        `**Type:** ${p.proposal_type}`,
+        `**Category:** ${p.category}`,
+        `**Domain:** ${p.domain_id}`,
+        `**Status:** ${p.status}`,
+        `**Priority:** ${p.priority}`,
+        `**Maturity:** ${p.maturity_level || 0}`,
+        p.parent_id ? `**Parent:** ${p.parent_id}` : '',
         ``,
-        proposal.body ? `### Description\n${proposal.body}` : '',
+        p.body_markdown ? `### Description\n${p.body_markdown}` : '',
       ].filter(Boolean).join("\n");
 
       return { content: [{ type: "text", text: output }] };
@@ -90,21 +92,30 @@ export class SdbProposalHandlers {
 
   async createProposal(args: {
     title: string;
+    proposal_type?: string;
+    category?: string;
+    domain_id?: string;
     description?: string;
-    status?: string;
-    assignee?: string;
     priority?: string;
-    labels?: string[];
+    parent_id?: number;
+    budget_limit_usd?: number;
   }): Promise<CallToolResult> {
     try {
-      const id = `STATE-${String(Date.now()).slice(-6)}`;
+      const proposal_type = args.proposal_type || "TECHNICAL";
+      const category = args.category || "FEATURE";
+      const domain_id = args.domain_id || "GENERAL";
       const title = args.title;
-      const body = args.description || '';
+      const priority = args.priority || "Medium";
+      const body_markdown = args.description || null;
+      const parent_id = args.parent_id || null;
+      const budget_limit_usd = args.budget_limit_usd || 0;
       
-      await this.callReducer('create_step', [id, title, body]);
+      await this.callReducer('create_proposal', [
+        proposal_type, category, domain_id, title, priority, body_markdown, parent_id, budget_limit_usd
+      ]);
       
       return {
-        content: [{ type: "text", text: `✅ Created ${id}: ${title}` }]
+        content: [{ type: "text", text: `✅ Created proposal: ${title}` }]
       };
     } catch (error) {
       throw new Error(`Failed to create proposal: ${(error as Error).message}`);
@@ -142,6 +153,36 @@ export class SdbProposalHandlers {
       });
     } catch {
       return [];
+    }
+  }
+
+  async updateProposal(args: {
+    proposalId: string;
+    title?: string;
+    body_markdown?: string;
+    priority?: string;
+    maturity_level?: number;
+    tags?: string;
+    change_summary: string;
+  }): Promise<CallToolResult> {
+    try {
+      const proposalId = args.proposalId;
+      const title = args.title || null;
+      const body_markdown = args.body_markdown || null;
+      const priority = args.priority || null;
+      const maturity_level = args.maturity_level !== undefined ? args.maturity_level.toString() : null;
+      const tags = args.tags || null;
+      const change_summary = args.change_summary;
+      
+      await this.callReducer('update_proposal', [
+        proposalId, title, body_markdown, priority, maturity_level, tags, change_summary
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Updated proposal ${proposalId}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to update proposal: ${(error as Error).message}`);
     }
   }
 
