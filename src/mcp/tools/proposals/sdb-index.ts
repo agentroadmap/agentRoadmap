@@ -48,7 +48,7 @@ const proposalUpdateSchema: JsonSchema = {
     title: { type: "string", description: "New title" },
     body_markdown: { type: "string", description: "New body content" },
     priority: { type: "string", enum: ["Strategic", "High", "Medium", "Low"], description: "New priority" },
-    maturity_level: { type: "number", enum: [0, 1, 2, 3], description: "Maturity: 0=New, 1=Draft, 2=Active, 3=Complete" },
+    maturity_level: { type: "number", enum: [0, 1, 2, 3], description: "Maturity: 0=New, 1=Active, 2=Complete, 3=Mature" },
     tags: { type: "string", description: "Comma-separated tags" },
     change_summary: { type: "string", description: "What changed (for version history)" },
   },
