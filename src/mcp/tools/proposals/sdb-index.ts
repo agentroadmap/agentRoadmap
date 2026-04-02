@@ -99,6 +99,24 @@ const proposalAcRemoveSchema: JsonSchema = {
   required: ["criteriaId"],
 };
 
+const proposalClaimSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID (e.g., P001)" },
+    agent_identity: { type: "string", description: "Agent identity claiming the proposal" },
+    cost_estimate_usd: { type: "number", description: "Estimated cost in USD" },
+  },
+  required: ["proposalId", "agent_identity", "cost_estimate_usd"],
+};
+
+const proposalReleaseSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    proposalId: { type: "string", description: "Proposal ID (e.g., P001)" },
+  },
+  required: ["proposalId"],
+};
+
 export function registerSdbProposalTools(server: McpServer, projectRoot: string): void {
   const handlers = new SdbProposalHandlers(server, projectRoot);
 
@@ -156,5 +174,17 @@ export function registerSdbProposalTools(server: McpServer, projectRoot: string)
     (input) => handlers.removeCriteria(input as { criteriaId: number }),
   ));
 
-  console.log('[Proposals] Registered 9 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete, prop_ac_add, prop_ac_check, prop_ac_remove');
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_claim", description: "Claim a proposal to work on (sets status to Active)", inputSchema: proposalClaimSchema },
+    proposalClaimSchema,
+    (input) => handlers.claimProposal(input as { proposalId: string; agent_identity: string; cost_estimate_usd: number }),
+  ));
+
+  server.addTool(createSimpleValidatedTool(
+    { name: "prop_release", description: "Release a proposal (sets status back to New)", inputSchema: proposalReleaseSchema },
+    proposalReleaseSchema,
+    (input) => handlers.releaseProposal(input as { proposalId: string }),
+  ));
+
+  console.log('[Proposals] Registered 11 SDB tools: prop_list, prop_get, prop_create, prop_update, prop_transition, prop_complete, prop_ac_add, prop_ac_check, prop_ac_remove, prop_claim, prop_release');
 }

@@ -246,6 +246,38 @@ export class SdbProposalHandlers {
     }
   }
 
+  async claimProposal(args: { proposalId: string; agent_identity: string; cost_estimate_usd: number }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('claim_proposal', [
+        args.proposalId,
+        args.agent_identity,
+        args.cost_estimate_usd.toString()
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Claimed proposal ${args.proposalId} (budget: $${args.cost_estimate_usd})` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to claim proposal: ${(error as Error).message}`);
+    }
+  }
+
+  async releaseProposal(args: { proposalId: string }): Promise<CallToolResult> {
+    try {
+      await this.callReducer('transition_proposal', [
+        args.proposalId,
+        "New",
+        "Released by agent"
+      ]);
+      
+      return {
+        content: [{ type: "text", text: `✅ Released proposal ${args.proposalId}` }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to release proposal: ${(error as Error).message}`);
+    }
+  }
+
   // Helper to call SpacetimeDB reducer
   private async callReducer(name: string, args: string[]): Promise<void> {
     const argsStr = args.map(a => `"${a}"`).join(' ');
