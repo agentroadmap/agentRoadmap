@@ -72,3 +72,13 @@
 2. Export to markdown for Git backup
 3. Update config.yml with structured format
 4. Fix hardcoded database names in source code
+## MESSAGING Status (2026-04-02)
+
+### ✅ Complete
+- SDB: WorkforceRegistry, MessageLedger, SyncLedger tables
+- SDB reducers: send_message, subscribe_channel, register_agent
+- MCP tools: chan_list, msg_read, msg_send, chan_subscribe, chan_create, chan_delete, chan_unsubscribe, msg_history
+- WebSocket: Real-time subscriptions via spacetime subscribe CLI
+- End-to-end tested: Messages send/receive in real-time
+
+### 🚀 Ready for 10+ agents to collaborate!
