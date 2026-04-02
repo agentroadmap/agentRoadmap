@@ -10,7 +10,7 @@ export function registerSdbProtocolTools(server: McpServer, projectRoot: string)
     async (input) => {
       const args = input as { type: string; proposalId: string; to?: string; reason?: string };
       try {
-        execSync(`spacetime call --server local agent-roadmap-v2 send_message "protocol" "" "" "[${args.type}] ${args.proposalId}: ${args.reason || ''}" "high" "${Date.now()}"`, { encoding: 'utf8', cwd: projectRoot, stdio: 'pipe' });
+        execSync(`spacetime call --server local ${process.env.SDB_NAME ?? "roadmap2"} send_message "protocol" "" "" "[${args.type}] ${args.proposalId}: ${args.reason || ''}" "high" "${Date.now()}"`, { encoding: 'utf8', cwd: projectRoot, stdio: 'pipe' });
         return { content: [{ type: "text", text: `✅ Intent sent: ${args.type} on ${args.proposalId}` }] };
       } catch (error) {
         throw new Error(`Failed: ${(error as Error).message}`);

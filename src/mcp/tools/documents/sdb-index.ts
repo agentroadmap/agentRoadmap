@@ -33,7 +33,7 @@ export function registerSdbDocumentTools(server: McpServer, projectRoot: string)
 
 async function querySql(sql: string): Promise<any[]> {
   try {
-    const result = execSync(`spacetime sql --server local agent-roadmap-v2 "${sql}"`, { encoding: 'utf8' });
+    const result = execSync(`spacetime sql --server local ${process.env.SDB_NAME ?? "roadmap2"} "${sql}"`, { encoding: 'utf8' });
     const lines = result.trim().split('\n').filter(l => !l.includes('WARNING'));
     if (lines.length < 2) return [];
     const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
