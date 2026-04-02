@@ -237,7 +237,6 @@ fn check_budget(ctx: &ReducerContext, estimated_cost: f64) -> Result<(), String>
 #[reducer]
 pub fn create_proposal(
     ctx: &ReducerContext,
-    display_id: String,
     proposal_type: String,
     category: String,
     domain_id: String,
@@ -254,9 +253,9 @@ pub fn create_proposal(
     }
 
     let now = ctx.timestamp.to_micros_since_unix_epoch() as u64;
-    let proposal_id = ctx.db.proposal().insert(Proposal {
+    let proposal = ctx.db.proposal().insert(Proposal {
         id: 0,
-        display_id: display_id.clone(),
+        display_id: String::new(), // Will be set after insert
         parent_id,
         proposal_type,
         category,
@@ -266,13 +265,23 @@ pub fn create_proposal(
         priority,
         body_markdown: body_markdown.clone(),
         process_logic: None,
-        maturity_level: None,
+        maturity_level: Some(0), // Default maturity: 0=New
         repository_path: None,
         budget_limit_usd,
         tags: None,
         created_at: now,
         updated_at: now,
-    }).id;
+    });
+    
+    // Auto-generate display_id as P### (0-padded)
+    let display_id = format!("P{:03}", proposal.id);
+    ctx.db.proposal().id().update(Proposal {
+        id: proposal.id,
+        display_id: display_id.clone(),
+        ..proposal
+    });
+    
+    let proposal_id = proposal.id;
 
     // Auto-create initial version
     ctx.db.proposal_version().insert(ProposalVersion {
