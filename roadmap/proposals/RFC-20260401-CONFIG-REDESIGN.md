@@ -23,7 +23,30 @@ The current `config.yml` lacks critical infrastructure information:
 
 ```yaml
 project_name: "AgentRoadmap"
-sdb_database: "roadmap2"
+
+# Global Settings (set during init)
+database:
+  provider: "spacetime"
+  name: "roadmap2"
+  host: "127.0.0.1"
+  port: 3000
+
+mcp:
+  url: "http://localhost:6421"
+  health_endpoint: "/health"
+  tools_count: 40
+
+git:
+  remote: "gitlab.local:agentRoadmap/agentRoadmap.git"
+  default_branch: "main"
+  worktree_path: "/data/code/agentRoadmap-carter"
+
+paths:
+  proposals: "roadmap/proposals"
+  archive: "roadmap/archive"
+  docs: "roadmap/docs"
+
+# Lifecycle (set during init)
 default_status: "New"
 statuses: ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned"]
 labels: ["feature", "bugfix", "refactor", "docs"]
@@ -39,26 +62,89 @@ check_active_branches: true
 active_branch_days: 30
 proposal: "proposal"
 
-# Critical Infrastructure
-mcp:
-  url: "http://localhost:6421"
-  health_endpoint: "/health"
-  tools_count: 40
-
-sdb:
-  database: "roadmap2"
-  url: "http://127.0.0.1:3000"
-  api_version: "v1"
-
-git:
-  remote: "gitlab.local:agentRoadmap/agentRoadmap.git"
-  default_branch: "main"
-  worktree_path: "/data/code/agentRoadmap-carter"
-
-paths:
-  proposals: "roadmap/proposals"
-  archive: "roadmap/archive"
-  docs: "roadmap/docs"
+# Components (16 total, populated during init)
+components:
+  data_model:
+    enabled: true
+    maturity: 2
+    description: "Schema definitions and data structure"
+    
+  mcp_tools:
+    enabled: true
+    maturity: 2
+    port: 6421
+    url: "http://localhost:6421"
+    description: "Agent interface for tools and resources"
+    
+  workforce:
+    enabled: true
+    maturity: 2
+    description: "Agent identity, registration, profiles"
+    
+  security:
+    enabled: true
+    maturity: 0
+    description: "ACL, audit logging, authorization"
+    
+  product:
+    enabled: true
+    maturity: 1
+    description: "RFC template, state machine, lifecycle"
+    
+  pipeline:
+    enabled: true
+    maturity: 0
+    description: "Pre-flight checks, verification"
+    
+  business:
+    enabled: true
+    maturity: 0
+    description: "Strategy, design, vision"
+    
+  spending:
+    enabled: true
+    maturity: 0
+    description: "Budget limits, model allocation"
+    
+  model:
+    enabled: true
+    maturity: 0
+    description: "Model selection, cost optimization"
+    
+  messaging:
+    enabled: true
+    maturity: 0
+    description: "Inter-agent communication"
+    
+  tui:
+    enabled: true
+    maturity: 0
+    description: "Terminal UI, cockpit"
+    
+  websash:
+    enabled: true
+    maturity: 0
+    description: "Web dashboard"
+    
+  mobile:
+    enabled: true
+    maturity: 0
+    description: "Mobile alerts, visionary"
+    
+  project:
+    enabled: true
+    maturity: 0
+    description: "Project management, init"
+    
+  context:
+    enabled: true
+    maturity: 0
+    description: "Session context, memory"
+    
+  infrastructure:
+    enabled: true
+    maturity: 0
+    description: "Deployment, hosting, monitoring"
 ```
 
 ## Benefits
