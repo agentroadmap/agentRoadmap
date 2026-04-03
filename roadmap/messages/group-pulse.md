@@ -337,3 +337,31 @@
 [2026-04-03 10:10:46] System: **[proposal reached]** proposal-1 - Test Proposal
 [2026-04-03 10:10:46] System: **[proposal created]** PROPOSAL-1 - Test Proposal
 [2026-04-03 10:10:47] System: **[proposal created]** PROPOSAL-1 - Symlink root auto-commit
+[2026-04-03 10:10:47] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-03 10:10:47] System: **[proposal created]** PROPOSAL-1 - Dep
+[2026-04-03 10:10:47] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-03 10:10:47] System: **[proposal reached]** proposal-1 - Test Proposal
+[2026-04-03 10:10:48] System: **[proposal created]** PROPOSAL-1 - Orphan
+[2026-04-03 10:10:48] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-03 10:10:48] System: **[proposal created]** PROPOSAL-2 - Child
+[2026-04-03 10:10:49] System: **[proposal created]** PROPOSAL-2 - Parent
+[2026-04-03 10:10:49] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgcmVhY2hlZF0qKiBwcm9wb3NhbC0xIC0gRGVwCj4gRG9uZQ==
+[2026-04-03 10:10:49] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-03 10:10:49] System: **[proposal reached]** proposal-1 - Test Proposal
+[2026-04-03 10:10:49] System: **[proposal created]** PROPOSAL-3 - Child
+[2026-04-03 10:10:49] System: **[proposal created]** PROPOSAL-1 - Only1
+[2026-04-03 10:10:49] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-03 10:10:49] System: **[proposal reached]** proposal-1 - Test Proposal
+[2026-04-03 10:10:50] System: **[proposal reached]** proposal-1 - Test Proposal
+[2026-04-03 10:10:50] System: **[proposal reached]** proposal-1 - Test Proposal
+[2026-04-03 10:10:51] System: **[proposal created]** PROPOSAL-1 - Dead End
+[2026-04-03 10:10:51] System: **[proposal created]** PROPOSAL-2 - Parent
+[2026-04-03 10:10:52] System: **[proposal created]** PROPOSAL-3 - Child
+[2026-04-03 10:10:53] System: **[proposal created]** PROPOSAL-1 - Initial
+[2026-04-03 10:10:54] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-03 10:10:55] System: **[proposal created]** PROPOSAL-2 - Dependent
+[2026-04-03 10:10:56] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9QT1NBTC0xIC0gVGVzdCBQcm9wb3NhbAo+IFRlc3QgZGVzY3JpcHRpb24=
+[2026-04-03 10:10:58] System: **[proposal created]** PROPOSAL-1 - Test 1
+[2026-04-03 10:10:58] System: **[proposal created]** PROPOSAL-2 - Test 2
+[2026-04-03 10:11:00] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9QT1NBTC0xIC0gRGV0YWlsZWQgUHJvcG9zYWwKPiBGdWxsIGRlc2NyaXB0aW9u
+[2026-04-03 10:16:35] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gSklSQSBJbml0IFRlc3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
