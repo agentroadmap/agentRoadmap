@@ -6,7 +6,7 @@
 import type { Core } from "../core/roadmap.ts";
 import type { Proposal } from "../types/index.ts";
 
-export type ViewType = "proposal-list" | "proposal-detail" | "kanban" | "cubic-dashboard" | "headlines";
+export type ViewType = "proposal-list" | "proposal-detail" | "kanban" | "cockpit" | "headlines";
 
 export interface ViewProposal {
 	type: ViewType;
@@ -222,8 +222,8 @@ export class ViewSwitcher {
 			case "proposal-detail":
 				return await this.switchToKanban();
 			case "kanban":
-				return this.switchToCubicDashboard();
-			case "cubic-dashboard":
+				return this.switchToCockpit();
+			case "cockpit":
 				return this.switchToHeadlines();
 			case "headlines":
 				return this.switchToProposalView();
@@ -283,12 +283,12 @@ export class ViewSwitcher {
 	}
 
 	/**
-	 * Switch to cubic dashboard view
+	 * Switch to cockpit view
 	 */
-	private switchToCubicDashboard(): ViewProposal {
+	private switchToCockpit(): ViewProposal {
 		this.proposal = {
 			...this.proposal,
-			type: "cubic-dashboard",
+			type: "cockpit",
 		};
 		this.onViewChange?.(this.proposal);
 		return this.proposal;

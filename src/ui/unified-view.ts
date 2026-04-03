@@ -430,10 +430,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			});
 		};
 
-		// Function to show cubic dashboard
-		const showCubicDashboard = async (): Promise<ViewResult> => {
-			const { renderCubicDashboard } = await import("./cubic-dashboard.ts");
-			const { loadAllProposals } = await import('../core/storage/sdb-proposal-loader.ts');
+		// Function to show cockpit (formerly cubic dashboard)
+		const showCockpit = async (): Promise<ViewResult> => {
+			const { renderCockpit } = await import("./cockpit.ts");
 			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
 
 			return new Promise<ViewResult>((resolve) => {
@@ -443,109 +442,54 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					result = "switch";
 				};
 
-				// Load current data
-				const proposals = loadAllProposals();
+				// 1. Fetch Workforce data
+				const agents = querySdbSync("SELECT * FROM workforce_registry");
+				const pulses = querySdbSync("SELECT * FROM workforce_pulse");
+				
+				const agentData = agents.map(a => {
+					const pulse = pulses.find(p => p.identity === a.identity);
+					return {
+						id: a.agent_id,
+						name: a.name,
+						role: a.role,
+						status: pulse ? (pulse.is_zombie ? "zombie" : "active") : "offline",
+						currentProposal: pulse?.active_proposal_id,
+						statusMessage: pulse?.status_message || "Idle",
+						lastSeen: pulse?.last_seen_at
+					};
+				});
 
-				// Map status to phase
-				const mapStatusToPhase = (status: string): string => {
-					const s = status.toLowerCase();
-					if (s === "accepted" || s === "draft" || s === "proposal") return "design";
-					if (s === "active") return "build";
-					if (s === "review") return "test";
-					if (s === "complete" || s === "reached") return "ship";
-					return "design";
-				};
-
-				// Build agent data with their active steps from claims table
-				const agentMap = new Map<string, any>();
-				const agentProposals: Record<string, any> = {};
-
-				// Get claims from SpacetimeDB
-				try {
-					const claims = querySdbSync("SELECT step_id, agent_id, active FROM claim WHERE active = true");
-					
-					for (const claim of claims) {
-						const stepId = claim.step_id || "";
-						const agentId = claim.agent_id || "";
-						if (!agentId) continue;
-						if (!agentMap.has(agentId)) {
-							agentMap.set(agentId, {
-								id: agentId,
-								name: agentId,
-								role: "developer",
-								status: "active",
-								currentCubic: "default",
-								activeSteps: [],
-							});
-						}
-						// Find this step
-						const step = proposals.find((s: any) => s.id === stepId);
-						if (step) {
-							agentMap.get(agentId).activeSteps.push({
-								stepId: step.id,
-								title: step.title,
-								status: step.status,
-							});
-							// Assign to cubic based on step directive
-							if (step.directive) {
-								agentMap.get(agentId).currentCubic = `cubic-${step.directive}`;
-							}
-						}
-					}
-				} catch (e) {
-					// Claims table may not exist, fallback to proposal-based claims
-					for (const s of proposals) {
-						if (s.claim?.agent) {
-							const agentId = s.claim.agent;
-							if (!agentMap.has(agentId)) {
-								agentMap.set(agentId, {
-									id: agentId,
-									name: agentId,
-									role: "developer",
-									status: "active",
-									currentCubic: `cubic-${s.directive || "default"}`,
-									activeSteps: [],
-								});
-							}
-							if (s.status === "Active" || s.status === "Review") {
-								agentMap.get(agentId).activeSteps.push({
-									stepId: s.id,
-									title: s.title,
-									status: s.status,
-								});
-							}
-						}
-					}
+				// 2. Fetch Pipeline data
+				const proposals = querySdbSync("SELECT * FROM proposal");
+				
+				// 3. Fetch Ledger data
+				const spending = querySdbSync("SELECT * FROM spending_log");
+				const caps = querySdbSync("SELECT * FROM spending_caps");
+				
+				// Aggregate spending by agent
+				const spendingByAgent: Record<string, number> = {};
+				for (const log of spending) {
+					spendingByAgent[log.agent_identity] = (spendingByAgent[log.agent_identity] || 0) + log.cost_usd;
 				}
 
-				// Build cubic data by grouping agents
-				const cubicMap = new Map<string, any>();
-				for (const [agentId, agent] of agentMap) {
-					const cubicId = agent.currentCubic;
-					if (!cubicMap.has(cubicId)) {
-						cubicMap.set(cubicId, {
-							cubicId,
-							phase: agent.activeSteps.length > 0
-								? mapStatusToPhase(agent.activeSteps[0].status)
-								: "design",
-							status: "active",
-							agents: [],
-							createdAt: Date.now(),
-						});
-					}
-					cubicMap.get(cubicId).agents.push(agent);
-				}
+				const ledgerData = caps.map(c => ({
+					agent: c.agent_identity,
+					dailyLimit: c.daily_limit_usd,
+					spentToday: c.total_spent_today_usd,
+					totalSpent: spendingByAgent[c.agent_identity] || 0,
+					isFrozen: c.is_frozen
+				}));
+
+				// 4. Fetch Terminal/Events
+				const messages = querySdbSync("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 20");
 
 				// Show the dashboard
-				renderCubicDashboard(screen, {
-					cubics: Array.from(cubicMap.values()),
-					agents: Array.from(agentMap.values()),
-					models: [
-						{ model: "gpt-4o", tokens: 2500000, cost: 12.50, calls: 450 },
-						{ model: "claude-3.5-sonnet", tokens: 1800000, cost: 27.00, calls: 320 },
-						{ model: "gemini-pro", tokens: 900000, cost: 4.50, calls: 180 },
-					],
-				});
+				renderCockpit(screen, {
+					agents: agentData,
+					proposals: proposals,
+					ledger: ledgerData,
+					messages: messages
+				} as any);
 
 				// Set up key handlers
 				(screen as any).key(["tab"], () => {
@@ -572,8 +516,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				case "kanban":
 					result = await showKanbanView();
 					break;
-				case "cubic-dashboard":
-					result = await showCubicDashboard();
+				case "cockpit":
+					result = await showCockpit();
 					break;
 				default:
 					result = "exit";
@@ -591,9 +535,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "kanban";
 						break;
 					case "kanban":
-						currentView = "cubic-dashboard";
+						currentView = "cockpit";
 						break;
-					case "cubic-dashboard":
+					case "cockpit":
 						currentView = "proposal-list";
 						break;
 				}
