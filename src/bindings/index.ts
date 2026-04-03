@@ -34,46 +34,46 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AddCriteriaReducer from "./add_criteria_reducer";
-import AuditLogReducer from "./audit_log_reducer";
-import CheckCriteriaReducer from "./check_criteria_reducer";
-import ClaimProposalReducer from "./claim_proposal_reducer";
-import CreateProposalReducer from "./create_proposal_reducer";
-import FreezeSpendingReducer from "./freeze_spending_reducer";
-import GrantAclReducer from "./grant_acl_reducer";
-import LogSpendingReducer from "./log_spending_reducer";
-import MarkSyncErrorReducer from "./mark_sync_error_reducer";
-import RecordDecisionReducer from "./record_decision_reducer";
-import RecordSyncReducer from "./record_sync_reducer";
-import RegisterAgentReducer from "./register_agent_reducer";
-import RemoveCriteriaReducer from "./remove_criteria_reducer";
-import RetireAgentReducer from "./retire_agent_reducer";
-import RevokeAclReducer from "./revoke_acl_reducer";
-import SendMessageReducer from "./send_message_reducer";
-import SetMemoryReducer from "./set_memory_reducer";
-import SetSpendingCapsReducer from "./set_spending_caps_reducer";
-import TransitionProposalReducer from "./transition_proposal_reducer";
-import UpdateProposalReducer from "./update_proposal_reducer";
-import UpdatePulseReducer from "./update_pulse_reducer";
-import WipeMemoryReducer from "./wipe_memory_reducer";
+import AddCriteriaReducer from "./add_criteria_reducer.ts";
+import AuditLogReducer from "./audit_log_reducer.ts";
+import CheckCriteriaReducer from "./check_criteria_reducer.ts";
+import ClaimProposalReducer from "./claim_proposal_reducer.ts";
+import CreateProposalReducer from "./create_proposal_reducer.ts";
+import FreezeSpendingReducer from "./freeze_spending_reducer.ts";
+import GrantAclReducer from "./grant_acl_reducer.ts";
+import LogSpendingReducer from "./log_spending_reducer.ts";
+import MarkSyncErrorReducer from "./mark_sync_error_reducer.ts";
+import RecordDecisionReducer from "./record_decision_reducer.ts";
+import RecordSyncReducer from "./record_sync_reducer.ts";
+import RegisterAgentReducer from "./register_agent_reducer.ts";
+import RemoveCriteriaReducer from "./remove_criteria_reducer.ts";
+import RetireAgentReducer from "./retire_agent_reducer.ts";
+import RevokeAclReducer from "./revoke_acl_reducer.ts";
+import SendMessageReducer from "./send_message_reducer.ts";
+import SetMemoryReducer from "./set_memory_reducer.ts";
+import SetSpendingCapsReducer from "./set_spending_caps_reducer.ts";
+import TransitionProposalReducer from "./transition_proposal_reducer.ts";
+import UpdateProposalReducer from "./update_proposal_reducer.ts";
+import UpdatePulseReducer from "./update_pulse_reducer.ts";
+import WipeMemoryReducer from "./wipe_memory_reducer.ts";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import AgentMemoryRow from "./agent_memory_table";
-import AttachmentRegistryRow from "./attachment_registry_table";
-import MessageLedgerRow from "./message_ledger_table";
-import ProposalRow from "./proposal_table";
-import ProposalCriteriaRow from "./proposal_criteria_table";
-import ProposalDecisionRow from "./proposal_decision_table";
-import ProposalVersionRow from "./proposal_version_table";
-import SecurityAclRow from "./security_acl_table";
-import SecurityAuditLogRow from "./security_audit_log_table";
-import SpendingCapsRow from "./spending_caps_table";
-import SpendingLogRow from "./spending_log_table";
-import SyncLedgerRow from "./sync_ledger_table";
-import WorkforcePulseRow from "./workforce_pulse_table";
-import WorkforceRegistryRow from "./workforce_registry_table";
+import AgentMemoryRow from "./agent_memory_table.ts";
+import AttachmentRegistryRow from "./attachment_registry_table.ts";
+import MessageLedgerRow from "./message_ledger_table.ts";
+import ProposalRow from "./proposal_table.ts";
+import ProposalCriteriaRow from "./proposal_criteria_table.ts";
+import ProposalDecisionRow from "./proposal_decision_table.ts";
+import ProposalVersionRow from "./proposal_version_table.ts";
+import SecurityAclRow from "./security_acl_table.ts";
+import SecurityAuditLogRow from "./security_audit_log_table.ts";
+import SpendingCapsRow from "./spending_caps_table.ts";
+import SpendingLogRow from "./spending_log_table.ts";
+import SyncLedgerRow from "./sync_ledger_table.ts";
+import WorkforcePulseRow from "./workforce_pulse_table.ts";
+import WorkforceRegistryRow from "./workforce_registry_table.ts";
 
 /** Type-only namespace exports for generated type groups. */
 

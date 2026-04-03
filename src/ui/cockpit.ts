@@ -2,7 +2,6 @@
  * Cockpit Dashboard View
  *
  * The "Engineer's Cockpit" for real-time monitoring and control of the agent workforce.
- * Shows Workforce Pulse, Pipeline Status, Spending Ledger, and Terminal Messages.
  */
 
 // @ts-ignore - blessed types may not be installed
@@ -52,47 +51,129 @@ export function renderCockpit(
 ): void {
 	const { agents, proposals, ledger, messages } = data;
 
-	// Clear screen
-	screen.children.forEach((child: any) => child.destroy());
+	// Check if we already have a persistent cockpit container
+	let container = (screen as any)._cockpitContainer;
+	let workforceBox: any, pipelineBox: any, ledgerBox: any, terminalLog: any, headerBox: any;
 
-	// Main container
-	const container = (screen as any).box({
-		top: 0,
-		left: 0,
-		width: "100%",
-		height: "100%",
-		tags: true,
-		scrollable: false,
-	});
+	if (!container) {
+		// Clear screen for initial render
+		screen.children.forEach((child: any) => child.destroy());
 
-	// Header
-	const headerBox = (screen as any).box({
-		parent: container,
-		top: 0,
-		left: 0,
-		width: "100%",
-		height: 3,
-		tags: true,
-		content: `{bold}{cyan-fg}🚀 ENGINEER'S COCKPIT{/} | Agents: ${agents.length} | Pipeline: ${proposals.length} | Status: {green-fg}ONLINE{/}`,
-		border: { type: "line", bottom: true },
-		style: { border: { fg: "cyan" } },
-	});
+		// Create persistent container
+		container = (screen as any).box({
+			top: 0,
+			left: 0,
+			width: "100%",
+			height: "100%",
+			tags: true,
+		});
+		(screen as any)._cockpitContainer = container;
 
-	// 1. Workforce [Top Left]
-	const workforceBox = (screen as any).box({
-		parent: container,
-		top: 3,
-		left: 0,
-		width: "50%",
-		height: "50%-3",
-		border: { type: "line" },
-		label: " [F1] Workforce Pulse ",
-		tags: true,
-		scrollable: true,
-		alwaysScroll: true,
-		style: { border: { fg: "green" } },
-	});
+		// Header
+		headerBox = (screen as any).box({
+			parent: container,
+			top: 0,
+			left: 0,
+			width: "100%",
+			height: 3,
+			tags: true,
+			border: { type: "line", bottom: true },
+			style: { border: { fg: "cyan" } },
+		});
+		container._headerBox = headerBox;
 
+		// 1. Workforce [Top Left]
+		workforceBox = (screen as any).box({
+			parent: container,
+			top: 3,
+			left: 0,
+			width: "50%",
+			height: "50%-3",
+			border: { type: "line" },
+			label: " [F1] Workforce Pulse ",
+			tags: true,
+			scrollable: true,
+			style: { border: { fg: "green" } },
+		});
+		container._workforceBox = workforceBox;
+
+		// 2. Pipeline [Top Right]
+		pipelineBox = (screen as any).box({
+			parent: container,
+			top: 3,
+			left: "50%",
+			width: "50%",
+			height: "50%-3",
+			border: { type: "line" },
+			label: " [F4] Pipeline Traffic ",
+			tags: true,
+			scrollable: true,
+			style: { border: { fg: "magenta" } },
+		});
+		container._pipelineBox = pipelineBox;
+
+		// 3. Ledger [Bottom Left]
+		ledgerBox = (screen as any).box({
+			parent: container,
+			top: "50%",
+			left: 0,
+			width: "50%",
+			height: "50%-1",
+			border: { type: "line" },
+			label: " [F2] The Ledger (Spending) ",
+			tags: true,
+			scrollable: true,
+			style: { border: { fg: "yellow" } },
+		});
+		container._ledgerBox = ledgerBox;
+
+		// 4. Terminal [Bottom Right] - USE LOG FOR AUTO-SCROLL
+		terminalLog = (screen as any).log({
+			parent: container,
+			top: "50%",
+			left: "50%",
+			width: "50%",
+			height: "50%-1",
+			border: { type: "line" },
+			label: " [F3] Terminal bridge ",
+			tags: true,
+			style: { border: { fg: "cyan" } },
+			scrollback: 100,
+			scrollbar: { ch: " ", track: { bg: "cyan" }, style: { inverse: true } }
+		});
+		container._terminalLog = terminalLog;
+
+		// Footer
+		(screen as any).box({
+			parent: container,
+			bottom: 0,
+			left: 0,
+			width: "100%",
+			height: 1,
+			tags: true,
+			style: { bg: "black" },
+			content: " {white-fg}Tab: Switch View | Q: Exit | Live Updates Active {/}"
+		});
+		
+		// Initial terminal populate
+		messages.slice().reverse().forEach(m => {
+			const time = new Date(Number(m.timestamp) / 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+			terminalLog.add(`[{gray-fg}${time}{/}] {bold}${m.sender_identity}{/}: ${m.content}`);
+		});
+		container._lastMsgTimestamp = messages.length > 0 ? messages[0].timestamp : 0;
+
+	} else {
+		headerBox = container._headerBox;
+		workforceBox = container._workforceBox;
+		pipelineBox = container._pipelineBox;
+		ledgerBox = container._ledgerBox;
+		terminalLog = container._terminalLog;
+	}
+
+	// Update Dynamic Content
+	headerBox.setContent(`{bold}{cyan-fg}🚀 ENGINEER'S COCKPIT{/} | Agents: ${agents.length} | Pipeline: ${proposals.length} | Status: {green-fg}LIVE{/}`);
+
+	// Update Workforce
 	if (agents.length === 0) {
 		workforceBox.setContent("  {gray-fg}No agents registered{/}");
 	} else {
@@ -104,26 +185,11 @@ export function renderCockpit(
 		workforceBox.setContent(lines.join("\n"));
 	}
 
-	// 2. Pipeline [Top Right]
-	const pipelineBox = (screen as any).box({
-		parent: container,
-		top: 3,
-		left: "50%",
-		width: "50%",
-		height: "50%-3",
-		border: { type: "line" },
-		label: " [F4] Pipeline Traffic ",
-		tags: true,
-		scrollable: true,
-		alwaysScroll: true,
-		style: { border: { fg: "magenta" } },
-	});
-
+	// Update Pipeline
 	const statusCounts: Record<string, number> = {};
 	proposals.forEach(p => {
 		statusCounts[p.status] = (statusCounts[p.status] || 0) + 1;
 	});
-
 	const pipelineLines: string[] = [];
 	const statuses = ["New", "Draft", "Active", "Review", "Accepted", "Complete"];
 	statuses.forEach(s => {
@@ -137,21 +203,7 @@ export function renderCockpit(
 	});
 	pipelineBox.setContent(pipelineLines.join("\n"));
 
-	// 3. Ledger [Bottom Left]
-	const ledgerBox = (screen as any).box({
-		parent: container,
-		top: "50%",
-		left: 0,
-		width: "50%",
-		height: "50%-1",
-		border: { type: "line" },
-		label: " [F2] The Ledger (Spending) ",
-		tags: true,
-		scrollable: true,
-		alwaysScroll: true,
-		style: { border: { fg: "yellow" } },
-	});
-
+	// Update Ledger
 	if (ledger.length === 0) {
 		ledgerBox.setContent("  {gray-fg}No spending data{/}");
 	} else {
@@ -163,42 +215,15 @@ export function renderCockpit(
 		ledgerBox.setContent(ledgerLines.join("\n"));
 	}
 
-	// 4. Terminal [Bottom Right]
-	const terminalBox = (screen as any).box({
-		parent: container,
-		top: "50%",
-		left: "50%",
-		width: "50%",
-		height: "50%-1",
-		border: { type: "line" },
-		label: " [F3] Terminal bridge ",
-		tags: true,
-		scrollable: true,
-		alwaysScroll: true,
-		style: { border: { fg: "cyan" } },
-	});
-
-	if (messages.length === 0) {
-		terminalBox.setContent("  {gray-fg}No messages{/}");
-	} else {
-		const messageLines = messages.map(m => {
+	// Reactive Terminal Update (only add new messages)
+	const newMessages = messages.filter(m => m.timestamp > container._lastMsgTimestamp).reverse();
+	if (newMessages.length > 0) {
+		newMessages.forEach(m => {
 			const time = new Date(Number(m.timestamp) / 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-			return `[{gray-fg}${time}{/}] {bold}${m.sender_identity}{/}: ${m.content}`;
+			terminalLog.add(`[{gray-fg}${time}{/}] {bold}${m.sender_identity}{/}: ${m.content}`);
 		});
-		terminalBox.setContent(messageLines.join("\n"));
+		container._lastMsgTimestamp = messages[0].timestamp;
 	}
-
-	// Events strip at bottom
-	const footerBox = (screen as any).box({
-		parent: container,
-		bottom: 0,
-		left: 0,
-		width: "100%",
-		height: 1,
-		tags: true,
-		style: { bg: "black" },
-		content: " {white-fg}Tab: Switch View | Q: Exit | F1-F4: Info Sections{/}"
-	});
 
 	screen.render();
 }

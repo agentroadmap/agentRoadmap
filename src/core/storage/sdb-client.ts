@@ -10,7 +10,8 @@ import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore — js-yaml has no type declarations
-import { load as parseYaml } from "js-yaml";
+import yaml from "js-yaml";
+const parseYaml = yaml.load;
 
 export interface SdbConfig {
     host: string;

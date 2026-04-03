@@ -118,7 +118,7 @@ export class SdbMessageHandlers {
       
       await this.callReducer('subscribe_channel', [
         args.channel,
-        args.subscribe !== false
+        String(args.subscribe !== false)
       ]);
 
       return {

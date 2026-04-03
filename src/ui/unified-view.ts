@@ -442,62 +442,160 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					result = "switch";
 				};
 
-				// 1. Fetch Workforce data
-				const agents = querySdbSync("SELECT * FROM workforce_registry");
-				const pulses = querySdbSync("SELECT * FROM workforce_pulse");
-				
-				const agentData = agents.map(a => {
-					const pulse = pulses.find(p => p.identity === a.identity);
-					return {
-						id: a.agent_id,
-						name: a.name,
-						role: a.role,
-						status: pulse ? (pulse.is_zombie ? "zombie" : "active") : "offline",
-						currentProposal: pulse?.active_proposal_id,
-						statusMessage: pulse?.status_message || "Idle",
-						lastSeen: pulse?.last_seen_at
-					};
-				});
+				const refresh = () => {
+					// 1. Fetch Workforce data
+					const agents = querySdbSync("SELECT * FROM workforce_registry");
+					const pulses = querySdbSync("SELECT * FROM workforce_pulse");
+					
+					const agentData = agents.map(a => {
+						const pulse = pulses.find(p => p.identity === a.identity);
+						return {
+							id: a.agent_id,
+							name: a.name,
+							role: a.role,
+							status: pulse ? (pulse.is_zombie ? "zombie" : "active") : "offline",
+							currentProposal: pulse?.active_proposal_id,
+							statusMessage: pulse?.status_message || "Idle",
+							lastSeen: pulse?.last_seen_at
+						};
+					});
 
-				// 2. Fetch Pipeline data
-				const proposals = querySdbSync("SELECT * FROM proposal");
-				
-				// 3. Fetch Ledger data
-				const spending = querySdbSync("SELECT * FROM spending_log");
-				const caps = querySdbSync("SELECT * FROM spending_caps");
-				
-				// Aggregate spending by agent
-				const spendingByAgent: Record<string, number> = {};
-				for (const log of spending) {
-					spendingByAgent[log.agent_identity] = (spendingByAgent[log.agent_identity] || 0) + log.cost_usd;
-				}
+					// 2. Fetch Pipeline data
+					const proposals = querySdbSync("SELECT * FROM proposal");
+					
+					// 3. Fetch Ledger data
+					const spending = querySdbSync("SELECT * FROM spending_log");
+					const caps = querySdbSync("SELECT * FROM spending_caps");
+					
+					const spendingByAgent: Record<string, number> = {};
+					for (const log of spending) {
+						spendingByAgent[log.agent_identity] = (spendingByAgent[log.agent_identity] || 0) + log.cost_usd;
+					}
 
-				const ledgerData = caps.map(c => ({
-					agent: c.agent_identity,
-					dailyLimit: c.daily_limit_usd,
-					spentToday: c.total_spent_today_usd,
-					totalSpent: spendingByAgent[c.agent_identity] || 0,
-					isFrozen: c.is_frozen
-				}));
+					const ledgerData = caps.map(c => ({
+						agent: c.agent_identity,
+						dailyLimit: c.daily_limit_usd,
+						spentToday: c.total_spent_today_usd,
+						totalSpent: spendingByAgent[c.agent_identity] || 0,
+						isFrozen: c.is_frozen
+					}));
 
-				// 4. Fetch Terminal/Events
-				const messages = querySdbSync("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 20");
+					// 4. Fetch Terminal/Pulse Messages
+					const messages = querySdbSync("SELECT * FROM message_ledger WHERE channel_name = '#pulse' ORDER BY timestamp DESC LIMIT 30");
 
-				// Show the dashboard
-				renderCockpit(screen, {
-					agents: agentData,
-					proposals: proposals,
-					ledger: ledgerData,
-					messages: messages
-				} as any);
+					renderCockpit(screen, {
+						agents: agentData,
+						proposals: proposals,
+						ledger: ledgerData,
+						messages: messages
+					} as any);
+				};
+
+				// Initial render
+				refresh();
+
+				// Live Update Loop (500ms)
+				const timer = setInterval(refresh, 500);
 
 				// Set up key handlers
 				(screen as any).key(["tab"], () => {
 					onTabPress();
+					clearInterval(timer);
+					delete (screen as any)._cockpitContainer;
 					(screen as any).destroy();
 					resolve("switch");
 				});
 				(screen as any).key(["q", "C-c"], () => {
+					clearInterval(timer);
+					delete (screen as any)._cockpitContainer;
+					(screen as any).destroy();
+					resolve("exit");
+				});
+			});
+		};
+
+		// Function to show headlines view (system feed)
+		const showHeadlinesView = async (): Promise<ViewResult> => {
+			const { renderHeadlines } = await import("./headlines.ts");
+			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
+			const config = await options.core.filesystem.loadConfig();
+
+			return new Promise<ViewResult>((resolve) => {
+				let result: ViewResult = "exit";
+
+				const onTabPress = () => {
+					result = "switch";
+				};
+
+				const refresh = () => {
+					const messages = querySdbSync("SELECT * FROM message_ledger WHERE channel_name = '#pulse' ORDER BY timestamp DESC LIMIT 50");
+					renderHeadlines(screen, {
+						messages: messages as any[],
+						projectName: config?.projectName || "Roadmap.md"
+					});
+				};
+
+				refresh();
+				const timer = setInterval(refresh, 500);
+
+				// Set up key handlers
+				(screen as any).key(["tab"], () => {
+					onTabPress();
+					clearInterval(timer);
+					delete (screen as any)._headlinesContainer;
+					(screen as any).destroy();
+					resolve("switch");
+				});
+				(screen as any).key(["q", "C-c"], () => {
+					clearInterval(timer);
+					delete (screen as any)._headlinesContainer;
+					(screen as any).destroy();
+					resolve("exit");
+				});
+			});
+		};
+
+		// Function to show chat view
+		const showChatView = async (): Promise<ViewResult> => {
+			const { renderChat } = await import("./chat.ts");
+			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
+			const config = await options.core.filesystem.loadConfig();
+
+			return new Promise<ViewResult>((resolve) => {
+				let result: ViewResult = "exit";
+
+				const onTabPress = () => {
+					result = "switch";
+				};
+
+				const refresh = () => {
+					const messages = querySdbSync("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 100");
+					const channels = ["#general", "#dev", "#pulse", "#ops"];
+					const currentChannel = "#general"; 
+
+					renderChat(screen, {
+						messages: messages as any[],
+						channels,
+						currentChannel,
+						projectName: config?.projectName || "Roadmap.md",
+						userSystemName: "HUMAN"
+					});
+				};
+
+				refresh();
+				const timer = setInterval(refresh, 500);
+
+				// Set up key handlers
+				(screen as any).key(["tab"], () => {
+					onTabPress();
+					clearInterval(timer);
+					delete (screen as any)._chatContainer;
+					(screen as any).destroy();
+					resolve("switch");
+				});
+				(screen as any).key(["q", "C-c"], () => {
+					clearInterval(timer);
+					delete (screen as any)._chatContainer;
 					(screen as any).destroy();
 					resolve("exit");
 				});
@@ -519,6 +617,12 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				case "cockpit":
 					result = await showCockpit();
 					break;
+				case "headlines":
+					result = await showHeadlinesView();
+					break;
+				case "chat":
+					result = await showChatView();
+					break;
 				default:
 					result = "exit";
 			}
@@ -538,6 +642,12 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 						currentView = "cockpit";
 						break;
 					case "cockpit":
+						currentView = "headlines";
+						break;
+					case "headlines":
+						currentView = "chat";
+						break;
+					case "chat":
 						currentView = "proposal-list";
 						break;
 				}
