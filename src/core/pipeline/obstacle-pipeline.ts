@@ -190,7 +190,7 @@ export class ObstaclePipeline {
 			id: newProposalId,
 			title: options?.customTitle || `[RESOLVE] ${obstacle.title}`,
 			description: this.buildProposalDescription(obstacle),
-			status: "Potential",
+			status: "New",
 			priority: this.severityToPriority(obstacle.severity),
 			assignee: [obstacle.reportedBy],
 			labels: ["obstacle", "blocking", obstacle.severity],

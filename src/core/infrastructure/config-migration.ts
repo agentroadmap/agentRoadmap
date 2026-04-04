@@ -8,7 +8,7 @@ export function migrateConfig(config: Partial<RoadmapConfig>): RoadmapConfig {
 		projectName: "Untitled Project",
 		defaultEditor: "",
 		defaultStatus: "",
-		statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"],
+		statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"],
 		labels: [],
 		dateFormat: "YYYY-MM-DD",
 		maxColumnWidth: 80,

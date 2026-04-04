@@ -119,9 +119,9 @@ describe("AC#2: TUI Board Rendering", () => {
 // ---------------------------------------------------------------------------
 
 describe("AC#3: Tab Navigation", () => {
-	type ViewProposal = "proposal-list" | "kanban" | "cubic-dashboard" | "headlines";
+	type ViewProposal = "proposal-list" | "kanban" | "cockpit" | "headlines" | "chat";
 
-	const viewOrder: ViewProposal[] = ["proposal-list", "kanban", "cubic-dashboard", "headlines"];
+	const viewOrder: ViewProposal[] = ["proposal-list", "kanban", "cockpit", "headlines", "chat"];
 
 	it("cycles through views in correct order", () => {
 		let currentViewIndex = 0;
@@ -134,7 +134,7 @@ describe("AC#3: Tab Navigation", () => {
 		// Proposal List → Kanban
 		assert.strictEqual(switchToNextView(), "kanban");
 		// Kanban → Cubic Dashboard
-		assert.strictEqual(switchToNextView(), "cubic-dashboard");
+		assert.strictEqual(switchToNextView(), "cockpit");
 		// Cubic Dashboard → Headlines
 		assert.strictEqual(switchToNextView(), "headlines");
 		// Headlines → Proposal List (wrap)
@@ -463,3 +463,4 @@ describe("AC#6: Regression - Critical Board Paths", () => {
 		assert.strictEqual(visible[0]!.id, "proposal-100");
 	});
 });
+

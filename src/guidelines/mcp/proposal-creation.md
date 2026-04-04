@@ -6,7 +6,7 @@ This guide provides detailed instructions for creating well-structured states. Y
 
 **IMPORTANT - Always use filters when searching:**
 - Use `state_search` with query parameter (e.g., query="desktop app")
-- Use `state_list` with status filter to exclude completed work (e.g., status="Potential" or status="Active")
+- Use `state_list` with status filter to exclude completed work (e.g., status="New" or status="Active")
 - Never list all states including "Reached" status without explicit user request
 - Never search without a query or limit - this can overwhelm the context window
 
@@ -82,7 +82,7 @@ Create all states in the same session to maintain consistency and context.
 
 **Ask for clarification** if requirements are ambiguous
 
-**Drafts (exceptional):** Default to creating regular states (e.g., Potential) for any work you are committing to track. Only create a Draft when the user explicitly requests a draft, or when there is clear uncertainty that makes a commitment inappropriate (e.g., missing requirements and the user wants a placeholder). Use `state_create` with status `Draft` to create a draft, `state_edit` to promote/demote by changing status, and pass status `Draft` to `state_list`/`state_search` to include drafts. Drafts are excluded unless explicitly filtered.
+**Drafts (exceptional):** Default to creating regular states (e.g., New) for any work you are committing to track. Only create a Draft when the user explicitly requests a draft, or when there is clear uncertainty that makes a commitment inappropriate (e.g., missing requirements and the user wants a placeholder). Use `state_create` with status `Draft` to create a draft, `state_edit` to promote/demote by changing status, and pass status `Draft` to `state_list`/`state_search` to include drafts. Drafts are excluded unless explicitly filtered.
 
 ### Step 6: Report created states
 

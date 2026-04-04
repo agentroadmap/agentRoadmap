@@ -19,90 +19,80 @@ function toMs(timestamp: any): number {
 
 /** Convert an SDB row to the Proposal format expected by UI components */
 function rowToProposal(row: any): Proposal {
-  const compId = row.comp_id || row.component_id;
-  const claimedBy = row.claimed_by || row.assigned_identity;
-  const directiveId = row.goal_id || row.directive_id;
-  const rawStatus = row.status || "Draft";
-  const statusMap: Record<string, string> = { "Potential": "Proposal", "Reached": "Complete", "draft": "Draft", "Abandoned": "Rejected" };
-  const status = statusMap[rawStatus] || rawStatus;
+  const id = String(row.display_id || row.id);
+  let status = row.status || "Draft";
 
-  const claimedAt = row.claimed_at ? toMs(row.claimed_at) : null;
+  // Map legacy statuses to new workflow
+  if (status === "New" || status === "Potential") {
+      status = "Draft";
+  } else if (status === "Active") {
+      status = "Building";
+  } else if (status === "Reached") {
+      status = "Complete";
+  }
 
-  const claim: ProposalClaim | undefined = claimedBy
-    ? { agent: String(claimedBy), expires: String(claimedAt || 0), created: String(row.created_at || 0) }
-    : undefined;
+  const bodyText = String(row.body_markdown || "");
 
-  const isComplete = status === "Complete" || status === "Reached";
-  const bodyText = String(row.body || row.body_markdown || "");
-
-  // Fallback to parsing the body if DB columns are empty (e.g. from v1 migrations)
-  const rawAcceptanceCriteria = String(row.acceptance_criteria || "");
-  const acceptanceCriteriaItems = rawAcceptanceCriteria 
-    ? AcceptanceCriteriaManager.parseAllCriteria(rawAcceptanceCriteria)
-    : AcceptanceCriteriaManager.parseAllCriteria(bodyText);
+  // Fetch criteria for this proposal (would be better in a separate query but keeping it compatible with existing loader signature for now)
+  // Actually, we can't easily do it inside rowToProposal sync without another query.
+  // For now, let's parse body for criteria as fallback.
+  const acceptanceCriteriaItems = AcceptanceCriteriaManager.parseAllCriteria(bodyText);
 
   return {
-    id: String(row.display_id || row.id),
+    id: String(id),
     title: String(row.title),
     rawContent: bodyText,
     description: String(row.description || "") || extractStructuredSection(bodyText, "description") || "",
     implementationPlan: extractStructuredSection(bodyText, "implementationPlan") || undefined,
-    implementationNotes: String(row.implementation_notes || "") || extractStructuredSection(bodyText, "implementationNotes") || "",
-    finalSummary: String(row.final_summary || "") || extractStructuredSection(bodyText, "finalSummary") || "",
+    implementationNotes: String(row.process_logic || "") || extractStructuredSection(bodyText, "implementationNotes") || "",
+    finalSummary: extractStructuredSection(bodyText, "finalSummary") || "",
     acceptanceCriteriaItems,
     status,
-    assignee: compId ? [String(compId)] : [],
-    priority: String(row.priority || "none") as any,
-    labels: row.labels ? String(row.labels).split(",").map((s: string) => s.trim()).filter(Boolean) : (row.tags ? String(row.tags).split(",").map((s: string) => s.trim()).filter(Boolean) : []),
-    dependencies: row.dependencies ? String(row.dependencies).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
-    parentProposalId: undefined,
-    proof: row.body || row.body_markdown ? [String(row.body || row.body_markdown)] : [],
-    directive: directiveId ? String(directiveId) : undefined,
-    branch: undefined,
-    maturity: undefined,
-    ready: isComplete,
-    claim,
+    assignee: [], // Will be populated from workforce_pulse if needed
+    priority: String(row.priority || "none").toLowerCase() as any,
+    labels: row.tags ? String(row.tags).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+    dependencies: [], // No longer a column, should be fetched from parent_id or hierarchy
+    parentProposalId: row.parent_id ? String(row.parent_id) : undefined,
+    proof: [],
+    directive: row.parent_id ? String(row.parent_id) : undefined,
+    maturity: row.maturity_level === 0 ? "new" : (row.maturity_level === 1 ? "active" : (row.maturity_level === 2 ? "mature" : "obsolete")),
+    ready: status === "Complete",
     createdDate: row.created_at ? new Date(toMs(row.created_at)).toISOString() : new Date().toISOString(),
     updatedDate: row.updated_at ? new Date(toMs(row.updated_at)).toISOString() : undefined,
+    budgetLimitUsd: row.budget_limit_usd,
+    domainId: row.domain_id,
+    proposalType: row.proposal_type,
+    category: row.category,
   };
 }
 
 /** Load all proposals from SpacetimeDB */
 export function loadAllProposals(): Proposal[] {
-  const dbName = getSdbConfigSync().dbName;
-  const table = dbName === "roadmap2" ? "proposal" : "step";
-  const rows = querySdbSync(`SELECT * FROM ${table}`);
+  const rows = querySdbSync("SELECT * FROM proposal");
   return rows.map(rowToProposal);
 }
 
 /** Load proposals filtered by status */
 export function loadProposalsByStatus(status: string): Proposal[] {
-  const dbName = getSdbConfigSync().dbName;
-  const table = dbName === "roadmap2" ? "proposal" : "step";
-  const rows = querySdbSync(`SELECT * FROM ${table} WHERE status = '${status}'`);
+  const rows = querySdbSync(`SELECT * FROM proposal WHERE status = '${status}'`);
   return rows.map(rowToProposal);
 }
 
 /** Load a single proposal by ID */
 export function loadProposal(id: string): Proposal | null {
-  const dbName = getSdbConfigSync().dbName;
-  const table = dbName === "roadmap2" ? "proposal" : "step";
-  const rows = querySdbSync(`SELECT * FROM ${table} WHERE id = '${id}' OR display_id = '${id}'`);
+  const rows = querySdbSync(`SELECT * FROM proposal WHERE id = '${id}' OR display_id = '${id}'`);
   if (rows.length === 0) return null;
   return rowToProposal(rows[0]);
 }
 
 /** Load all directives from SpacetimeDB */
 export function loadAllDirectives(): Directive[] {
-  const dbName = getSdbConfigSync().dbName;
-  const table = dbName === "roadmap2" ? "directive" : "goal";
-  const descColumn = dbName === "roadmap2" ? "content" : "description";
-  const rows = querySdbSync(`SELECT id, title, ${descColumn} as description, status FROM ${table}`);
+  const rows = querySdbSync("SELECT id, display_id, title, body_markdown as description, status FROM proposal WHERE proposal_type = 'DIRECTIVE'");
   return rows.map((row: any) => ({
-    id: String(row.id),
+    id: String(row.display_id || row.id),
     title: String(row.title),
     description: String(row.description || ""),
-    status: String(row.status || "aspirational"),
+    status: String(row.status || "New"),
     rawContent: "",
   }));
 }

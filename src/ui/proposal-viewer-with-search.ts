@@ -194,7 +194,7 @@ export async function viewProposalEnhanced(
 		// Proposals already provided - use in-memory search (no ContentStore loading)
 		allProposals = options.proposals.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
-		statuses = config?.statuses || ["Potential", "Active", "Accepted", "Complete", "Abandoned"];
+		statuses = config?.statuses || ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"];
 		labels = config?.labels || [];
 		proposalSearchIndex = createProposalSearchIndex(allProposals);
 	} else {
@@ -203,7 +203,7 @@ export async function viewProposalEnhanced(
 		try {
 			loadingScreen?.update("Loading configuration...");
 			const config = await core.filesystem.loadConfig();
-			statuses = config?.statuses || ["Potential", "Active", "Accepted", "Complete", "Abandoned"];
+			statuses = config?.statuses || ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"];
 			labels = config?.labels || [];
 
 			loadingScreen?.update("Loading proposals from branches...");
@@ -754,6 +754,9 @@ export async function viewProposalEnhanced(
 			itemRenderer: (proposal: Proposal) => {
 				const statusIcon = formatStatusWithIcon(proposal.status);
 				const statusColor = getStatusColor(proposal.status);
+				const maturityColor = getMaturityColor((proposal as any).maturity);
+				const maturityIcon = getMaturityIcon((proposal as any).maturity);
+
 				const assigneeText = proposal.assignee?.length
 					? ` {cyan-fg}${proposal.assignee[0]?.startsWith("@") ? proposal.assignee[0] : `@${proposal.assignee[0]}`}{/}`
 					: "";
@@ -763,7 +766,7 @@ export async function viewProposalEnhanced(
 				const branchText = isCrossBranch ? ` {green-fg}(${(proposal as Proposal & { branch?: string }).branch}){/}` : "";
 
 				const displayId = proposal.id.replace(/^STATE-/, "STEP-");
-				const content = `{${statusColor}-fg}${statusIcon}{/} {bold}${displayId}{/bold} - ${proposal.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+				const content = `{${maturityColor}-fg}${maturityIcon}{/}{${statusColor}-fg}${statusIcon}{/} {bold}${displayId}{/bold} - ${proposal.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 				// Dim cross-branch proposals to indicate read-only status
 				return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 			},
@@ -1005,11 +1008,11 @@ export async function viewProposalEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Proposal List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[←]{/} Proposal List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[q/Esc]{/} Quit";
 		} else {
 			// Proposal list help
 			content =
-				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[i]{/} Directive | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[E]{/} Edit | {cyan-fg}[q/Esc]{/} Quit";
+				" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[s]{/} Status | {cyan-fg}[p]{/} Priority | {cyan-fg}[l]{/} Labels | {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[q/Esc]{/} Quit";
 		}
 
 		setHelpBarContent(content);
@@ -1089,14 +1092,6 @@ export async function viewProposalEnhanced(
 
 	screen.key(["l", "L"], () => {
 		void openFilterPicker("labels");
-	});
-
-	screen.key(["i", "I"], () => {
-		void openFilterPicker("directive");
-	});
-
-	screen.key(["e", "E", "S-e"], () => {
-		void openCurrentProposalInEditor();
 	});
 
 	screen.key(["escape"], () => {
@@ -1200,8 +1195,12 @@ function generateDetailContent(
 	resolveDirectiveLabel?: (directive: string) => string,
 ): { headerContent: string[]; bodyContent: string[] } {
 	const dvId = proposal.id.replace(/^STATE-/, "STEP-");
+	const statusColor = getStatusColor(proposal.status);
+	const maturityColor = getMaturityColor((proposal as any).maturity);
+	const maturityIcon = getMaturityIcon((proposal as any).maturity);
+	
 	const headerContent = [
-		` {${getStatusColor(proposal.status)}-fg}${formatStatusWithIcon(proposal.status)}{/} {bold}{blue-fg}${dvId}{/blue-fg}{/bold} - ${proposal.title}`,
+		` {${maturityColor}-fg}${maturityIcon}{/}${statusColor ? `{${statusColor}-fg}` : ""}${formatStatusWithIcon(proposal.status)}{/} {bold}{blue-fg}${dvId}{/blue-fg}{/bold} - ${proposal.title}`,
 	];
 
 	// Add cross-branch indicator if proposal is from another branch
@@ -1225,6 +1224,10 @@ function generateDetailContent(
 		const priorityDisplay = getPriorityDisplay(proposal.priority);
 		const priorityText = proposal.priority.charAt(0).toUpperCase() + proposal.priority.slice(1);
 		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
+	}
+	if ((proposal as any).maturity) {
+		const maturityText = (proposal as any).maturity.charAt(0).toUpperCase() + (proposal as any).maturity.slice(1);
+		metadata.push(`{bold}Maturity:{/bold} {${getMaturityColor((proposal as any).maturity)}-fg}${maturityText}{/}`);
 	}
 	if (proposal.assignee?.length) {
 		const assigneeList = proposal.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");

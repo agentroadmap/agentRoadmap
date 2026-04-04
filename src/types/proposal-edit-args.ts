@@ -49,7 +49,7 @@ export interface ProposalEditArgs {
 	requiresAdd?: string[];
 	requiresRemove?: number[];
 	requiresClear?: boolean;
-	maturity?: "skeleton" | "contracted" | "audited";
+	maturity?: "new" | "active" | "mature" | "obsolete";
 	builder?: string;
 	auditor?: string;
 	needs_capabilities?: string[];

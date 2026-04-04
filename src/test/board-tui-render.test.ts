@@ -168,7 +168,7 @@ describe("TUI Key Bindings", () => {
 		idx = (idx + 1) % views.length;
 		assert.strictEqual(views[idx], "kanban");
 		idx = (idx + 1) % views.length;
-		assert.strictEqual(views[idx], "cubic-dashboard");
+		assert.strictEqual(views[idx], "cockpit");
 		idx = (idx + 1) % views.length;
 		assert.strictEqual(views[idx], "headlines");
 		idx = (idx + 1) % views.length;

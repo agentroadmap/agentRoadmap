@@ -24,7 +24,7 @@ import {
         isCompleteStatus,
         isActiveStatus,
         isReviewStatus,
-        isPotentialStatus,
+        isNewStatus,
         formatStatus,
         formatComponentId,
         formatComponentRef,
@@ -80,7 +80,7 @@ describe("proposal-59: Rethink Roadmap as Product Design & Project Management", 
                         assert.equal(isCompleteStatus("Complete"), true);
                         assert.equal(isCompleteStatus("Complete"), true);
                         assert.equal(isCompleteStatus("Active"), false);
-                        assert.equal(isCompleteStatus("Potential"), false);
+                        assert.equal(isCompleteStatus("New"), false);
                 });
 
                 it("should have correct display names for Complete", () => {
@@ -161,7 +161,7 @@ describe("proposal-59: Rethink Roadmap as Product Design & Project Management", 
 
         describe("AC#4: Documentation uses product design language", () => {
                 it("should have status displays for all statuses", () => {
-                        assert.ok(STATUS_DISPLAY["Potential"] !== undefined);
+                        assert.ok(STATUS_DISPLAY["New"] !== undefined);
                         assert.ok(STATUS_DISPLAY["Active"] !== undefined);
                         assert.ok(STATUS_DISPLAY["Review"] !== undefined);
                         assert.ok(STATUS_DISPLAY["Complete"] !== undefined);
@@ -169,13 +169,13 @@ describe("proposal-59: Rethink Roadmap as Product Design & Project Management", 
                 });
 
                 it("should have user-friendly status displays", () => {
-                        assert.equal(STATUS_DISPLAY["Potential"], "Backlog");
+                        assert.equal(STATUS_DISPLAY["New"], "Backlog");
                         assert.equal(STATUS_DISPLAY["Active"], "In Progress");
                         assert.equal(STATUS_DISPLAY["Review"], "In Review");
                 });
 
                 it("should have emojis for all statuses", () => {
-                        assert.equal(STATUS_EMOJI["Potential"], "⚪");
+                        assert.equal(STATUS_EMOJI["New"], "⚪");
                         assert.equal(STATUS_EMOJI["Active"], "🔵");
                         assert.equal(STATUS_EMOJI["Review"], "🟡");
                         assert.equal(STATUS_EMOJI["Complete"], "✅");
@@ -183,7 +183,7 @@ describe("proposal-59: Rethink Roadmap as Product Design & Project Management", 
                 });
 
                 it("should format status with emoji", () => {
-                        const potential = formatStatus("Potential");
+                        const potential = formatStatus("New");
                         assert.ok(potential.includes("⚪"));
                         assert.ok(potential.includes("Backlog"));
 
@@ -306,8 +306,8 @@ This component is complete.`
 
         describe("Additional status handling", () => {
                 it("should normalize all standard statuses", () => {
-                        assert.equal(normalizeStatus("Potential"), "Potential");
-                        assert.equal(normalizeStatus("potential"), "Potential");
+                        assert.equal(normalizeStatus("New"), "New");
+                        assert.equal(normalizeStatus("potential"), "New");
                         assert.equal(normalizeStatus("Active"), "Active");
                         assert.equal(normalizeStatus("active"), "Active");
                         assert.equal(normalizeStatus("Review"), "Review");
@@ -321,12 +321,12 @@ This component is complete.`
                         assert.equal(isCompleteStatus("Complete"), true);
                         assert.equal(isActiveStatus("Active"), true);
                         assert.equal(isReviewStatus("Review"), true);
-                        assert.equal(isPotentialStatus("Potential"), true);
+                        assert.equal(isNewStatus("New"), true);
                 });
 
-                it("should default unknown statuses to Potential", () => {
-                        assert.equal(normalizeStatus("Unknown"), "Potential");
-                        assert.equal(normalizeStatus(""), "Potential");
+                it("should default unknown statuses to New", () => {
+                        assert.equal(normalizeStatus("Unknown"), "New");
+                        assert.equal(normalizeStatus(""), "New");
                 });
         });
 

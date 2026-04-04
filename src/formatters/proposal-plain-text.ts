@@ -3,7 +3,7 @@ import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
 import { formatStatusWithIcon } from "../ui/status-icon.ts";
 import { sortByProposalId } from "../utils/proposal-sorting.ts";
-import { isReachedStatus } from "../utils/status.ts";
+import { isCompleteStatus } from "../utils/status.ts";
 
 export type ProposalPlainTextOptions = {
 	filePathOverride?: string;
@@ -84,7 +84,7 @@ function formatSubproposalLines(subproposals: Array<{ id: string; title: string 
 export function formatProposalPlainText(proposal: Proposal, options: ProposalPlainTextOptions = {}): string {
 	const lines: string[] = [];
 	const filePath = options.filePathOverride ?? proposal.filePath;
-	const reachedProposal = isReachedStatus(proposal.status);
+	const reachedProposal = isCompleteStatus(proposal.status);
 
 	if (filePath) {
 		lines.push(`File: ${filePath}`);

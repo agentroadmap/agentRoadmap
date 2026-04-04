@@ -205,7 +205,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
   }, [directiveEntities, archivedDirectiveEntities]);
 
   // Sidebar metadata (inline edit)
-  const [status, setStatus] = useState(proposal?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "Potential")));
+  const [status, setStatus] = useState(proposal?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "New")));
   const [assignee, setAssignee] = useState<string[]>(proposal?.assignee || []);
   const [labels, setLabels] = useState<string[]>(proposal?.labels || []);
   const [priority, setPriority] = useState<string>(proposal?.priority || "");
@@ -273,7 +273,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
     setNotes(proposal?.implementationNotes || "");
     setFinalSummary(proposal?.finalSummary || "");
     setCriteria(proposal?.acceptanceCriteriaItems || []);
-    setStatus(proposal?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "Potential")));
+    setStatus(proposal?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "New")));
     setAssignee(proposal?.assignee || []);
     setLabels(proposal?.labels || []);
     setPriority(proposal?.priority || "");
@@ -911,7 +911,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; disabled?: boolean }> = ({ current, onChange, disabled }) => {
   const [statuses, setStatuses] = useState<string[]>([]);
   useEffect(() => {
-    apiClient.fetchStatuses().then(setStatuses).catch(() => setStatuses(["Potential", "Active", "Accepted", "Complete", "Abandoned"]));
+    apiClient.fetchStatuses().then(setStatuses).catch(() => setStatuses(["New", "Active", "Accepted", "Complete", "Abandoned"]));
   }, []);
   return (
     <select

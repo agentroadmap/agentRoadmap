@@ -1,16 +1,17 @@
+import { type ProposalClaim, type Core } from "../types/index.ts";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
+
 /**
  * Check if a status represents a "done" (successful completion) proposal.
- * Matches "done", "complete", or "reached" (case-insensitive).
+ * Matches "done", "complete", or "completed" (case-insensitive).
  */
-export function isReachedStatus(status?: string | null): boolean {
+export function isCompleteStatus(status?: string | null): boolean {
 	if (!status) return false;
 	const normalized = String(status).trim().toLowerCase();
 	return (
-		normalized === "reached" ||
 		normalized === "done" ||
 		normalized === "complete" ||
 		normalized === "completed" ||
-		normalized.includes("reached") ||
 		normalized.includes("done") ||
 		normalized.includes("complete")
 	);
@@ -20,31 +21,55 @@ export function isReachedStatus(status?: string | null): boolean {
  * Check if a status represents a terminal proposal (either successful or abandoned/archived).
  */
 export function isTerminalStatus(status?: string | null): boolean {
-	if (isReachedStatus(status)) return true;
+	if (isCompleteStatus(status)) return true;
 	const normalized = (status ?? "").toLowerCase();
-	return normalized.includes("abandoned") || normalized.includes("archived");
+	return (
+		normalized.includes("abandoned") ||
+		normalized.includes("archived") ||
+		normalized.includes("rejected") ||
+		normalized.includes("replaced")
+	);
 }
 
 /**
  * Check if a status represents a "to do" (not started) proposal.
- * Matches "todo", "potential", or "active" (case-insensitive).
+ * Matches "todo", "new", or "draft" (case-insensitive).
  */
 export function isTodoStatus(status?: string | null): boolean {
-	const normalized = (status ?? "").toLowerCase();
+	if (!status) return false;
+	const normalized = status.toLowerCase();
 	return (
+		normalized === "todo" || 
+		normalized === "new" || 
+		normalized === "draft" ||
 		normalized.includes("todo") ||
-		normalized.includes("potential") ||
-		normalized.includes("active") ||
-		normalized.replace(/\s+/g, "") === "todo"
+		normalized.includes("new") ||
+		normalized.includes("draft")
 	);
 }
 
-import { type ProposalClaim } from "../types/index.ts";
+/**
+ * Check if a status represents an "in progress" proposal.
+ * Matches "active", "building", "developing", or "review" (case-insensitive).
+ */
+export function isInProgressStatus(status?: string | null): boolean {
+	if (!status) return false;
+	const normalized = status.toLowerCase();
+	return (
+		normalized === "active" ||
+		normalized === "building" ||
+		normalized === "developing" ||
+		normalized === "review" ||
+		normalized.includes("active") ||
+		normalized.includes("building") ||
+		normalized.includes("review")
+	);
+}
 
 /**
  * Check if a proposal is ready for autonomous pickup (not terminal, unassigned, and unblocked).
  * @param proposal - The proposal to check
- * @param doneIds - A set of IDs for proposals that are already completed/reached
+ * @param doneIds - A set of IDs for proposals that are already completed/done
  * @returns true if the proposal is ready for pickup
  */
 export function isReady(
@@ -52,7 +77,7 @@ export function isReady(
 	doneIds: Set<string>,
 	allProposals?: Array<{ status: string; type?: string }>,
 ): boolean {
-	// 1. Must not be terminal (reached, abandoned, etc.)
+	// 1. Must not be terminal (complete, abandoned, etc.)
 	if (isTerminalStatus(proposal.status)) return false;
 
 	// 2. High-priority interrupt: if there are any active INCIDENTS, everything else is blocked
@@ -73,7 +98,7 @@ export function isReady(
 		}
 	}
 
-	// 3. Must be unblocked: all dependencies must be done/reached
+	// 3. Must be unblocked: all dependencies must be done/complete
 	// 3. Must not have external injections (3rd party blockers)
 	if (proposal.external_injections && proposal.external_injections.length > 0) return false;
 
@@ -86,15 +111,12 @@ export function isReady(
 	return true;
 }
 
-import { Core } from "../core/roadmap.ts";
-
 /**
  * Load valid statuses from project configuration.
  */
 export async function getValidStatuses(core?: Core): Promise<string[]> {
-	const c = core ?? new Core(process.cwd());
-	const config = await c.filesystem.loadConfig();
-	return config?.statuses || [];
+	const config = await core?.filesystem.loadConfig();
+	return config?.statuses || [...DEFAULT_STATUSES];
 }
 
 /**
@@ -103,21 +125,43 @@ export async function getValidStatuses(core?: Core): Promise<string[]> {
  * Returns the canonical value or null if no match is found.
  *
  * Examples:
- * - "todo" matches "Potential"
- * - "in progress" matches "Active"
- * - "DONE" matches "Reached"
+ * - "todo" matches "Draft"
+ * - "in progress" matches "Building"
+ * - "DONE" matches "Complete"
  */
 export async function getCanonicalStatus(input: string | undefined, core?: Core): Promise<string | null> {
 	if (!input) return null;
 	const statuses = await getValidStatuses(core);
-	// Normalize: lowercase, trim, and remove all whitespace
-	const normalized = String(input).trim().toLowerCase().replace(/\s+/g, "");
-	if (!normalized) return null;
+	const normalizedInput = String(input).trim().toLowerCase().replace(/\s+/g, "");
+	if (!normalizedInput) return null;
+
+	// Direct match
 	for (const s of statuses) {
-		// Normalize config status the same way
-		const configNormalized = s.toLowerCase().replace(/\s+/g, "");
-		if (configNormalized === normalized) return s; // preserve configured casing
+		if (s.toLowerCase().replace(/\s+/g, "") === normalizedInput) return s;
 	}
+
+	// Semantic aliases
+	if (normalizedInput === "todo" || normalizedInput === "new") {
+		const found = statuses.find((s) => s.toLowerCase() === "draft");
+		if (found) return found;
+	}
+
+	if (normalizedInput === "inprogress" || normalizedInput === "active" || normalizedInput === "developing") {
+		const found = statuses.find((s) => {
+			const ns = s.toLowerCase();
+			return ns === "building" || ns === "active";
+		});
+		if (found) return found;
+	}
+
+	if (normalizedInput === "done" || normalizedInput === "complete") {
+		const found = statuses.find((s) => {
+			const ns = s.toLowerCase();
+			return ns === "complete";
+		});
+		if (found) return found;
+	}
+
 	return null;
 }
 

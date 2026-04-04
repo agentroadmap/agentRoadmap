@@ -3,10 +3,6 @@
     "test_roadmap": {
       "url": "http://127.0.0.1:6421/",
       "type": "sse"
-    },
-    "roadmap": {
-      "command": "npm run mcp",
-      "args": []
     }
   }
 }

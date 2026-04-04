@@ -13,53 +13,68 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Status values - supports both legacy and new names
+ * Status values
  */
 export type StatusValue =
-	| "Potential"
-	| "Active"
+	| "New"
+	| "Draft"
 	| "Review"
-	| "Complete" // New name for Reached
-	| "Reached" // Legacy name
-	| "Abandoned";
+	| "Active"
+	| "Accepted"
+	| "Complete"
+	| "Rejected"
+	| "Abandoned"
+	| "Replaced";
 
 /**
  * Canonical status values (new terminology)
  */
-export type CanonicalStatus = "Potential" | "Active" | "Review" | "Complete" | "Abandoned";
+export type CanonicalStatus = "New" | "Draft" | "Review" | "Active" | "Accepted" | "Complete" | "Rejected" | "Abandoned" | "Replaced";
 
 /**
  * Status mapping from legacy to canonical
  */
 export const STATUS_MAP: Record<string, CanonicalStatus> = {
-	reached: "Complete",
 	complete: "Complete",
-	potential: "Potential",
+	new: "New",
+	draft: "Draft",
+	potential: "New",
 	active: "Active",
 	review: "Review",
+	accepted: "Accepted",
+	rejected: "Rejected",
 	abandoned: "Abandoned",
+	replaced: "Replaced",
 };
 
 /**
  * Display names for statuses
  */
 export const STATUS_DISPLAY: Record<CanonicalStatus, string> = {
-	Potential: "Backlog",
-	Active: "In Progress",
+	New: "New",
+	Draft: "Draft",
 	Review: "In Review",
+	Active: "In Progress",
+	Accepted: "Accepted",
 	Complete: "Complete",
+	Rejected: "Rejected",
 	Abandoned: "Abandoned",
+	Replaced: "Replaced",
 };
 
 /**
  * Status emoji for TUI
  */
 export const STATUS_EMOJI: Record<CanonicalStatus, string> = {
-	Potential: "⚪",
-	Active: "🔵",
+	New: "★",
+	Draft: "⚪",
 	Review: "🟡",
+	Active: "🔵",
+	Accepted: "▣",
 	Complete: "✅",
+	Rejected: "✖",
 	Abandoned: "❌",
+	Replaced: "⇄",
 };
 
 /**
@@ -126,7 +141,7 @@ export const MCP_LABELS = {
  */
 export function normalizeStatus(status: string): CanonicalStatus {
 	const normalized = status.toLowerCase().trim();
-	return STATUS_MAP[normalized] || "Potential";
+	return STATUS_MAP[normalized] || "New";
 }
 
 /**
@@ -152,10 +167,10 @@ export function isReviewStatus(status: string): boolean {
 }
 
 /**
- * Check if a status is "potential" status
+ * Check if a status is "new" status
  */
-export function isPotentialStatus(status: string): boolean {
-	return normalizeStatus(status) === "Potential";
+export function isNewStatus(status: string): boolean {
+	return normalizeStatus(status) === "New";
 }
 
 /**
@@ -263,11 +278,11 @@ export function migrateProposalFile(filePath: string): {
 	// Normalize status in frontmatter
 	let migrated = content;
 
-	// Replace "status: Reached" with "status: Complete"
+	// Replace legacy "status: Reached" with "status: Complete"
 	const statusRegex = /status:\s*Reached/gi;
 	if (statusRegex.test(content)) {
 		migrated = migrated.replace(statusRegex, "status: Complete");
-		changes.push("status: Reached → Complete");
+		changes.push("Legacy status: Reached → Complete");
 	}
 
 	// Apply terminology to user-facing content (not frontmatter)
@@ -343,7 +358,7 @@ This guide helps you transition from the legacy terminology to the new product d
 | Reached | Complete | ✅ Complete |
 | Active | Active | 🔵 In Progress |
 | Review | Review | 🟡 In Review |
-| Potential | Potential | ⚪ Backlog |
+| New | New | ⚪ Backlog |
 | Abandoned | Abandoned | ❌ Abandoned |
 
 ## Terminology Changes

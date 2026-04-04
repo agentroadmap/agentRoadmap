@@ -279,7 +279,7 @@ export class SpacetimeDBProposalStorage {
 	/**
 	 * Transition a proposal to a new status.
 	 * Convenience method that validates the transition.
-	 * STATE-085: Enforces lifecycle - Potential → Active → Complete.
+	 * STATE-085: Enforces lifecycle - New → Draft → Review → Active → Accepted → Complete.
 	 *
 	 * @param id - Proposal ID
 	 * @param newStatus - New status
@@ -391,7 +391,7 @@ export class SpacetimeDBProposalStorage {
 	/**
 	 * Complete a proposal (transition to Complete).
 	 * STATE-085: Requires an active claim by the caller.
-	 * STATE-085: Enforces lifecycle - Potential → Active → Complete.
+	 * STATE-085: Enforces lifecycle - New → Draft → Review → Active → Accepted → Complete.
 	 *
 	 * @param proposalId - Proposal ID to complete
 	 * @param agentId - Agent completing the proposal (must have active claim)
@@ -413,7 +413,7 @@ export class SpacetimeDBProposalStorage {
 			);
 		}
 
-		// STATE-085 AC#2: Enforce lifecycle (Potential → Active → Complete)
+		// STATE-085 AC#2: Enforce lifecycle (New → Draft → Review → Active → Accepted → Complete)
 		validateProposalTransition(proposal.status, "complete");
 
 		// Release the claim

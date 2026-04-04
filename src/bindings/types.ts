@@ -122,7 +122,7 @@ export type SpendingCaps = __Infer<typeof SpendingCaps>;
 
 export const SpendingLog = __t.object("SpendingLog", {
   id: __t.u64(),
-  proposalId: __t.u64(),
+  proposal_id: __t.u64(),
   agentIdentity: __t.string(),
   costUsd: __t.f64(),
   timestamp: __t.u64(),
@@ -152,8 +152,12 @@ export type WorkforcePulse = __Infer<typeof WorkforcePulse>;
 export const WorkforceRegistry = __t.object("WorkforceRegistry", {
   identity: __t.string(),
   agentId: __t.string(),
+  name: __t.string(),
   role: __t.string(),
+  clearanceLevel: __t.u8(),
+  squadId: __t.u32(),
+  workspace: __t.string(),
+  apiKey: __t.string(),
   isActive: __t.bool(),
 });
 export type WorkforceRegistry = __Infer<typeof WorkforceRegistry>;
-

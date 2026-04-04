@@ -42,7 +42,7 @@ export interface StatusSummary {
 	reached: Proposal[];
 	active: Proposal[];
 	review: Proposal[];
-	potential: Proposal[];
+	new: Proposal[];
 	abandoned: Proposal[];
 	total: number;
 }
@@ -182,7 +182,7 @@ export function parseProposalFile(filePath: string): Proposal | null {
 		return {
 			id: frontmatter.id as string,
 			title,
-			status: (frontmatter.status as string) || "Potential",
+			status: (frontmatter.status as string) || "New",
 			assignee: (frontmatter.assignee as string[] | undefined) ?? [],
 			priority: ((frontmatter.priority as string) || "medium") as "high" | "medium" | "low",
 			dependencies: (frontmatter.dependencies as string[]) || [],
@@ -226,7 +226,7 @@ export function buildStatusSummary(proposals: Proposal[]): StatusSummary {
 		reached: [],
 		active: [],
 		review: [],
-		potential: [],
+		new: [],
 		abandoned: [],
 		total: proposals.length,
 	};
@@ -239,8 +239,8 @@ export function buildStatusSummary(proposals: Proposal[]): StatusSummary {
 			summary.active.push(proposal);
 		} else if (status === "review") {
 			summary.review.push(proposal);
-		} else if (status === "potential") {
-			summary.potential.push(proposal);
+		} else if (status === "new") {
+			summary.new.push(proposal);
 		} else if (status === "abandoned") {
 			summary.abandoned.push(proposal);
 		}
@@ -251,7 +251,7 @@ export function buildStatusSummary(proposals: Proposal[]): StatusSummary {
 	summary.reached.sort(sortById);
 	summary.active.sort(sortById);
 	summary.review.sort(sortById);
-	summary.potential.sort(sortById);
+	summary.new.sort(sortById);
 	summary.abandoned.sort(sortById);
 
 	return summary;
@@ -281,7 +281,7 @@ export function buildArchitectureSection(proposals: Proposal[]): string {
 	plantuml += "  BackgroundColor<<reached>> #00c853\n";
 	plantuml += "  BackgroundColor<<active>> #2196f3\n";
 	plantuml += "  BackgroundColor<<review>> #ff9800\n";
-	plantuml += "  BackgroundColor<<potential>> #ffffff\n";
+	plantuml += "  BackgroundColor<<new>> #ffffff\n";
 	plantuml += "  BackgroundColor<<abandoned>> #9e9e9e\n";
 	plantuml += "}\n\n";
 
@@ -381,7 +381,7 @@ npm test
 
 ## 🤝 Contributing
 
-1. Pick a Potential proposal from the roadmap
+1. Pick a New proposal from the roadmap
 2. Claim it using \`roadmap proposal claim <id>\`
 3. Implement and test
 4. Submit for review
@@ -408,7 +408,7 @@ export function formatMarkdown(
 	doc += `| ✅ Reached | ${summary.reached.length} |\n`;
 	doc += `| 🔵 Active | ${summary.active.length} |\n`;
 	doc += `| 🟡 Review | ${summary.review.length} |\n`;
-	doc += `| ⚪ Potential | ${summary.potential.length} |\n`;
+	doc += `| ⚪ New | ${summary.new.length} |\n`;
 	doc += `| ❌ Abandoned | ${summary.abandoned.length} |\n`;
 	doc += `| **Total** | **${summary.total}** |\n\n`;
 
@@ -417,7 +417,7 @@ export function formatMarkdown(
 	doc += formatStatusSection("Reached (Completed)", summary.reached, "✅");
 	doc += formatStatusSection("Active (In Progress)", summary.active, "🔵");
 	doc += formatStatusSection("Review (Testing)", summary.review, "🟡");
-	doc += formatStatusSection("Potential (Backlog)", summary.potential, "⚪");
+	doc += formatStatusSection("New (Backlog)", summary.new, "⚪");
 	doc += formatStatusSection("Abandoned", summary.abandoned, "❌");
 
 	// Architecture DAG
@@ -565,7 +565,7 @@ export function parseProposalFileFullDetail(filePath: string): ProposalFullDetai
 		return {
 			id: frontmatter.id as string,
 			title,
-			status: (frontmatter.status as string) || "Potential",
+			status: (frontmatter.status as string) || "New",
 			priority: (frontmatter.priority as string) || "medium",
 			maturity: (frontmatter.maturity as string) || "contracted",
 			assignee: (frontmatter.assignee as string[] | string) || "",
@@ -661,7 +661,7 @@ export function generateFullProposalDetail(proposal: ProposalFullDetail, reverse
 		reached: "✅",
 		active: "🔵",
 		review: "🟡",
-		potential: "⚪",
+		new: "⚪",
 		abandoned: "❌",
 	};
 	const priorityColor: Record<string, string> = {
@@ -712,7 +712,7 @@ export function generateFullProposalDetail(proposal: ProposalFullDetail, reverse
 		for (const dep of proposal.dependencies) {
 			const depProposal = allProposals?.find(s => s.id === dep);
 			const statusEmoji = depProposal ? {
-				'reached': '✅', 'active': '🔵', 'review': '🟡', 'potential': '⚪', 'abandoned': '❌'
+				'reached': '✅', 'active': '🔵', 'review': '🟡', 'new': '⚪', 'abandoned': '❌'
 			}[depProposal.status.toLowerCase()] || '⚪' : '⚪';
 			page += `- ${statusEmoji} [${dep}](../${dep}.md)\n`;
 		}
@@ -728,7 +728,7 @@ export function generateFullProposalDetail(proposal: ProposalFullDetail, reverse
 			for (const dependent of dependents) {
 				const depProposal = allProposals?.find(s => s.id === dependent);
 				const statusEmoji = depProposal ? {
-					'reached': '✅', 'active': '🔵', 'review': '🟡', 'potential': '⚪', 'abandoned': '❌'
+					'reached': '✅', 'active': '🔵', 'review': '🟡', 'new': '⚪', 'abandoned': '❌'
 				}[depProposal.status.toLowerCase()] || '⚪' : '⚪';
 				page += `- ${statusEmoji} [${dependent}](../${dependent}.md)\n`;
 			}
@@ -910,7 +910,7 @@ export function generateProposalIndex(summary: StatusSummary, projectName: strin
 	page += `| ✅ Reached | ${summary.reached.length} | [View all](status/reached.md) |\n`;
 	page += `| 🔵 Active | ${summary.active.length} | [View all](status/active.md) |\n`;
 	page += `| 🟡 Review | ${summary.review.length} | [View all](status/review.md) |\n`;
-	page += `| ⚪ Potential | ${summary.potential.length} | [View all](status/potential.md) |\n`;
+	page += `| ⚪ New | ${summary.new.length} | [View all](status/new.md) |\n`;
 	page += `| ❌ Abandoned | ${summary.abandoned.length} | [View all](status/abandoned.md) |\n`;
 	page += `| **Total** | **${summary.total}** | |\n\n`;
 
@@ -923,7 +923,7 @@ export function generateProposalIndex(summary: StatusSummary, projectName: strin
 		...summary.reached,
 		...summary.active,
 		...summary.review,
-		...summary.potential,
+		...summary.new,
 		...summary.abandoned,
 	];
 
@@ -949,7 +949,7 @@ export function generateStatusIndexPages(summary: StatusSummary, outputDir: stri
 		{ name: "reached", emoji: "✅", proposals: summary.reached },
 		{ name: "active", emoji: "🔵", proposals: summary.active },
 		{ name: "review", emoji: "🟡", proposals: summary.review },
-		{ name: "potential", emoji: "⚪", proposals: summary.potential },
+		{ name: "new", emoji: "⚪", proposals: summary.new },
 		{ name: "abandoned", emoji: "❌", proposals: summary.abandoned },
 	];
 
@@ -1132,7 +1132,7 @@ _Last updated: ${result.timestamp}_
 - ✅ Reached: ${summary.reached.length}
 - 🔵 Active: ${summary.active.length}
 - 🟡 Review: ${summary.review.length}
-- ⚪ Potential: ${summary.potential.length}
+- ⚪ New: ${summary.new.length}
 - ❌ Abandoned: ${summary.abandoned.length}
 
 ## Active Proposals

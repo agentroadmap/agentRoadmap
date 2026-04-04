@@ -3512,8 +3512,7 @@ directiveCmd
 			core.filesystem.loadConfig(),
 		]);
 
-		const statuses = config?.statuses ?? ["Proposal", "Draft", "Accepted", "Active", "Review", "Complete", "Abandoned"];
-		const archivedDirectiveIds = collectArchivedDirectiveKeys(archivedDirectives, directives);
+		const statuses = config?.statuses ?? ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"];		const archivedDirectiveIds = collectArchivedDirectiveKeys(archivedDirectives, directives);
 		const buckets = buildDirectiveBuckets(proposals, directives, statuses, { archivedDirectiveIds, archivedDirectives });
 		const active = buckets.filter((bucket) => !bucket.isNoDirective && !bucket.isCompleted);
 		const completed = buckets.filter((bucket) => !bucket.isNoDirective && bucket.isCompleted);
@@ -3788,9 +3787,15 @@ boardCmd
 				await updateReadmeWithBoard(finalProposals, statuses, projectName, exportVersion);
 				console.log("Updated README.md with Kanban board.");
 			} else {
-				// Use filename argument or default to Roadmap.md
+				// Use filename argument or default to config.exportPath/Roadmap.md
+				const exportDir = config?.exportPath ? join(cwd, config.exportPath) : cwd;
+				
+				// Ensure export directory exists
+				const { mkdir } = await import("node:fs/promises");
+				await mkdir(exportDir, { recursive: true });
+				
 				const outputFile = filename || "Roadmap.md";
-				const outputPath = join(cwd, outputFile as string);
+				const outputPath = join(exportDir, outputFile as string);
 
 				// Check if file exists and handle overwrite confirmation
 				const fileExists = await stat(outputPath)

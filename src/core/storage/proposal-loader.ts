@@ -481,11 +481,15 @@ export async function loadRemoteProposals(
 	includeCompleted = false,
 ): Promise<Proposal[]> {
 	try {
-		console.log("[DEBUG] loadRemoteProposals: remoteOperations=", userConfig?.remoteOperations, ", checkActiveBranches=", userConfig?.checkActiveBranches);
-		console.log("[DEBUG] Checking if remote operations should be skipped...");
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] loadRemoteProposals: remoteOperations=", userConfig?.remoteOperations, ", checkActiveBranches=", userConfig?.checkActiveBranches);
+			console.error("[DEBUG] Checking if remote operations should be skipped...");
+		}
 		// Skip remote operations if disabled
 		if (userConfig?.remoteOperations === false || userConfig?.checkActiveBranches === false) {
-			console.log("[DEBUG] Skipping remote proposals - remoteOperations=", userConfig?.remoteOperations, ", checkActiveBranches=", userConfig?.checkActiveBranches);
+			if (process.env.DEBUG) {
+				console.error("[DEBUG] Skipping remote proposals - remoteOperations=", userConfig?.remoteOperations, ", checkActiveBranches=", userConfig?.checkActiveBranches);
+			}
 			onProgress?.("Remote operations disabled - skipping remote proposals");
 			return [];
 		}
@@ -614,10 +618,14 @@ export async function loadLocalBranchProposals(
 	includeCompleted = false,
 ): Promise<Proposal[]> {
 	try {
-		console.log("[DEBUG] loadLocalBranchProposals: checkActiveBranches=", userConfig?.checkActiveBranches);
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] loadLocalBranchProposals: checkActiveBranches=", userConfig?.checkActiveBranches);
+		}
 		// Skip local branch loading if checkActiveBranches is false
 		if (userConfig?.checkActiveBranches === false) {
-			console.log("[DEBUG] Skipping local branch proposals - checkActiveBranches=false");
+			if (process.env.DEBUG) {
+				console.error("[DEBUG] Skipping local branch proposals - checkActiveBranches=false");
+			}
 			return [];
 		}
 		const currentBranch = await gitOps.getCurrentBranch();

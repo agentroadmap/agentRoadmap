@@ -42,7 +42,7 @@ export function parseProposalFile(filePath: string): ProposalInfo | null {
 	if (!id) return null;
 
 	const title = fm.match(/^title:\s*(.+)$/m)?.[1]?.trim() || "Untitled";
-	const status = fm.match(/^status:\s*(.+)$/m)?.[1]?.trim() || "Potential";
+	const status = fm.match(/^status:\s*(.+)$/m)?.[1]?.trim() || "New";
 	const directive = fm.match(/^directive:\s*(.+)$/m)?.[1]?.trim();
 	const labelsStr = fm.match(/^labels:\s*(.+)$/m)?.[1]?.trim();
 	const unlocksStr = fm.match(/^unlocks:\s*(.+)$/m)?.[1]?.trim();

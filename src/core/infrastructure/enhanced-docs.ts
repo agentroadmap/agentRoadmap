@@ -516,7 +516,7 @@ function getStatusBadge(status: string): string {
 		Reached: "✅ Complete",
 		Active: "🔨 Active",
 		Accepted: "📋 Accepted",
-		Potential: "💡 Potential",
+		New: "💡 New",
 		Abandoned: "🗑️ Abandoned",
 		Review: "👀 Review",
 	};

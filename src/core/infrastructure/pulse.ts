@@ -14,7 +14,7 @@ import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 
 /** Valid proposal statuses in order */
-export const STATUS_ORDER = ["Potential", "Active", "Review", "Complete", "Abandoned"] as const;
+export const STATUS_ORDER = ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"] as const;
 export type ProposalStatus = (typeof STATUS_ORDER)[number];
 
 /** Transition quality levels */
@@ -90,7 +90,7 @@ export function parseFrontmatter(content: string): ProposalFrontmatter | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return null;
 
-  const frontmatter: ProposalFrontmatter = { id: "", status: "Potential" };
+  const frontmatter: ProposalFrontmatter = { id: "", status: "New" };
   const lines = match[1]?.split("\n") || [];
   let currentKey = "";
   let inArray = false;
@@ -105,7 +105,7 @@ export function parseFrontmatter(content: string): ProposalFrontmatter | null {
       const cleanValue = value?.replace(/^['"]|['"]$/g, "") || "";
       
       if (currentKey === "id") frontmatter.id = cleanValue;
-      else if (currentKey === "status") frontmatter.status = (cleanValue as ProposalStatus) || "Potential";
+      else if (currentKey === "status") frontmatter.status = (cleanValue as ProposalStatus) || "New";
       else if (currentKey === "created_date") frontmatter.created_date = cleanValue;
       else if (currentKey === "updated_date") frontmatter.updated_date = cleanValue;
       

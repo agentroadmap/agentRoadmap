@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Directive, Proposal } from "./types/index.ts";
+import { getStatusStyle, getMaturityIcon } from "./ui/status-icon.ts";
 
 export interface BoardOptions {
 	statuses?: string[];
@@ -69,7 +70,11 @@ export function generateKanbanBoardWithMetadata(proposals: Proposal[], statuses:
 	const now = new Date();
 	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
-	const { orderedStatuses, groupedProposals } = buildKanbanStatusGroups(proposals, statuses);
+	const { orderedStatuses: allStatuses, groupedProposals } = buildKanbanStatusGroups(proposals, statuses);
+
+	// Hide archive statuses by default in the export
+	const archiveStatuses = ["rejected", "abandoned", "replaced"];
+	const orderedStatuses = allStatuses.filter(s => !archiveStatuses.includes(s.toLowerCase()));
 
 	// Create header
 	const header = `# Kanban Board Export (powered by Roadmap.md)
@@ -301,12 +306,17 @@ function generateDirectiveSection(directive: string, proposals: Proposal[], stat
 
 	const statusLines = orderedStatuses.map((status) => {
 		const statusProposals = groupedProposals.get(status) || [];
+		const statusStyle = getStatusStyle(status);
+		const statusIcon = statusStyle.icon;
+		
 		const proposalLines = statusProposals.map((t) => {
 			const id = t.id.toUpperCase();
 			const assignees = t.assignee?.length ? ` [@${t.assignee.join(", @")}]` : "";
-			return `  - **${id}** - ${t.title}${assignees}`;
+			const maturity = (t as any).maturity;
+			const maturityIcon = getMaturityIcon(maturity);
+			return `  - ${maturityIcon}${statusIcon} **${id}** - ${t.title}${assignees}`;
 		});
-		return `### ${status} (${statusProposals.length})\n${proposalLines.length > 0 ? proposalLines.join("\n") : "  (empty)"}`;
+		return `### ${statusIcon} ${status} (${statusProposals.length})\n${proposalLines.length > 0 ? proposalLines.join("\n") : "  (empty)"}`;
 	});
 
 	return `${sectionHeader}\n${statusLines.join("\n\n")}`;

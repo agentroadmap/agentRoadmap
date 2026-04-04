@@ -12,16 +12,59 @@ export interface StatusStyle {
  */
 export function getStatusStyle(status: string): StatusStyle {
 	const statusMap: Record<string, StatusStyle> = {
-		Reached: { icon: "✔", color: "green" },
-		"Active": { icon: "◒", color: "yellow" },
-		Blocked: { icon: "●", color: "red" },
-		"Potential": { icon: "○", color: "white" },
-		Review: { icon: "◆", color: "blue" },
-		Testing: { icon: "▣", color: "cyan" },
+		"Draft": { icon: "○", color: "white" },
+		"Review": { icon: "◆", color: "blue" },
+		"Building": { icon: "◒", color: "yellow" },
+		"Accepted": { icon: "▣", color: "cyan" },
+		"Complete": { icon: "✅", color: "green" },
+		"Rejected": { icon: "✖", color: "red" },
+		"Abandoned": { icon: "●", color: "red" },
+		"Replaced": { icon: "⇄", color: "magenta" },
+		"Blocked": { icon: "●", color: "red" },
 	};
 
 	// Return the mapped style or default for unknown statuses
 	return statusMap[status] || { icon: "○", color: "white" };
+}
+
+/**
+ * Get the color for a given maturity level
+ * @param maturity - The proposal maturity
+ * @returns The color name
+ */
+export function getMaturityColor(maturity?: string): string {
+	switch (maturity?.toLowerCase()) {
+		case "new":
+			return "white";
+		case "active":
+			return "yellow";
+		case "mature":
+			return "green";
+		case "obsolete":
+			return "gray";
+		default:
+			return "white";
+	}
+}
+
+/**
+ * Get the icon for a given maturity level
+ * @param maturity - The proposal maturity
+ * @returns The icon string
+ */
+export function getMaturityIcon(maturity?: string): string {
+	switch (maturity?.toLowerCase()) {
+		case "new":
+			return "○ ";
+		case "active":
+			return "▶ ";
+		case "mature":
+			return "✓ ";
+		case "obsolete":
+			return "✖ ";
+		default:
+			return "";
+	}
 }
 
 /**
@@ -51,3 +94,4 @@ export function formatStatusWithIcon(status: string): string {
 	const style = getStatusStyle(status);
 	return `${style.icon} ${status}`;
 }
+

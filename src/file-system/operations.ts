@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "../constants/index.ts";
 import { parseDecision, parseDocument, parseDirective, parseProposal } from "../markdown/parser.ts";
@@ -17,6 +18,9 @@ import {
 } from "../utils/prefix-config.ts";
 import { getProposalFilename, getProposalPath, normalizeProposalIdentity } from "../utils/proposal-path.ts";
 import { sortByProposalId } from "../utils/proposal-sorting.ts";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 // Interface for proposal path resolution context
 interface ProposalPathContext {
@@ -29,6 +33,8 @@ export class FileSystem {
 	private readonly roadmapDir: string;
 	private readonly projectRoot: string;
 	private cachedConfig: RoadmapConfig | null = null;
+	private rawConfig: any = null;
+	private currentConfigPath: string | null = null;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -47,13 +53,19 @@ export class FileSystem {
 	private async loadConfigDirect(): Promise<RoadmapConfig | null> {
 		try {
 			// First try the standard "roadmap" directory
-			let configPath = join(this.projectRoot, DEFAULT_DIRECTORIES.ROADMAP, DEFAULT_FILES.CONFIG);
+			const roadmapDir = join(this.projectRoot, DEFAULT_DIRECTORIES.ROADMAP);
+			const configPathYaml = join(roadmapDir, "config.yaml");
+			const configPathYml = join(roadmapDir, "config.yml");
+
+			let configPath = configPathYml;
 			let exists = false;
-			try {
-				await stat(configPath);
+
+			if (existsSync(configPathYaml)) {
+				configPath = configPathYaml;
 				exists = true;
-			} catch {
-				// File not found
+			} else if (existsSync(configPathYml)) {
+				configPath = configPathYml;
+				exists = true;
 			}
 
 			// If not found, check for legacy ".roadmap" directory and migrate it
@@ -337,9 +349,7 @@ export class FileSystem {
 		try {
 			const files = await readdir(proposalsDir);
 			const pattern = new RegExp(`^${escapeRegex(proposalPrefix)}-?.*\\.md$`, "i");
-			console.error(`listProposals: dir=${proposalsDir}, prefix=${proposalPrefix}, pattern=${pattern}`);
 			for (const file of files) {
-				console.error(`Checking file: ${file}, match=${pattern.test(file)}`);
 				if (pattern.test(file)) {
 					proposalFiles.push(file);
 				}
@@ -1293,21 +1303,25 @@ ${description || `Directive: ${title}`}`,
 
 		try {
 			const roadmapDir = await this.getRoadmapDir();
-			const configPath = join(roadmapDir, DEFAULT_FILES.CONFIG);
+			const configPathYaml = join(roadmapDir, "config.yaml");
+			const configPathYml = join(roadmapDir, "config.yml");
 
-			// Check if file exists first to avoid hanging on Windows
+			let configPath = configPathYml;
 			let exists = false;
-			try {
-				await stat(configPath);
+
+			if (existsSync(configPathYaml)) {
+				configPath = configPathYaml;
 				exists = true;
-			} catch {
-				// File doesn't exist
+			} else if (existsSync(configPathYml)) {
+				configPath = configPathYml;
+				exists = true;
 			}
 
 			if (!exists) {
 				return null;
 			}
 
+			this.currentConfigPath = configPath;
 			const content = await readFile(configPath, "utf-8");
 			const config = this.parseConfig(content);
 
@@ -1324,7 +1338,7 @@ ${description || `Directive: ${title}`}`,
 
 	async saveConfig(config: RoadmapConfig): Promise<void> {
 		const roadmapDir = await this.getRoadmapDir();
-		const configPath = join(roadmapDir, DEFAULT_FILES.CONFIG);
+		const configPath = this.currentConfigPath || join(roadmapDir, DEFAULT_FILES.CONFIG);
 		const content = this.serializeConfig(config);
 		await writeFile(configPath, content, "utf-8");
 		this.cachedConfig = config;
@@ -1416,24 +1430,97 @@ ${description || `Directive: ${title}`}`,
 	}
 
 	private parseConfig(content: string): RoadmapConfig {
+		try {
+			// @ts-ignore
+			const yaml = require("js-yaml");
+			const cfg = yaml.load(content) as any;
+			
+			if (cfg) {
+				this.rawConfig = JSON.parse(JSON.stringify(cfg));
+				const config: Partial<RoadmapConfig> = {};
+				
+				// Handle nested format (config.yaml)
+				if (cfg.project) {
+					config.projectName = cfg.project.name;
+					config.dateFormat = cfg.project.date_format;
+					config.exportPath = cfg.project.export_path;
+				}
+				
+				if (cfg.proposals) {
+					config.defaultStatus = cfg.proposals.default_status;
+					config.statuses = cfg.proposals.statuses;
+					config.labels = cfg.proposals.labels;
+					config.zeroPaddedIds = cfg.proposals.zero_padded_ids;
+				}
+				
+				if (cfg.database) {
+					config.database = cfg.database;
+				}
+				
+				if (cfg.ui) {
+					config.maxColumnWidth = cfg.ui.max_column_width;
+					config.autoOpenBrowser = cfg.ui.auto_open_browser;
+				}
+				
+				// Handle flat format (config.yml) and overrides
+				config.projectName = config.projectName || cfg.project_name || "";
+				config.statuses = config.statuses || cfg.statuses || ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"];
+				config.labels = config.labels || cfg.labels || [];
+				config.dateFormat = config.dateFormat || cfg.date_format || "yyyy-mm-dd";
+				config.maxColumnWidth = config.maxColumnWidth || cfg.max_column_width || 20;
+				config.autoOpenBrowser = config.autoOpenBrowser !== undefined ? config.autoOpenBrowser : (cfg.auto_open_browser !== undefined ? cfg.auto_open_browser : true);
+				config.defaultPort = cfg.default_port || 6420;
+				config.remoteOperations = cfg.remote_operations !== undefined ? cfg.remote_operations : true;
+				config.autoCommit = cfg.auto_commit !== undefined ? cfg.auto_commit : true;
+				config.zeroPaddedIds = config.zeroPaddedIds || cfg.zero_padded_ids;
+				config.bypassGitHooks = cfg.bypass_git_hooks !== undefined ? cfg.bypass_git_hooks : false;
+				config.checkActiveBranches = cfg.check_active_branches !== undefined ? cfg.check_active_branches : true;
+				config.activeBranchDays = cfg.active_branch_days || 30;
+				
+				return config as RoadmapConfig;
+			}
+		} catch (e) {
+			// Fallback to manual parsing if js-yaml fails or is missing
+		}
+
+		this.rawConfig = null;
 		const config: Partial<RoadmapConfig> = {};
 		const lines = content.split("\n");
 
 		let inDatabaseSection = false;
+		let inProposalsSection = false;
+		let inProjectSection = false;
 		config.database = { provider: "markdown" };
 
 		for (const line of lines) {
 			const trimmed = line.trim();
 			if (!trimmed || trimmed.startsWith("#")) continue;
 
-			// Check for section headers (keys with no value or starting a block)
+			// Check for section headers
 			if (trimmed === "database:") {
 				inDatabaseSection = true;
+				inProposalsSection = false;
+				inProjectSection = false;
 				continue;
 			}
-			// Reset section if we find a top-level key (no leading spaces)
-			if (line.length > 0 && !line.startsWith(" ") && !line.startsWith("\t")) {
-				if (trimmed !== "database:") inDatabaseSection = false;
+			if (trimmed === "proposals:") {
+				inProposalsSection = true;
+				inDatabaseSection = false;
+				inProjectSection = false;
+				continue;
+			}
+			if (trimmed === "project:") {
+				inProjectSection = true;
+				inDatabaseSection = false;
+				inProposalsSection = false;
+				continue;
+			}
+
+			// Reset section if we find a top-level key (no leading whitespace)
+			if (line.length > 0 && !/^\s/.test(line)) {
+				inDatabaseSection = false;
+				inProposalsSection = false;
+				inProjectSection = false;
 			}
 
 			const colonIndex = trimmed.indexOf(":");
@@ -1441,6 +1528,15 @@ ${description || `Directive: ${title}`}`,
 
 			const key = trimmed.substring(0, colonIndex).trim();
 			const value = trimmed.substring(colonIndex + 1).trim();
+
+			if (inProjectSection) {
+				switch (key) {
+					case "name":
+						config.projectName = value.replace(/['"]/g, "");
+						break;
+				}
+				continue;
+			}
 
 			if (inDatabaseSection) {
 				if (!config.database) config.database = { provider: "markdown" };
@@ -1464,9 +1560,34 @@ ${description || `Directive: ${title}`}`,
 				continue;
 			}
 
+			if (inProposalsSection) {
+				switch (key) {
+					case "default_status":
+						config.defaultStatus = value.replace(/['"]/g, "");
+						break;
+					case "statuses":
+					case "labels":
+						if (value.startsWith("[") && value.endsWith("]")) {
+							const arrayContent = value.slice(1, -1);
+							config[key] = arrayContent
+								.split(",")
+								.map((item) => item.trim().replace(/['"]/g, ""))
+								.filter(Boolean);
+						}
+						break;
+					case "zero_padded_ids":
+						config.zeroPaddedIds = Number.parseInt(value, 10);
+						break;
+				}
+				continue;
+			}
+
 			switch (key) {
 				case "project_name":
 					config.projectName = value.replace(/['"]/g, "");
+					break;
+				case "export_path":
+					config.exportPath = value.replace(/['"]/g, "");
 					break;
 				case "default_assignee":
 					config.defaultAssignee = value.replace(/['"]/g, "");
@@ -1543,6 +1664,7 @@ ${description || `Directive: ${title}`}`,
 		if (config.defaultAssignee !== undefined) result.defaultAssignee = config.defaultAssignee;
 		if (config.defaultReporter !== undefined) result.defaultReporter = config.defaultReporter;
 		if (config.defaultStatus !== undefined) result.defaultStatus = config.defaultStatus;
+		if (config.exportPath !== undefined) result.exportPath = config.exportPath;
 		if (config.maxColumnWidth !== undefined) result.maxColumnWidth = config.maxColumnWidth;
 		if (config.defaultEditor !== undefined) result.defaultEditor = config.defaultEditor;
 		if (config.autoOpenBrowser !== undefined) result.autoOpenBrowser = config.autoOpenBrowser;
@@ -1561,30 +1683,110 @@ ${description || `Directive: ${title}`}`,
 	}
 
 	private serializeConfig(config: RoadmapConfig): string {
-		const lines = [
-			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
-			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
-			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
-			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
-			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			`date_format: ${config.dateFormat}`,
-			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
-			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
-			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
-			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
-			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
-			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
-			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
-			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
-			...(typeof config.checkActiveBranches === "boolean"
-				? [`check_active_branches: ${config.checkActiveBranches}`]
-				: []),
-			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
-			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
-			...(config.prefixes?.proposal ? [`proposal: "${config.prefixes.proposal}"`] : []),
-		];
+		try {
+			// @ts-ignore
+			const yaml = require("js-yaml");
+			
+			// If we have rawConfig (nested structure), update it with flat config values
+			if (this.rawConfig) {
+				const cfg = this.rawConfig;
+				
+				// Update nested project section
+				if (cfg.project) {
+					cfg.project.name = config.projectName;
+					cfg.project.date_format = config.dateFormat;
+					cfg.project.export_path = config.exportPath;
+				} else if (!cfg.project_name) {
+					// If neither nested nor flat project name exists, add it as flat for backward compat
+					cfg.project_name = config.projectName;
+				}
+				
+				// Update nested proposals section
+				if (cfg.proposals) {
+					cfg.proposals.default_status = config.defaultStatus;
+					cfg.proposals.statuses = config.statuses;
+					cfg.proposals.labels = config.labels;
+					cfg.proposals.zero_padded_ids = config.zeroPaddedIds;
+				} else {
+					cfg.statuses = config.statuses;
+					cfg.labels = config.labels;
+					cfg.default_status = config.defaultStatus;
+				}
+				
+				// Update nested ui section
+				if (cfg.ui) {
+					cfg.ui.max_column_width = config.maxColumnWidth;
+					cfg.ui.auto_open_browser = config.autoOpenBrowser;
+				}
+				
+				// Update other flat fields
+				if (cfg.project_name !== undefined) cfg.project_name = config.projectName;
+				if (cfg.date_format !== undefined) cfg.date_format = config.dateFormat;
+				if (cfg.max_column_width !== undefined) cfg.max_column_width = config.maxColumnWidth;
+				if (cfg.auto_open_browser !== undefined) cfg.auto_open_browser = config.autoOpenBrowser;
+				if (cfg.default_port !== undefined) cfg.default_port = config.defaultPort;
+				if (cfg.remote_operations !== undefined) cfg.remote_operations = config.remoteOperations;
+				if (cfg.auto_commit !== undefined) cfg.auto_commit = config.autoCommit;
+				if (cfg.zero_padded_ids !== undefined) cfg.zero_padded_ids = config.zeroPaddedIds;
+				if (cfg.bypass_git_hooks !== undefined) cfg.bypass_git_hooks = config.bypassGitHooks;
+				if (cfg.check_active_branches !== undefined) cfg.check_active_branches = config.checkActiveBranches;
+				if (cfg.active_branch_days !== undefined) cfg.active_branch_days = config.activeBranchDays;
+				
+				return yaml.dump(cfg, { indent: 2, lineWidth: -1 });
+			}
+			
+			// Fallback: create a clean object and dump it
+			const cleanObj: any = {
+				project_name: config.projectName,
+				statuses: config.statuses,
+				labels: config.labels,
+				default_status: config.defaultStatus,
+				date_format: config.dateFormat,
+				export_path: config.exportPath,
+				max_column_width: config.maxColumnWidth,
+				auto_open_browser: config.autoOpenBrowser,
+				default_port: config.defaultPort,
+				remote_operations: config.remoteOperations,
+				auto_commit: config.autoCommit,
+				zero_padded_ids: config.zeroPaddedIds,
+				bypass_git_hooks: config.bypassGitHooks,
+				check_active_branches: config.checkActiveBranches,
+				active_branch_days: config.activeBranchDays,
+			};
+			
+			if (config.database) cleanObj.database = config.database;
+			if (config.onStatusChange) cleanObj.on_status_change = config.onStatusChange;
+			if (config.prefixes?.proposal) cleanObj.proposal = config.prefixes.proposal;
+			
+			return yaml.dump(cleanObj, { indent: 2, lineWidth: -1 });
+		} catch (e) {
+			// Critical fallback: original manual serialization
+			const lines = [
+				`project_name: "${config.projectName}"`,
+				...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
+				...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
+				...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
+				`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
+				`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
+				`date_format: ${config.dateFormat}`,
+				...(config.exportPath ? [`export_path: ${config.exportPath}`] : []),
+				...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
+				...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
+				...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
+				...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
+				...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
+				...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+				...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
+				...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
+				...(typeof config.checkActiveBranches === "boolean"
+					? [`check_active_branches: ${config.checkActiveBranches}`]
+					: []),
+				...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
+				...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
+				...(config.prefixes?.proposal ? [`proposal: "${config.prefixes.proposal}"`] : []),
+			];
 
-		return `${lines.join("\n")}\n`;
+			return `${lines.join("\n")}\n`;
+		}
 	}
 }

@@ -8,6 +8,7 @@ import WebSocket from "ws";
 export interface SdbData {
     proposals: Proposal[];
     directives: Directive[];
+    messages: any[];
 }
 
 export type SdbUpdateCallback = (data: SdbData) => void;
@@ -25,68 +26,65 @@ function toMs(timestamp: any): number {
 }
 
 export async function getSdbData(): Promise<SdbData> {
-    if (process.env.DEBUG) {
-        console.log("[DEBUG] getSdbData: Fetching proposals from SDB...");
-    }
-
     try {
-        const rows = querySdbSync("SELECT * FROM step");
+        const { querySdb } = await import("./sdb-client.ts");
+        const rows = await querySdb("SELECT * FROM proposal");
+        const directivesRows = await querySdb("SELECT id, display_id, title, body_markdown as description, status FROM proposal WHERE proposal_type = 'DIRECTIVE'");
+        const messages = await querySdb("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 100");
         
         const proposals: Proposal[] = rows.map((row: any) => {
             const id = String(row.display_id || row.id);
-            const rawStatus = row.status || "Proposal";
-            const statusMap: Record<string, string> = { "Potential": "Proposal", "Reached": "Complete", "draft": "Draft", "Abandoned": "Rejected" };
-            const status = statusMap[rawStatus] || rawStatus;
-            const bodyText = String(row.body || "");
-
-            const rawAcceptanceCriteria = String(row.acceptance_criteria || "");
-            const acceptanceCriteriaItems = rawAcceptanceCriteria 
-                ? AcceptanceCriteriaManager.parseAllCriteria(rawAcceptanceCriteria)
-                : AcceptanceCriteriaManager.parseAllCriteria(bodyText);
+            const status = row.status || "New";
+            const bodyText = String(row.body_markdown || "");
 
             return {
                 id,
                 title: String(row.title),
                 status: status as any,
-                priority: (row.priority || "medium") as Proposal["priority"],
-                assignee: row.assignee ? String(row.assignee).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
-                labels: row.labels ? String(row.labels).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
-                dependencies: row.dependencies ? String(row.dependencies).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+                priority: (row.priority || "medium").toLowerCase() as Proposal["priority"],
+                assignee: [],
+                labels: row.tags ? String(row.tags).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+                dependencies: [],
                 description: String(row.description || "") || extractStructuredSection(bodyText, "description") || "",
                 implementationPlan: extractStructuredSection(bodyText, "implementationPlan") || undefined,
-                implementationNotes: String(row.implementation_notes || "") || extractStructuredSection(bodyText, "implementationNotes") || "",
-                finalSummary: String(row.final_summary || "") || extractStructuredSection(bodyText, "finalSummary") || "",
-                body: bodyText,
-                acceptanceCriteriaItems,
+                implementationNotes: String(row.process_logic || "") || extractStructuredSection(bodyText, "implementationNotes") || "",
+                finalSummary: extractStructuredSection(bodyText, "finalSummary") || "",
+                rawContent: bodyText,
+                acceptanceCriteriaItems: AcceptanceCriteriaManager.parseAllCriteria(bodyText),
                 createdDate: row.created_at ? new Date(toMs(row.created_at)).toISOString() : new Date().toISOString(),
                 updatedDate: row.updated_at ? new Date(toMs(row.updated_at)).toISOString() : new Date().toISOString(),
+                budgetLimitUsd: row.budget_limit_usd,
+                proposalType: row.proposal_type,
+                domainId: row.domain_id,
+                category: row.category,
             };
         });
 
-        if (process.env.DEBUG) {
-            console.log(`[DEBUG] getSdbData: Found ${proposals.length} proposals`);
-        }
+        const directiveData: Directive[] = directivesRows.map((row: any) => ({
+            id: String(row.display_id || row.id),
+            title: String(row.title),
+            description: String(row.description || ""),
+            status: String(row.status || "New"),
+            rawContent: "",
+        }));
 
-        return { proposals, directives: [] };
+        return { proposals, directives: directiveData, messages };
     } catch (err: any) {
         if (process.env.DEBUG) {
             console.error(`[DEBUG] getSdbData Error: ${err.message}`);
         }
-        throw err;
+        return { proposals: [], directives: [], messages: [] };
     }
 }
 
 // Global error handler to catch Node 24 native WebSocket fetch failed throws
-// This prevents the entire TUI from crashing if a native websocket is used somewhere
 if (typeof process !== "undefined" && typeof process.on === "function") {
     process.on("unhandledRejection", (reason: any) => {
         if (reason && reason.message && reason.message.includes("fetch failed")) {
-            if (process.env.DEBUG) {
-                console.error("[DEBUG] Caught unhandled 'fetch failed' rejection (likely from native WebSocket).");
-            }
+            // Silence native websocket fetch failures
         } else {
             // Re-throw if it's something else
-            throw reason;
+            // throw reason;
         }
     });
 }
@@ -98,13 +96,12 @@ export function subscribeSdb(callback: SdbUpdateCallback): () => void {
 
     function startPolling() {
         if (closed || pollInterval) return;
-        if (process.env.DEBUG) console.log("[DEBUG] SDB falling back to polling mode...");
         pollInterval = setInterval(() => {
             if (closed) return;
             getSdbData().then(callback).catch(e => {
                 if (process.env.DEBUG) console.error("[DEBUG] Polling update failed", e);
             });
-        }, 5000);
+        }, 3000);
     }
 
     async function connect() {
@@ -114,7 +111,6 @@ export function subscribeSdb(callback: SdbUpdateCallback): () => void {
         const WebSocketClient = WebSocket || (globalThis as any).WebSocket;
 
         if (!WebSocketClient) {
-            console.error("WebSocket client not available, using polling fallback.");
             startPolling();
             return;
         }
@@ -122,25 +118,18 @@ export function subscribeSdb(callback: SdbUpdateCallback): () => void {
         try {
             ws = new WebSocketClient(config.wsUri, "v1.json.spacetimedb");
         } catch (e: any) {
-            if (process.env.DEBUG) {
-                console.error(`[DEBUG] Failed to initialize WebSocket: ${e.message}`);
-            }
             startPolling();
             return;
         }
         
         ws.on("open", () => {
-            if (process.env.DEBUG) {
-                console.log(`[DEBUG] SDB WS Connected: ${config.wsUri}`);
-            }
             if (pollInterval) {
                 clearInterval(pollInterval);
                 pollInterval = null;
             }
-            // Send initial subscription
             ws.send(JSON.stringify({
                 subscribe: {
-                    query_strings: ["SELECT * FROM step", "SELECT * FROM msg"]
+                    query_strings: ["SELECT * FROM proposal", "SELECT * FROM message_ledger", "SELECT * FROM workforce_pulse"]
                 }
             }));
         });
@@ -149,17 +138,12 @@ export function subscribeSdb(callback: SdbUpdateCallback): () => void {
             try {
                 const data = JSON.parse(msg.toString());
                 if (data.SubscriptionUpdate) {
-                    getSdbData().then(callback).catch(e => {
-                        if (process.env.DEBUG) console.error("[DEBUG] Callback update failed", e);
-                    });
+                    getSdbData().then(callback).catch(() => {});
                 }
             } catch (e) {}
         });
 
         ws.on("error", (err: any) => {
-            if (process.env.DEBUG) {
-                console.error("[DEBUG] SDB WS Error:", err.message);
-            }
             startPolling();
         });
 
@@ -171,8 +155,7 @@ export function subscribeSdb(callback: SdbUpdateCallback): () => void {
         });
     }
 
-    connect().catch(e => {
-        if (process.env.DEBUG) console.error("[DEBUG] SDB Connect setup failed:", e);
+    connect().catch(() => {
         startPolling();
     });
 

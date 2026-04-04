@@ -6,11 +6,12 @@
  */
 
 import { FileSystem } from "../../file-system/operations.ts";
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawnSync, spawn } from "node:child_process";
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore — js-yaml has no type declarations
-import { load as parseYaml } from "js-yaml";
+import yaml from "js-yaml";
+const parseYaml = yaml.load;
 
 export interface SdbConfig {
     host: string;
@@ -49,33 +50,25 @@ export function getSdbConfigSync(): SdbConfig {
             }
         }
 
-        // Fallback: parse flat config.yml for database section
-        const configPath = join(process.cwd(), "roadmap", "config.yml");
-        const content = readFileSync(configPath, "utf-8");
-
-        let host = defaults.host;
-        let port = defaults.port;
-        let dbName = defaults.dbName;
-
-        const dbSection = content.match(/database:([\s\S]*?)(?=\n\w|$)/);
-        if (dbSection) {
-            const hMatch = dbSection[1].match(/host:\s*["']?([^"'\n\s]+)["']?/);
-            const pMatch = dbSection[1].match(/port:\s*(\d+)/);
-            const nMatch = dbSection[1].match(/name:\s*["']?([^"'\n\s]+)["']?/);
-            if (hMatch) host = hMatch[1];
-            if (pMatch) port = Number.parseInt(pMatch[1], 10);
-            if (nMatch) dbName = nMatch[1];
+        // Fallback to flat config
+        const fs = new FileSystem(process.cwd());
+        const config = fs.loadConfigSync();
+        if (config?.database) {
+            const host = config.database.host || defaults.host;
+            const port = config.database.port || defaults.port;
+            const dbName = config.database.name || defaults.dbName;
+            return {
+                host,
+                port,
+                dbName,
+                httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
+                wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+            };
         }
-        return {
-            host,
-            port,
-            dbName,
-            httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
-            wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
-        };
     } catch {
-        return defaults;
+        // Fallback to defaults
     }
+    return defaults;
 }
 
 export async function getSdbConfig(): Promise<SdbConfig> {
@@ -110,35 +103,22 @@ export async function getSdbConfig(): Promise<SdbConfig> {
         // Fallback to flat config
         const fs = new FileSystem(process.cwd());
         const config = await fs.loadConfig();
-
-        let host = defaults.host;
-        let port = defaults.port;
-        let dbName = defaults.dbName;
-
-        if (config?.database?.provider === "spacetime") {
-            host = config.database.host || host;
-            port = config.database.port || port;
-            dbName = config.database.name || dbName;
+        if (config?.database) {
+            const host = config.database.host || defaults.host;
+            const port = config.database.port || defaults.port;
+            const dbName = config.database.name || defaults.dbName;
+            return {
+                host,
+                port,
+                dbName,
+                httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
+                wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
+            };
         }
-
-        return {
-            host,
-            port,
-            dbName,
-            httpUri: `http://${host}:${port}/v1/database/${dbName}/sql`,
-            wsUri: `ws://${host}:${port}/v1/database/${dbName}/subscribe`
-        };
     } catch {
-        return defaults;
+        // Fallback to defaults
     }
-}
-
-/**
- * Execute a SQL query against SpacetimeDB (Asynchronous).
- */
-export async function querySdb(sql: string): Promise<any[]> {
-    const config = await getSdbConfig();
-    return executeQuery(config.httpUri, sql);
+    return defaults;
 }
 
 /**
@@ -149,7 +129,7 @@ export function querySdbSync(sql: string): any[] {
     const tmpFile = join(process.cwd(), `.sdb_query_${Math.random().toString(36).substring(7)}.json`);
     try {
         writeFileSync(tmpFile, sql);
-        const cmd = `curl -s -X POST -H \"Content-Type: application/json\" --data-binary \"@${tmpFile}\" \"${config.httpUri}\"`;
+        const cmd = `curl -s -X POST -H "Content-Type: application/json" --data-binary "@${tmpFile}" "${config.httpUri}"`;
         const result = execSync(cmd, { encoding: "utf8", timeout: 15000 });
         try { unlinkSync(tmpFile); } catch {}
         if (!result || result.trim() === "") return [];
@@ -161,56 +141,73 @@ export function querySdbSync(sql: string): any[] {
 }
 
 /**
- * Call a reducer in SpacetimeDB (Synchronous via curl).
+ * Execute a SQL query against SpacetimeDB (Asynchronous via curl).
+ * 
+ * We use curl instead of fetch because Node.js fetch can sometimes fail with 'fetch failed' 
+ * in local environments due to IPv6/IPv4 or proxy issues, whereas curl is more robust.
  */
-export function callReducerSync(name: string, args: any): boolean {
-    const config = getSdbConfigSync();
-    const tmpFile = join(process.cwd(), `.sdb_call_${Math.random().toString(36).substring(7)}.json`);
-    try {
-        const url = config.httpUri.replace('/sql', `/call/${name}`);
-        const body = JSON.stringify(args);
-        writeFileSync(tmpFile, body);
-        
-        const result = spawnSync("curl", [
-            "-s", "-i", "-X", "POST", 
-            "-H", "Content-Type: application/json", 
-            "--data-binary", `@${tmpFile}`, 
-            url
-        ], { encoding: "utf8", timeout: 15000 });
-        
-        try { unlinkSync(tmpFile); } catch {}
-        
-        const output = result.stdout || result.stderr || "";
-        
-        if (output.includes("HTTP/1.1 200") || output.includes("HTTP/1.1 204")) {
-            return true;
-        } else {
-            if (process.env.DEBUG) {
-                console.error(`Reducer call ${name} failed response:\n${output}`);
-            }
-            return false;
+async function executeQuery(uri: string, sql: string): Promise<any[]> {
+    return new Promise((resolve) => {
+        const tmpFile = join(process.cwd(), `.sdb_query_async_${Math.random().toString(36).substring(7)}.json`);
+        try {
+            writeFileSync(tmpFile, sql);
+            const curl = spawn("curl", [
+                "-s", "-X", "POST", 
+                "-H", "Content-Type: application/json", 
+                "--data-binary", `@${tmpFile}`, 
+                uri
+            ]);
+
+            let result = "";
+            curl.stdout.on("data", (data) => {
+                result += data.toString();
+            });
+
+            curl.on("close", (code) => {
+                try { unlinkSync(tmpFile); } catch {}
+                if (code !== 0 || !result || result.trim() === "") {
+                    resolve([]);
+                } else {
+                    resolve(parseSdbJson(result));
+                }
+            });
+
+            curl.on("error", (err) => {
+                console.error("[DEBUG] curl spawn error:", err);
+                try { unlinkSync(tmpFile); } catch {}
+                resolve([]);
+            });
+        } catch (e) {
+            try { unlinkSync(tmpFile); } catch {}
+            resolve([]);
         }
-    } catch (e: any) {
-        try { unlinkSync(tmpFile); } catch {}
-        if (process.env.DEBUG) {
-            console.error(`Reducer call failed for ${name}: ${e.message}`);
-        }
-        return false;
-    }
+    });
 }
 
-async function executeQuery(uri: string, sql: string): Promise<any[]> {
+/**
+ * Execute a SQL query against SpacetimeDB (Asynchronous).
+ */
+export async function querySdb(sql: string): Promise<any[]> {
+    const config = await getSdbConfig();
+    return executeQuery(config.httpUri, sql);
+}
+
+/**
+ * Execute a reducer call against SpacetimeDB (Synchronous).
+ */
+export function callReducerSync(reducer: string, args: any[]): boolean {
+    const config = getSdbConfigSync();
+    const url = `${config.httpUri.replace('/sql', '/call')}/${reducer}`;
+    const tmpFile = join(process.cwd(), `.sdb_call_${Math.random().toString(36).substring(7)}.json`);
     try {
-        const response = await fetch(uri, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: sql
-        });
-        if (!response.ok) return [];
-        const result = await response.text();
-        return parseSdbJson(result);
-    } catch {
-        return [];
+        writeFileSync(tmpFile, JSON.stringify(args));
+        const cmd = `curl -s -X POST -H "Content-Type: application/json" --data-binary "@${tmpFile}" "${url}"`;
+        execSync(cmd, { encoding: "utf8", timeout: 15000 });
+        try { unlinkSync(tmpFile); } catch {}
+        return true;
+    } catch (e) {
+        try { unlinkSync(tmpFile); } catch {}
+        return false;
     }
 }
 

@@ -43,7 +43,7 @@ describe("CLI packaging", () => {
 
 		const versionResult = runBuilt("--version");
 		const versionOutput = versionResult.stdout.toString().trim();
-		assert.strictEqual(versionOutput, version);
+		assert.strictEqual(versionOutput, `v${version} • rev ${revision}`);
 
 		const splashResult = runBuilt("--plain");
 		const splashOutput = splashResult.stdout.toString();

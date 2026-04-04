@@ -127,9 +127,9 @@ export async function initializeProject(
 	const _d = DEFAULT_INIT_CONFIG;
 	const baseConfig: RoadmapConfig = {
 		projectName,
-		statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"],
+		statuses: ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"],
 		labels: [],
-		defaultStatus: "Potential",
+		defaultStatus: "New",
 		dateFormat: "yyyy-mm-dd",
 		maxColumnWidth: 20,
 		autoCommit: true, // Default to true for agent orchestration
@@ -254,7 +254,7 @@ ${description || "A new project managed with Roadmap.md."}
 						id: canonicalId,
 						title: bs.title,
 						description: finalDescription,
-						status: config.defaultStatus || "Potential",
+						status: config.defaultStatus || "New",
 						assignee: bs.assignee ?? [],
 						labels: bs.labels ?? [],
 						createdDate: new Date().toISOString().slice(0, 10),
@@ -284,7 +284,7 @@ ${description || "A new project managed with Roadmap.md."}
 					id,
 					title: "Project Baseline & Requirements",
 					description,
-					status: config.defaultStatus || "Potential",
+					status: config.defaultStatus || "New",
 					assignee: [],
 					labels: ["baseline"],
 					createdDate: new Date().toISOString().slice(0, 10),

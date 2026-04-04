@@ -12,7 +12,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
-// SQLite removed — SpacetimeDB is the sole source of truth
+import { DatabaseSync } from "node:sqlite";
 
 /** Configuration for MAP.md projection */
 export interface MapProjectionConfig {
@@ -91,7 +91,7 @@ interface GroupedProposals {
 	potential: ProposalRow[];
 	active: ProposalRow[];
 	review: ProposalRow[];
-	reached: ProposalRow[];
+	complete: ProposalRow[];
 	abandoned: ProposalRow[];
 	[key: string]: ProposalRow[];
 }
@@ -324,7 +324,7 @@ export class MapProjection {
 			potential: [],
 			active: [],
 			review: [],
-			reached: [],
+			complete: [],
 			abandoned: [],
 		};
 
@@ -333,7 +333,7 @@ export class MapProjection {
 			if (status === "potential") grouped.potential.push(proposal);
 			else if (status === "active") grouped.active.push(proposal);
 			else if (status === "review") grouped.review.push(proposal);
-			else if (status === "reached" || status === "complete") grouped.reached.push(proposal);
+			else if (status === "reached" || status === "complete") grouped.complete.push(proposal);
 			else if (status === "abandoned") grouped.abandoned.push(proposal);
 			else grouped.potential.push(proposal); // Default
 		}
@@ -346,33 +346,35 @@ export class MapProjection {
 	 */
 	private buildBoardView(lines: string[], grouped: GroupedProposals): void {
 		// Table header
-		lines.push("| Potential | Active | Review | Reached | Abandoned |");
-		lines.push("| --- | --- | --- | --- | --- |");
+		lines.push("| New | Draft | Review | Active | Accepted | Complete |");
+		lines.push("| --- | --- | --- | --- | --- | --- |");
 
 		// Find max column length
 		const maxRows = Math.max(
-			grouped.potential.length,
-			grouped.active.length,
+			grouped.potential.length, // Mapping potential to New for now
+			(grouped as any).draft?.length || 0,
 			grouped.review.length,
-			grouped.reached.length,
-			grouped.abandoned.length,
+			grouped.active.length,
+			(grouped as any).accepted?.length || 0,
+			grouped.complete.length, // Mapping reached to Complete
 		);
 
 		for (let i = 0; i < maxRows; i++) {
 			const cols = [
 				this.formatProposalCell(grouped.potential[i]),
-				this.formatProposalCell(grouped.active[i]),
+				this.formatProposalCell((grouped as any).draft?.[i]),
 				this.formatProposalCell(grouped.review[i]),
-				this.formatProposalCell(grouped.reached[i]),
-				this.formatProposalCell(grouped.abandoned[i]),
+				this.formatProposalCell(grouped.active[i]),
+				this.formatProposalCell((grouped as any).accepted?.[i]),
+				this.formatProposalCell(grouped.complete[i]),
 			];
 			lines.push(`| ${cols.join(" | ")} |`);
 		}
 
 		// Empty proposal
 		if (maxRows === 0) {
-			lines.push("| | | | | |");
-			lines.push("| *(empty)* | *(empty)* | *(empty)* | *(empty)* | *(empty)* |");
+			lines.push("| | | | | | |");
+			lines.push("| *(empty)* | *(empty)* | *(empty)* | *(empty)* | *(empty)* | *(empty)* |");
 		}
 	}
 
@@ -397,30 +399,32 @@ export class MapProjection {
 	 */
 	private buildStatistics(lines: string[], grouped: GroupedProposals, proposals: ProposalRow[]): void {
 		const stats = {
-			potential: grouped.potential.length,
+			new: grouped.potential.length,
+			draft: (grouped as any).draft?.length || 0,
 			active: grouped.active.length,
 			review: grouped.review.length,
-			reached: grouped.reached.length,
-			abandoned: grouped.abandoned.length,
+			accepted: (grouped as any).accepted?.length || 0,
+			complete: grouped.complete.length,
 			total: proposals.length,
 		};
 
 		const completionRate = stats.total > 0
-			? Math.round((stats.reached / stats.total) * 100)
+			? Math.round((stats.complete / stats.total) * 100)
 			: 0;
 
 		lines.push(`- **Total proposals:** ${stats.total}`);
 		lines.push(`- **Completion rate:** ${completionRate}%`);
 		lines.push(`- **In progress:** ${stats.active + stats.review}`);
-		lines.push(`- **Potential backlog:** ${stats.potential}`);
+		lines.push(`- **New backlog:** ${stats.new}`);
 		lines.push("");
 		lines.push("| Status | Count |");
 		lines.push("| --- | --- |");
-		lines.push(`| Potential | ${stats.potential} |`);
-		lines.push(`| Active | ${stats.active} |`);
+		lines.push(`| New | ${stats.new} |`);
+		lines.push(`| Draft | ${stats.draft} |`);
 		lines.push(`| Review | ${stats.review} |`);
-		lines.push(`| Reached | ${stats.reached} |`);
-		lines.push(`| Abandoned | ${stats.abandoned} |`);
+		lines.push(`| Active | ${stats.active} |`);
+		lines.push(`| Accepted | ${stats.accepted} |`);
+		lines.push(`| Complete | ${stats.complete} |`);
 	}
 
 	/**

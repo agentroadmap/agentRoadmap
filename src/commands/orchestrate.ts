@@ -192,7 +192,7 @@ async function setupAgentWorktree(
 				projectName: `Agent Worktree (${agentName})`,
 				daemonUrl,
 				daemonMode: true,
-				statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"],
+				statuses: ["New", "Draft", "Review", "Active", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"],
 				labels: [],
 				dateFormat: "yyyy-mm-dd",
 			};

@@ -23,10 +23,10 @@ describe("Config Loading & Migration", () => {
 
 	it("should load config from standard roadmap directory", async () => {
 		const config = `project_name: "Test Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives: []
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -55,10 +55,10 @@ auto_commit: false`;
 		await mkdir(legacyRoadmapDir, { recursive: true });
 
 		const legacyConfig = `project_name: "Legacy Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives: []
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -82,10 +82,10 @@ auto_commit: false`;
 
 	it("migrates legacy config directives into directive files and removes config directives key", async () => {
 		const config = `project_name: "Legacy Directives Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives: ["Release 1", "Release 2"]
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -103,10 +103,10 @@ auto_commit: false`;
 
 	it("migrates quoted legacy directive names containing commas", async () => {
 		const config = `project_name: "Legacy Directives Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives: ["Release, Part 1", "Release 2"]
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -121,13 +121,13 @@ auto_commit: false`;
 
 	it("migrates multiline legacy directive list values with comments", async () => {
 		const config = `project_name: "Legacy Directives Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives:
   - "Release 1"
   - Release 2 # comment
   - 'Release #3'
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -149,13 +149,13 @@ auto_commit: false`;
 
 	it("migrates multiline bracketed legacy directive arrays", async () => {
 		const config = `project_name: "Legacy Directives Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives: [
   "Release 1",
   "Release 2"
 ]
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
@@ -170,11 +170,11 @@ auto_commit: false`;
 
 	it("migrates single-quoted legacy directives with escaped apostrophes", async () => {
 		const config = `project_name: "Legacy Directives Project"
-statuses: ["Potential", "Active", "Accepted", "Complete", "Abandoned"]
+statuses: ["New", "Active", "Accepted", "Complete", "Abandoned"]
 labels: []
 directives:
   - 'Release ''Alpha'''
-default_status: "Potential"
+default_status: "New"
 date_format: "yyyy-mm-dd"
 max_column_width: 20
 auto_commit: false`;
