@@ -1,10 +1,10 @@
 /**
- * STATE-60: Proposal Workflow - Mature Potential Through Research & Approval
+ * STATE-60: Proposal Workflow - Mature New Through Research & Approval
  *
- * Formal proposal workflow to mature Potential components through research
+ * Formal proposal workflow to mature New components through research
  * and approval before they can be claimed.
  *
- * AC#1: Potential components can be promoted to 'Proposed' status with research document
+ * AC#1: New components can be promoted to 'Proposed' status with research document
  * AC#2: Product Manager reviews proposal for product-market fit
  * AC#3: Architect reviews proposal for technical feasibility
  * AC#4: Both PM + Architect approval required before 'Approved' status
@@ -126,8 +126,8 @@ export function saveProposals(filePath: string): void {
 }
 
 /**
- * Submit a new proposal from a Potential proposal
- * AC#1: Potential components can be promoted to 'Proposed' status with research document
+ * Submit a new proposal from a New proposal
+ * AC#1: New components can be promoted to 'Proposed' status with research document
  */
 export function submitProposal(
 	proposalId: string,

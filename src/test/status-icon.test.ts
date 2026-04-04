@@ -7,12 +7,12 @@ describe("Status Icon Component", () => {
 	describe("getStatusStyle", () => {
 		test("returns correct style for Complete status", () => {
 			const style = getStatusStyle("Complete");
-			assert.strictEqual(style.icon, "✔");
+			assert.strictEqual(style.icon, "✅");
 			assert.strictEqual(style.color, "green");
 		});
 
-		test("returns correct style for Active status", () => {
-			const style = getStatusStyle("Active");
+		test("returns correct style for Building status", () => {
+			const style = getStatusStyle("Building");
 			assert.strictEqual(style.icon, "◒");
 			assert.strictEqual(style.color, "yellow");
 		});
@@ -23,8 +23,8 @@ describe("Status Icon Component", () => {
 			assert.strictEqual(style.color, "red");
 		});
 
-		test("returns correct style for Potential status", () => {
-			const style = getStatusStyle("Potential");
+		test("returns correct style for Draft status", () => {
+			const style = getStatusStyle("Draft");
 			assert.strictEqual(style.icon, "○");
 			assert.strictEqual(style.color, "white");
 		});
@@ -35,8 +35,8 @@ describe("Status Icon Component", () => {
 			assert.strictEqual(style.color, "blue");
 		});
 
-		test("returns correct style for Testing status", () => {
-			const style = getStatusStyle("Testing");
+		test("returns correct style for Accepted status", () => {
+			const style = getStatusStyle("Accepted");
 			assert.strictEqual(style.icon, "▣");
 			assert.strictEqual(style.color, "cyan");
 		});
@@ -51,11 +51,11 @@ describe("Status Icon Component", () => {
 	describe("getStatusColor", () => {
 		test("returns correct color for each status", () => {
 			expect(getStatusColor("Complete")).toBe("green");
-			expect(getStatusColor("Active")).toBe("yellow");
+			expect(getStatusColor("Building")).toBe("yellow");
 			expect(getStatusColor("Blocked")).toBe("red");
-			expect(getStatusColor("Potential")).toBe("white");
+			expect(getStatusColor("Draft")).toBe("white");
 			expect(getStatusColor("Review")).toBe("blue");
-			expect(getStatusColor("Testing")).toBe("cyan");
+			expect(getStatusColor("Accepted")).toBe("cyan");
 		});
 
 		test("returns default color for unknown status", () => {
@@ -65,12 +65,12 @@ describe("Status Icon Component", () => {
 
 	describe("getStatusIcon", () => {
 		test("returns correct icon for each status", () => {
-			expect(getStatusIcon("Complete")).toBe("✔");
-			expect(getStatusIcon("Active")).toBe("◒");
+			expect(getStatusIcon("Complete")).toBe("✅");
+			expect(getStatusIcon("Building")).toBe("◒");
 			expect(getStatusIcon("Blocked")).toBe("●");
-			expect(getStatusIcon("Potential")).toBe("○");
+			expect(getStatusIcon("Draft")).toBe("○");
 			expect(getStatusIcon("Review")).toBe("◆");
-			expect(getStatusIcon("Testing")).toBe("▣");
+			expect(getStatusIcon("Accepted")).toBe("▣");
 		});
 
 		test("returns default icon for unknown status", () => {
@@ -80,16 +80,34 @@ describe("Status Icon Component", () => {
 
 	describe("formatStatusWithIcon", () => {
 		test("formats status with correct icon", () => {
-			expect(formatStatusWithIcon("Complete")).toBe("✔ Complete");
-			expect(formatStatusWithIcon("Active")).toBe("◒ Active");
+			expect(formatStatusWithIcon("Complete")).toBe("✅ Complete");
+			expect(formatStatusWithIcon("Building")).toBe("◒ Building");
 			expect(formatStatusWithIcon("Blocked")).toBe("● Blocked");
-			expect(formatStatusWithIcon("Potential")).toBe("○ Potential");
+			expect(formatStatusWithIcon("Draft")).toBe("○ Draft");
 			expect(formatStatusWithIcon("Review")).toBe("◆ Review");
-			expect(formatStatusWithIcon("Testing")).toBe("▣ Testing");
+			expect(formatStatusWithIcon("Accepted")).toBe("▣ Accepted");
 		});
 
 		test("formats unknown status with default icon", () => {
 			expect(formatStatusWithIcon("Custom Status")).toBe("○ Custom Status");
+		});
+	});
+
+	describe("Maturity Styles", () => {
+		test("returns correct color for each maturity level", () => {
+			const { getMaturityColor } = require("../ui/status-icon.ts");
+			expect(getMaturityColor("new")).toBe("white");
+			expect(getMaturityColor("active")).toBe("yellow");
+			expect(getMaturityColor("mature")).toBe("green");
+			expect(getMaturityColor("obsolete")).toBe("gray");
+		});
+
+		test("returns correct icon for each maturity level", () => {
+			const { getMaturityIcon } = require("../ui/status-icon.ts");
+			expect(getMaturityIcon("new")).toBe("○ ");
+			expect(getMaturityIcon("active")).toBe("▶ ");
+			expect(getMaturityIcon("mature")).toBe("✓ ");
+			expect(getMaturityIcon("obsolete")).toBe("✖ ");
 		});
 	});
 });

@@ -10,7 +10,7 @@ import type {
 	SearchResultType,
 	Proposal,
 } from "../../types/index.ts";
-import { isReachedStatus, isTerminalStatus } from "../proposal/directives.ts";
+import { isCompleteStatus, isTerminalStatus } from "../proposal/directives.ts";
 import type { ContentStore, ContentStoreEvent } from "../storage/content-store.ts";
 // SQLite removed — search uses SpacetimeDB via sdb-proposal-loader
 
@@ -179,7 +179,7 @@ export class SearchService {
 		}
 
 		const doneIds = normalizedFilters.ready
-			? new Set(this.proposals.filter((t) => isReachedStatus(t.proposal.status)).map((t) => t.id))
+			? new Set(this.proposals.filter((t) => isCompleteStatus(t.proposal.status)).map((t) => t.id))
 			: undefined;
 
 		const fuseResults = fuse.search(trimmedQuery);
@@ -353,7 +353,7 @@ export class SearchService {
 			});
 		}
 		if (filters.ready) {
-			const doneIds = new Set(proposals.filter((t) => isReachedStatus(t.proposal.status)).map((t) => t.id));
+			const doneIds = new Set(proposals.filter((t) => isCompleteStatus(t.proposal.status)).map((t) => t.id));
 
 			filtered = filtered.filter((entity) => {
 				const proposal = entity.proposal;

@@ -19,7 +19,7 @@ import {
 	resolveSearchExitTargetIndex,
 	shouldMoveFromListBoundaryToSearch,
 } from "./proposal-viewer-with-search.ts";
-import { getStatusIcon } from "./status-icon.ts";
+import { getStatusIcon, getStatusStyle } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
 import { getVersionInfo, formatVersionLabel } from "../utils/version.ts";
 import { getRecentEvents, type StreamEvent } from '../core/messaging/event-stream.ts';
@@ -36,7 +36,7 @@ type ColumnView = {
 	box: BoxInterface;
 };
 
-function isReachedStatus(status: string): boolean {
+function isCompleteStatus(status: string): boolean {
 	const normalized = status.trim().toLowerCase();
 	return normalized === "done" || normalized === "completed" || normalized === "complete";
 }
@@ -60,8 +60,8 @@ function buildColumnProposals(status: string, items: Proposal[], byId: Map<strin
 			return 1;
 		}
 
-		const columnIsReached = isReachedStatus(status);
-		if (columnIsReached) {
+		const columnIsComplete = isCompleteStatus(status);
+		if (columnIsComplete) {
 			return compareProposalIds(b.id, a.id);
 		}
 
@@ -120,7 +120,7 @@ export function filterBoardColumns(
 	});
 }
 
-function formatProposalListItem(proposal: Proposal, isMoving = false): string {
+export function formatProposalListItem(proposal: Proposal, isMoving = false): string {
 	const assignee = proposal.assignee?.[0]
 		? ` {cyan-fg}${proposal.assignee[0].startsWith("@") ? proposal.assignee[0] : `@${proposal.assignee[0]}`}{/}`
 		: "";
@@ -128,34 +128,36 @@ function formatProposalListItem(proposal: Proposal, isMoving = false): string {
 	const isCrossBranch = Boolean((proposal as Proposal & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(proposal as Proposal & { branch?: string }).branch}){/}` : "";
 
-	// Maturity-based color coding
-	const maturity = (proposal as Proposal & { maturity?: string }).maturity;
-	let maturityColor = "";
-	if (maturity === "audited") {
-		maturityColor = "{green-fg}"; // Green for audited (verified)
-	} else if (maturity === "contracted") {
-		maturityColor = "{yellow-fg}"; // Yellow for contracted (ACs defined)
-	}
+	// Status-based color coding
+	const status = proposal.status || "";
+	const statusStyle = getStatusStyle(status);
+	const statusColor = `{${statusStyle.color}-fg}`;
 
-	// Merge status suffix for Reached proposals
-	const status = (proposal as Proposal & { status?: string }).status || "";
-	const isReached = status.toLowerCase() === "reached" || status.toLowerCase() === "done" || status.toLowerCase() === "complete";
+	// Maturity-based color coding (overrides status color for the ID part)
+	const maturity = (proposal as Proposal & { maturity?: string }).maturity;
+	const maturityColorName = getMaturityColor(maturity);
+	const maturityColor = `{${maturityColorName}-fg}`;
+	const maturityIcon = getMaturityIcon(maturity);
+
+	// Use status color as base if no maturity color
+	const baseColor = maturityColor || statusColor;
+
+	// Merge status suffix for Complete proposals
+	const isComplete = isCompleteStatus(status);
 	let mergeSuffix = "";
-	if (isReached) {
+	if (isComplete) {
 		// Check if this proposal's changes are in main
-		// For now: audited = merged (green), contracted = pending (yellow)
-		if (maturity === "audited") {
+		// For now: mature = merged (green), active = pending (yellow)
+		if (maturity === "mature") {
 			mergeSuffix = " {green-fg}✓ merged{/}";
-		} else if (maturity === "contracted") {
+		} else if (maturity === "active") {
 			mergeSuffix = " {yellow-fg}⏳ pending{/}";
-		} else {
-			mergeSuffix = " {gray-fg}? merge-status{/}";
 		}
 	}
 
 	// Cross-branch proposals are dimmed to indicate read-only status
-		const displayId = proposal.id.replace(/^STATE-/, "STEP-");
-		const content = `${maturityColor}{bold}${displayId}{/bold}${maturityColor ? "{/}" : ""} - ${proposal.title}${assignee}${labels}${branch}${mergeSuffix}`;
+	const displayId = proposal.id.replace(/^STATE-/, "STEP-");
+	const content = `${baseColor}${maturityIcon}{bold}${displayId}{/bold}${baseColor ? "{/}" : ""} - ${statusColor}${proposal.title}{/}${assignee}${labels}${branch}${mergeSuffix}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -170,7 +172,8 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[I]{/} Directive | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Abandoned | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[E]{/} Edit | {cyan-fg}[U]{/} Promote | {cyan-fg}[D]{/} Demote | {cyan-fg}[R]{/} Review | {cyan-fg}[M]{/} Move | {cyan-fg}[A]{/} Assign | {cyan-fg}[X]{/} Export | {cyan-fg}[h]{/} Help | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
+
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -247,17 +250,23 @@ export async function renderBoardTui(
 		return;
 	}
 
-	const initialColumns = prepareBoardColumns(initialProposals, statuses);
-	if (initialColumns.length === 0) {
-		console.log("No proposals available for the Kanban board.");
-		return;
-	}
+	const core = new Core(process.cwd());
+	const config = await core.filesystem.loadConfig();
 
 	const versionInfo = await getVersionInfo();
 	const versionLabel = formatVersionLabel(versionInfo);
 
-	const core = new Core(process.cwd());
-	const config = await core.filesystem.loadConfig();
+	const hiddenStatusesFromConfig = (config as any)?.hidden_statuses || ["Rejected", "Abandoned", "Replaced"];
+	
+	let initialColumns = prepareBoardColumns(initialProposals, statuses);
+	initialColumns = filterBoardColumns(initialColumns, {
+		hiddenStatuses: hiddenStatusesFromConfig
+	});
+
+	if (initialColumns.length === 0) {
+		console.log("No active proposals available for the Kanban board.");
+		return;
+	}
 
 	await new Promise<void>((resolve) => {
 		const screen = createScreen({ title: `Roadmap Board - ${versionLabel}` });
@@ -352,9 +361,9 @@ export async function renderBoardTui(
 
 		let filterHeader: FilterHeader | null = null;
 		let hideEmptyColumns = false;
-		const hiddenStatusesFromConfig = (config as any)?.hidden_statuses || [];
+		const hiddenStatusesFromConfig = (config as any)?.hidden_statuses || ["Rejected", "Abandoned", "Replaced"];
 		let hiddenStatuses = [...hiddenStatusesFromConfig];
-		let hiddenStatusesToggle = hiddenStatuses.length > 0;
+		let hiddenStatusesToggle = true;
 		const hasActiveSharedFilters = () =>
 			Boolean(
 				sharedFilters.searchQuery.trim() ||
@@ -882,11 +891,6 @@ export async function renderBoardTui(
 			void openFilterPicker("labels");
 		});
 
-		screen.key(["i", "I"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
-			void openFilterPicker("directive");
-		});
-
 		// Toggle hide empty columns
 		screen.key(["~"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
@@ -1335,10 +1339,7 @@ export async function renderBoardTui(
 				popupOpen = false;
 				close();
 				focusColumn(currentCol);
-			});
-
-			contentArea.key(["e", "E", "S-e"], async () => {
-				await openProposalEditor(proposal);
+				return false;
 			});
 
 			screen.render();
@@ -1405,219 +1406,12 @@ export async function renderBoardTui(
 			if (proposal) await openQuickEdit(proposal, "title");
 		});
 
-		screen.key(["a", "A"], async () => {
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			const proposal = column.proposals[idx];
-			if (proposal) await openQuickEdit(proposal, "assignee");
-		});
-
 		screen.key(["l", "L"], async () => {
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
 			const proposal = column.proposals[idx];
 			if (proposal) await openQuickEdit(proposal, "labels");
-		});
-
-		screen.key(["e", "E", "S-e"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			if (idx < 0 || idx >= column.proposals.length) return;
-			const proposal = column.proposals[idx];
-			if (!proposal) return;
-			await openProposalEditor(proposal);
-		});
-
-		const performProposalMove = async () => {
-			if (!moveOp) return;
-
-			// Check if any actual change occurred
-			const noChange = moveOp.targetStatus === moveOp.originalStatus && moveOp.targetIndex === moveOp.originalIndex;
-
-			if (noChange) {
-				// No change, just exit move mode
-				moveOp = null;
-				renderView();
-				return;
-			}
-
-			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
-				const config = await core.fs.loadConfig();
-
-				// Get the final proposal from the projection
-				const projectedData = getProjectedColumns(currentProposals, moveOp);
-				const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
-
-				if (!targetColumn) {
-					moveOp = null;
-					renderView();
-					return;
-				}
-
-				const orderedProposalIds = targetColumn.proposals.map((proposal) => proposal.id);
-
-				// Persist the move using core API
-				const { updatedProposal, changedProposals } = await core.reorderProposal({
-					proposalId: moveOp.proposalId,
-					targetStatus: moveOp.targetStatus,
-					orderedProposalIds,
-					autoCommit: config?.autoCommit ?? false,
-				});
-
-				// Update local proposal with all changed proposals (includes ordinal updates)
-				const changedProposalsMap = new Map(changedProposals.map((t) => [t.id, t]));
-				changedProposalsMap.set(updatedProposal.id, updatedProposal);
-				currentProposals = currentProposals.map((t) => changedProposalsMap.get(t.id) ?? t);
-
-				// Exit move mode
-				moveOp = null;
-
-				// Render with updated local proposal
-				renderView();
-			} catch (error) {
-				// On error, cancel the move and restore original position
-				if (process.env.DEBUG) {
-					console.error("Move failed:", error);
-				}
-				moveOp = null;
-				renderView();
-			}
-		};
-		const cancelMove = () => {
-			if (!moveOp) return;
-
-			// Exit move mode - pure proposal reset
-			moveOp = null;
-
-			renderView();
-		};
-
-		screen.key(["m", "M", "S-m"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
-			if (hasActiveSharedFilters()) {
-				showTransientFooter(" {yellow-fg}Clear filters before moving proposals.{/}");
-				return;
-			}
-
-			if (!moveOp) {
-				const column = columns[currentCol];
-				if (!column) return;
-				const proposalIndex = column.list.selected ?? 0;
-				const proposal = column.proposals[proposalIndex];
-				if (!proposal) return;
-
-				// Prevent move mode for cross-branch proposals
-				if (proposal.branch) {
-					showTransientFooter(` {red-fg}Cannot move proposal from branch "${proposal.branch}".{/}`);
-					return;
-				}
-
-				// Enter move mode - store original position for cancel
-				moveOp = {
-					proposalId: proposal.id,
-					originalStatus: column.status,
-					originalIndex: proposalIndex,
-					targetStatus: column.status,
-					targetIndex: proposalIndex,
-				};
-
-				renderView();
-			} else {
-				// Confirm move (same as Enter in move mode)
-				await performProposalMove();
-			}
-		});
-
-		// Undo stack for last 10 operations (S129 Requirement)
-		const undoStack: Array<() => Promise<void>> = [];
-		const pushUndo = (op: () => Promise<void>) => {
-			undoStack.push(op);
-			if (undoStack.length > 10) undoStack.shift();
-		};
-
-		const confirmAction = async (message: string): Promise<boolean> => {
-			const { box } = await import("./blessed.ts");
-			popupOpen = true;
-			const confirmBox = box({
-				parent: screen,
-				top: "center",
-				left: "center",
-				width: 50,
-				height: 7,
-				border: { type: "line" },
-				label: " Confirm ",
-				content: `${message}\n\n{cyan-fg}Y{/} = Yes  {cyan-fg}N{/} = No`,
-				tags: true,
-				style: { border: { fg: "yellow" } },
-				zIndex: 1001,
-			});
-			screen.render();
-
-			const answer = await new Promise<boolean>((resolve) => {
-				const cleanup = () => { (screen as any).remove(confirmBox); popupOpen = false; screen.render(); };
-				(screen as any).onceKey(["y", "Y"], () => { cleanup(); resolve(true); });
-				(screen as any).onceKey(["n", "N", "escape"], () => { cleanup(); resolve(false); });
-			});
-			return answer;
-		};
-
-		screen.key(["u", "U"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
-			const proposalId = getSelectedProposalId();
-			if (!proposalId) return;
-			try {
-				const proposal = await core.getProposal(proposalId);
-				if (!proposal) return;
-				const oldStatus = proposal.status;
-				await core.promoteProposal(proposalId, "user", true);
-				pushUndo(async () => { await core.updateProposalFromInput(proposalId, { status: oldStatus }, true); });
-				showTransientFooter(` {green-fg}Promoted ${proposalId}{/}`);
-				renderView();
-			} catch (e) {
-				showTransientFooter(` {red-fg}Promotion failed: ${e}{/}`);
-			}
-		});
-
-		screen.key(["d", "D"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
-			const proposalId = getSelectedProposalId();
-			if (!proposalId) return;
-			if (!(await confirmAction(`Demote proposal ${proposalId}?`))) return;
-			try {
-				const proposal = await core.getProposal(proposalId);
-				if (!proposal) return;
-				const oldStatus = proposal.status;
-				await core.demoteProposalProper(proposalId, "user", true);
-				pushUndo(async () => { await core.updateProposalFromInput(proposalId, { status: oldStatus }, true); });
-				showTransientFooter(` {yellow-fg}Demoted ${proposalId}{/}`);
-				renderView();
-			} catch (e) {
-				showTransientFooter(` {red-fg}Demotion failed: ${e}{/}`);
-			}
-		});
-
-		screen.key(["r", "R"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
-			const proposalId = getSelectedProposalId();
-			if (!proposalId) return;
-			const { promptText } = await import("./tui.ts");
-			screen.leave();
-			const topic = await promptText("Enrichment topic:", "API Details");
-			screen.enter();
-			if (!topic) return;
-			await core.emitPulse({
-				type: "scope_aggregated",
-				id: proposalId,
-				title: `Enrichment requested: ${topic}`,
-				agent: "user",
-				timestamp: new Date().toISOString()
-			});
-			showTransientFooter(` {green-fg}Enrichment request logged for ${proposalId}{/}`);
 		});
 
 		screen.key(["x", "X"], async () => {
@@ -1630,80 +1424,13 @@ export async function renderBoardTui(
 			const md = generateProposalMarkdown(proposal);
 			const { join } = await import("node:path");
 			const fs = await import("node:fs");
-			const exportPath = join(process.cwd(), `export-${proposalId}.md`);
+			const exportDir = join(process.cwd(), "export");
+			if (!fs.existsSync(exportDir)) {
+				fs.mkdirSync(exportDir, { recursive: true });
+			}
+			const exportPath = join(exportDir, `export-${proposalId}.md`);
 			fs.writeFileSync(exportPath, md);
 			showTransientFooter(` {green-fg}Exported to ${exportPath}{/}`);
-		});
-
-		screen.key(["+", "="], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
-			const proposalId = getSelectedProposalId();
-			if (!proposalId) return;
-			try {
-				const proposal = await core.getProposal(proposalId);
-				if (!proposal) return;
-				const priorities: any[] = ["none", "low", "medium", "high", "critical"];
-				const idx = priorities.indexOf(proposal.priority || "none");
-				const next = priorities[Math.min(priorities.length - 1, idx + 1)];
-				await core.updatePriority(proposalId, next, "user", true);
-				renderView();
-			} catch (e) { /* ignore */ }
-		});
-
-		screen.key(["-", "_"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
-			const proposalId = getSelectedProposalId();
-			if (!proposalId) return;
-			try {
-				const proposal = await core.getProposal(proposalId);
-				if (!proposal) return;
-				const priorities: any[] = ["none", "low", "medium", "high", "critical"];
-				const idx = priorities.indexOf(proposal.priority || "none");
-				const next = priorities[Math.max(0, idx - 1)];
-				await core.updatePriority(proposalId, next, "user", true);
-				renderView();
-			} catch (e) { /* ignore */ }
-		});
-
-		screen.key(["C-z"], async () => {
-			const undo = undoStack.pop();
-			if (undo) {
-				await undo();
-				showTransientFooter(" {yellow-fg}Undo successful{/}");
-				renderView();
-			} else {
-				showTransientFooter(" {gray-fg}Nothing to undo{/}");
-			}
-		});
-
-		screen.key(["h", "H"], async () => {
-			const { box } = await import("./blessed.ts");
-			const helpPopup = box({
-				parent: screen,
-				top: "center",
-				left: "center",
-				width: 60,
-				height: 20,
-				border: { type: "line" },
-				label: " Help Menu ",
-				content: "{bold}Primary Actions{/bold}\n" +
-					" u: Promote Proposal\n" +
-					" d: Demote Proposal\n" +
-					" r: Request Enrichment\n" +
-					" m: Merge/Move Mode\n" +
-					" a: Assign Proposal\n" +
-					" e: Edit Full Proposal\n" +
-					" x: Export Markdown\n" +
-					" + / -: Change Priority\n" +
-					" Ctrl+Z: Undo last op\n\n" +
-					" Press Esc or q to close help",
-				tags: true,
-				style: { border: { fg: "cyan" } },
-				zIndex: 1000
-			});
-			helpPopup.focus();
-			helpPopup.key(["escape", "q"], () => { helpPopup.destroy(); screen.render(); });
-			screen.render();
 		});
 
 		screen.key(["tab"], async () => {
@@ -1776,7 +1503,12 @@ export async function renderBoardTui(
 			screen.render();
 		};
 		updateEventPanel();
-		setInterval(updateEventPanel, 3000);
+		const eventPanelTimer = setInterval(updateEventPanel, 3000);
+
+		screen.on("destroy", () => {
+			clearInterval(eventPanelTimer);
+			clearFooterTimer();
+		});
 
 		screen.render();
 	});

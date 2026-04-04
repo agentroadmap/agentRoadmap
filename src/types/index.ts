@@ -135,11 +135,11 @@ export interface Proposal {
 	budgetLimitUsd?: number;
 }
 
-export type ProposalMaturity = "skeleton" | "contracted" | "audited";
+export type ProposalMaturity = "new" | "active" | "mature" | "obsolete";
 
 export type PulseType =
 	| "proposal_created"
-	| "proposal_reached"
+	| "proposal_complete"
 	| "decision_made"
 	| "obstacle_discovered"
 	| "scope_aggregated"
@@ -468,6 +468,8 @@ export interface RoadmapConfig {
 	daemonMode?: boolean;
 	/** Database connection configuration for SpacetimeDB or other providers */
 	database?: DatabaseConfig;
+	/** Default export path (relative to project root). Defaults to "export" */
+	exportPath?: string;
 	mcp?: {
 		http?: {
 			host?: string;

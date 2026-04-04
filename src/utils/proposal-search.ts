@@ -5,7 +5,7 @@
 
 import Fuse from "fuse.js";
 import type { Proposal } from "../types/index.ts";
-import { isReachedStatus, isTerminalStatus } from "./status.ts";
+import { isCompleteStatus, isTerminalStatus } from "./status.ts";
 
 export interface ProposalSearchOptions {
 	query?: string;
@@ -183,7 +183,7 @@ export function createProposalSearchIndex(proposals: Proposal[]): ProposalSearch
 
 			// Apply ready filter
 			if (options.ready) {
-				const doneIds = new Set(searchableProposals.filter((t) => isReachedStatus(t.proposal.status)).map((t) => t.id));
+				const doneIds = new Set(searchableProposals.filter((t) => isCompleteStatus(t.proposal.status)).map((t) => t.id));
 				results = results.filter((t) => {
 					const proposal = t.proposal;
 					if (isTerminalStatus(proposal.status)) return false;

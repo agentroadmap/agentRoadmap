@@ -186,40 +186,48 @@ export const DEFAULT_MATURITY: ProposalMaturity = "skeleton";
 // ===================== Proposal Lifecycle Transitions (STATE-085) ==================
 
 /** Proposal status values matching the simple lifecycle model */
-export type ProposalLifecycleStatus = "Potential" | "Active" | "Complete";
+export type ProposalLifecycleStatus = "New" | "Draft" | "Review" | "Active" | "Accepted" | "Complete";
 
-/** Valid proposal status transitions (must go Potential → Active → Complete) */
+/** Valid proposal status transitions */
 export const STATE_LIFECYCLE_TRANSITIONS: Record<ProposalLifecycleStatus, ProposalLifecycleStatus[]> = {
-	Potential: ["Active"],      // Can only go to Active, not directly to Complete
-	Active: ["Complete", "Potential"],  // Can complete or revert to Potential
-	Complete: ["Potential"],     // Can reopen (revert to Potential)
+	New: ["Draft", "Active", "Complete"],
+	Draft: ["Review", "Active", "Complete"],
+	Review: ["Active", "Accepted", "Draft"],
+	Active: ["Accepted", "Review", "Complete"],
+	Accepted: ["Complete", "Active"],
+	Complete: ["New", "Active"],
 };
 
 /** Map from internal status to lifecycle status */
 export function toLifecycleStatus(status: DatabaseProposalStatus): ProposalLifecycleStatus {
 	switch (status.toLowerCase()) {
+		case "new":
 		case "potential":
-		case "drafts":
 		case "ready":
 		case "pending":
-			return "Potential";
+			return "New";
+		case "draft":
+		case "drafts":
+			return "Draft";
+		case "review":
+			return "Review";
 		case "active":
 		case "wip":
 		case "in_progress":
-		case "review":
 			return "Active";
+		case "accepted":
+			return "Accepted";
 		case "complete":
 		case "done":
-		case "complete":
+		case "completed":
 			return "Complete";
 		default:
-			return "Potential";
+			return "New";
 	}
 }
 
 /**
  * Validate that a proposal status transition is allowed.
- * STATE-085: Transitions from Potential must go to Active before Complete.
  *
  * @param fromStatus - Current status
  * @param toStatus - Target status
@@ -240,7 +248,6 @@ export function validateProposalTransition(
 	if (!allowedTransitions.includes(to)) {
 		throw new Error(
 			`Invalid proposal transition: ${fromStatus} → ${toStatus}. ` +
-			"Must follow lifecycle: Potential → Active → Complete. " +
 			`Valid transitions from ${from}: ${allowedTransitions.join(", ")}`,
 		);
 	}

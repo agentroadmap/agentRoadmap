@@ -171,7 +171,7 @@ export class ProposalHandlers {
 		return resolveByAlias(archivedDirectives) ?? normalized;
 	}
 
-	private isReachedStatus(status?: string | null): boolean {
+	private isCompleteStatus(status?: string | null): boolean {
 		const normalized = (status ?? "").trim().toLowerCase();
 		return normalized.includes("done") || normalized.includes("complete");
 	}
@@ -183,7 +183,7 @@ export class ProposalHandlers {
 	private formatProposalSummaryLine(proposal: Proposal, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = proposal.priority ? `[${proposal.priority.toUpperCase()}] ` : "";
 		const readyIndicator = proposal.ready ? " [READY]" : "";
-		const status = proposal.status || (proposal.origin === "completed" ? "Reached" : "");
+		const status = proposal.status || (proposal.origin === "completed" ? "Complete" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
 		return `  ${priorityIndicator}${proposal.id} - ${proposal.title}${readyIndicator}${statusText}`;
 	}
@@ -522,9 +522,9 @@ export class ProposalHandlers {
 			throw new McpError(`Cannot archive proposal from another branch: ${proposal.id}`, "VALIDATION_ERROR");
 		}
 
-		if (this.isReachedStatus(proposal.status)) {
+		if (this.isCompleteStatus(proposal.status)) {
 			throw new McpError(
-				`Proposal ${proposal.id} is Reached. Reached proposals should be completed (moved to the completed folder), not archived. Use proposal_complete instead.`,
+				`Proposal ${proposal.id} is already Complete. Complete proposals should be archived only if they were errors. Use proposal_complete instead for successful delivery.`,
 				"VALIDATION_ERROR",
 			);
 		}
@@ -545,9 +545,9 @@ export class ProposalHandlers {
 			throw new McpError(`Cannot complete proposal from another branch: ${proposal.id}`, "VALIDATION_ERROR");
 		}
 
-		if (!this.isReachedStatus(proposal.status)) {
+		if (!this.isCompleteStatus(proposal.status)) {
 			throw new McpError(
-				`Proposal ${proposal.id} is not Reached. Set status to "Reached" with proposal_edit before completing it.`,
+				`Proposal ${proposal.id} is not Complete. Set status to "Complete" with proposal_edit before completing it.`,
 				"VALIDATION_ERROR",
 			);
 		}

@@ -123,11 +123,17 @@ function connectToSpacetimeDB() {
         ]);
 }
 
+function safeStringify(data: any): string {
+  return JSON.stringify(data, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
+
 function sendSnapshot(ws: WebSocket) {
     if (!sdbConnection) return;
     // @ts-ignore: binding mismatch
     const proposals = Array.from(sdbConnection.db.proposal.iter());
-    ws.send(JSON.stringify({ type: 'proposals', data: proposals }));
+    ws.send(safeStringify({ type: 'proposals', data: proposals }));
 }
 
 async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
@@ -140,7 +146,7 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
       if (sdbConnection) {
         // @ts-ignore: binding mismatch
         const proposal = sdbConnection.db.proposal.id.find(msg.id);
-        ws.send(JSON.stringify({ type: 'proposal', data: proposal || null }));
+        ws.send(safeStringify({ type: 'proposal', data: proposal || null }));
       }
       break;
 
@@ -156,7 +162,7 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
       if (sdbConnection) {
         // @ts-ignore: binding mismatch
         const msgs = Array.from(sdbConnection.db.message_ledger.iter()).filter((m: any) => m.channel_name === msg.channel);
-        ws.send(JSON.stringify({ type: 'messages', data: msgs, channel: msg.channel }));
+        ws.send(safeStringify({ type: 'messages', data: msgs, channel: msg.channel }));
       }
       break;
 
@@ -189,7 +195,7 @@ async function handleMessage(ws: WebSocket, msg: any): Promise<void> {
 }
 
 function broadcast(data: any): void {
-  const message = JSON.stringify(data);
+  const message = safeStringify(data);
   clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);

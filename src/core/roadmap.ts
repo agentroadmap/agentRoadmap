@@ -60,7 +60,7 @@ import { executeStatusCallback } from "../utils/status-callback.ts";
 import { migrateConfig, needsMigration } from "./infrastructure/config-migration.ts";
 import { ContentStore } from "./storage/content-store.ts";
 import { getBlockingIssues, loadIssues } from "./pipeline/issue-tracker.ts";
-import { collectArchivedDirectiveKeys, isReachedStatus, isReady, isTerminalStatus } from "./proposal/directives.ts";
+import { collectArchivedDirectiveKeys, isCompleteStatus, isReady, isTerminalStatus } from "./proposal/directives.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./infrastructure/prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./proposal/reorder.ts";
 import { loadAllProposals } from "./storage/sdb-proposal-loader.ts";
@@ -367,7 +367,7 @@ export class Core {
 
 		if (allProposals || (filters && filters.ready)) {
 			const referenceProposals = allProposals || proposals;
-			const doneIds = new Set(referenceProposals.filter((t) => isReachedStatus(t.status)).map((t) => t.id));
+			const doneIds = new Set(referenceProposals.filter((t) => isCompleteStatus(t.status)).map((t) => t.id));
 
 			result = result.map((proposal) => {
 				const ready = isReady(proposal, doneIds, referenceProposals);
@@ -480,11 +480,16 @@ export class Core {
 				filtered = this.filterLocalEditableProposals(filtered);
 			}
 			if (typeof limit === "number" && limit >= 0) {
-				console.log("[DEBUG] queryProposals: returning", filtered.slice(0, limit).length, "proposals (sliced)");
-			return filtered.slice(0, limit);
+				if (process.env.DEBUG) {
+					console.error("[DEBUG] queryProposals: returning", filtered.slice(0, limit).length, "proposals (sliced)");
+				}
+				return filtered.slice(0, limit);
 			}
-			console.log("[DEBUG] queryProposals: returning", filtered.length, "proposals");
-		return filtered;
+
+			if (process.env.DEBUG) {
+				console.error("[DEBUG] queryProposals: returning", filtered.length, "proposals");
+			}
+			return filtered;
 		};
 
 		if (!trimmedQuery) {
@@ -1283,10 +1288,10 @@ export class Core {
 
 		await this.fs.saveProposal(proposal);
 
-		// Record Pulse: Proposal Reached
-		if (isReachedStatus(newStatus) && !isReachedStatus(oldStatus)) {
+		// Record Pulse: Proposal Complete
+		if (isCompleteStatus(newStatus) && !isCompleteStatus(oldStatus)) {
 			await this.recordPulse({
-				type: "proposal_reached",
+				type: "proposal_complete",
 				id: proposal.id,
 				title: proposal.title,
 				impact: proposal.hype || proposal.finalSummary,
@@ -1479,14 +1484,14 @@ export class Core {
 			const canonicalStatus = await statusResolver(input.status);
 			if ((proposal.status ?? "") !== canonicalStatus) {
 				// AC#1-4, AC#7: Hard gates (maturity, proof of arrival, final summary, peer audit) removed.
-				// Reached transition is now trust-based with visibility (activity log).
-				// Only machine gate remaining: blocking test issues prevent Reached.
-				if (isReachedStatus(canonicalStatus)) {
-					this.assertNoBlockingTestIssues(proposal.id, "mark as Reached");
+				// Complete transition is now trust-based with visibility (activity log).
+				// Only machine gate remaining: blocking test issues prevent completion.
+				if (isCompleteStatus(canonicalStatus)) {
+					this.assertNoBlockingTestIssues(proposal.id, "mark as Complete");
 				}
 				proposal.status = canonicalStatus;
 				mutated = true;
-				// AC#5: Activity log records who marked proposal Reached and when
+				// AC#5: Activity log records who marked proposal Complete and when
 				const actor = input.activityActor ?? input.builder ?? "unknown";
 				this.addActivityLog(proposal, actor, "status_change", `Changed to ${canonicalStatus}`);
 			}
@@ -2311,7 +2316,7 @@ export class Core {
 		}
 	}
 
-	private assertNoBlockingTestIssues(proposalId: string, action: "mark as Reached" | "complete"): void {
+	private assertNoBlockingTestIssues(proposalId: string, action: "mark as Complete" | "complete"): void {
 		const blockingIssues = getBlockingIssues(loadIssues(this.fs.rootDir), proposalId);
 		if (blockingIssues.length === 0) {
 			return;
@@ -2835,13 +2840,13 @@ export class Core {
 		return success;
 	}
 
-	async getReachedProposalsByAge(olderThanDays: number): Promise<Proposal[]> {
+	async getCompleteProposalsByAge(olderThanDays: number): Promise<Proposal[]> {
 		const proposals = await this.fs.listProposals();
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
 		return proposals.filter((proposal) => {
-			if (!isReachedStatus(proposal.status)) return false;
+			if (!isCompleteStatus(proposal.status)) return false;
 
 			// Check updatedDate first, then createdDate as fallback
 			const proposalDate = proposal.updatedDate || proposal.createdDate;
@@ -3147,26 +3152,6 @@ export class Core {
 		}
 	}
 
-	/**
-	 * Get completed proposals older than a specified number of days
-	 */
-	async getCompleteProposalsByAge(daysOld: number): Promise<Proposal[]> {
-		const proposals = await this.fs.listProposals();
-		const cutoffDate = new Date();
-		cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-		
-		return proposals.filter(p => {
-			if (p.status !== "Complete" && p.status !== "Reached") return false;
-			if (!p.updatedDate && !p.createdDate) return false;
-			
-			const dateStr = p.updatedDate || p.createdDate;
-			if (!dateStr) return false;
-			
-			const proposalDate = new Date(dateStr);
-			return proposalDate < cutoffDate;
-		});
-	}
-
 	async listProposalsWithMetadata(
 		includeBranchMeta = false,
 	): Promise<Array<Proposal & { lastModified?: Date; branch?: string }>> {
@@ -3326,6 +3311,19 @@ export class Core {
 		progressCallback?: (msg: string) => void,
 	): Promise<{ proposals: Proposal[]; drafts: Proposal[]; statuses: string[] }> {
 		const config = await this.fs.loadConfig();
+
+		// STATE-74: Use SpacetimeDB if configured as provider
+		if (config?.database?.provider === "spacetime") {
+			const { getSdbData } = await import("./storage/sdb-sdk-loader.ts");
+			const data = await getSdbData();
+			const statusSet = new Set(data.proposals.map((p) => p.status));
+			return {
+				proposals: data.proposals,
+				drafts: [], // SDB doesn't have a separate drafts table yet
+				statuses: Array.from(statusSet),
+			};
+		}
+
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const resolutionStrategy = config?.proposalResolutionStrategy || "most_progressed";
 
@@ -3348,7 +3346,9 @@ export class Core {
 		// Create map with local proposals
 		const proposalsById = new Map<string, Proposal>(localProposals.map((t) => [t.id, { ...t, origin: "local" }]));
 
-		console.log("[DEBUG] loadProposals: localProposals count=", localProposals.length, "origin set to local");
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] loadProposals: localProposals count=", localProposals.length, "origin set to local");
+		}
 		// Add completed proposals to the map
 		for (const completedProposal of completedProposals) {
 			if (!proposalsById.has(completedProposal.id)) {
@@ -3407,6 +3407,14 @@ export class Core {
 		options?: { includeCompleted?: boolean },
 	): Promise<Proposal[]> {
 		const config = await this.fs.loadConfig();
+
+		// STATE-74: Use SpacetimeDB if configured as provider
+		if (config?.database?.provider === "spacetime") {
+			const { getSdbData } = await import("./storage/sdb-sdk-loader.ts");
+			const data = await getSdbData();
+			return data.proposals;
+		}
+
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.proposalResolutionStrategy || "most_progressed";
 		const includeCompleted = options?.includeCompleted ?? false;
@@ -4519,7 +4527,7 @@ export class Core {
 		await this.fs.archiveProposal(source.id);
 		
 		await this.emitPulse({
-			type: "proposal_reached", // Using reached as a proxy for 'merged'
+			type: "proposal_complete", // Using complete as a proxy for 'merged'
 			id: target.id,
 			title: `Merged ${source.id} into ${target.id}`,
 			agent: agentId,

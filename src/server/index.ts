@@ -1116,7 +1116,7 @@ export class RoadmapServer {
 
 	private async handleGetStatuses(): Promise<Response> {
 		const config = await this.core.filesystem.loadConfig();
-		const statuses = config?.statuses || ["Potential", "Active", "Accepted", "Complete", "Abandoned"];
+		const statuses = config?.statuses || ["New", "Active", "Accepted", "Complete", "Abandoned"];
 		return Response.json(statuses);
 	}
 

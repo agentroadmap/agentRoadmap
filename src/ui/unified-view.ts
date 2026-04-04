@@ -12,6 +12,7 @@ import { watchProposals } from "../utils/proposal-watcher.ts";
 import { execSync } from "child_process";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { createScreen } from "./tui.ts";
 import { buildProposalViewerDirectiveFilterModel, viewProposalEnhanced } from "./proposal-viewer-with-search.ts";
 import { type ViewProposal, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 import { loadAllProposals, loadAllDirectives } from '../core/storage/sdb-proposal-loader.ts';
@@ -136,7 +137,7 @@ export async function loadProposalsForUnifiedView(
 		const config = await core.filesystem.loadConfig();
 		return {
 			proposals: options.proposals,
-			statuses: config?.statuses || ["Potential", "Active", "Accepted", "Complete", "Abandoned"],
+			statuses: config?.statuses || ["Draft", "Review", "Building", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"],
 		};
 	}
 
@@ -147,7 +148,7 @@ export async function loadProposalsForUnifiedView(
 			const config = await core.filesystem.loadConfig();
 			return {
 				proposals,
-				statuses: config?.statuses || ["Potential", "Active", "Accepted", "Complete", "Abandoned"],
+				statuses: config?.statuses || ["Draft", "Review", "Building", "Accepted", "Complete", "Rejected", "Abandoned", "Replaced"],
 			};
 		});
 
@@ -434,6 +435,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		const showCockpit = async (): Promise<ViewResult> => {
 			const { renderCockpit } = await import("./cockpit.ts");
 			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
+			const screen = createScreen({ title: "Engineer's Cockpit" });
 
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit";
@@ -519,6 +521,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			const { renderHeadlines } = await import("./headlines.ts");
 			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
 			const config = await options.core.filesystem.loadConfig();
+			const screen = createScreen({ title: "System Feed" });
 
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit";
@@ -560,6 +563,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			const { renderChat } = await import("./chat.ts");
 			const { querySdbSync } = await import('../core/storage/sdb-client.ts');
 			const config = await options.core.filesystem.loadConfig();
+			const screen = createScreen({ title: "Project Chat" });
 
 			return new Promise<ViewResult>((resolve) => {
 				let result: ViewResult = "exit";

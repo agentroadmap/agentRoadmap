@@ -1,5 +1,5 @@
 import type { Proposal } from "../../types/index.ts";
-import { isReachedStatus } from "../proposal/directives.ts";
+import { isCompleteStatus } from "../proposal/directives.ts";
 
 export interface ProposalStatistics {
 	statusCounts: Map<string, number>;
@@ -60,7 +60,7 @@ export function getProposalStatistics(proposals: Proposal[], drafts: Proposal[],
 		const currentCount = statusCounts.get(proposal.status) || 0;
 		statusCounts.set(proposal.status, currentCount + 1);
 
-		const isReached = isReachedStatus(proposal.status);
+		const isReached = isCompleteStatus(proposal.status);
 
 		// Count completed proposals
 		if (isReached) {
@@ -116,7 +116,7 @@ export function getProposalStatistics(proposals: Proposal[], drafts: Proposal[],
 			// Check if any dependency is not done
 			const hasBlockingDependency = proposal.dependencies.some((depId) => {
 				const dep = proposals.find((t) => t.id === depId);
-				return dep && !isReachedStatus(dep.status);
+				return dep && !isCompleteStatus(dep.status);
 			});
 
 			if (hasBlockingDependency) {

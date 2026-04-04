@@ -13,7 +13,7 @@ Build your AI agent team. Turn your vision into your dream product — through c
 **Architecture:** Universal Entity Lifecycle (v2.5)
 
 ## 📌 Project Vision
-`agentRoadmap` is a decentralized, agent-native project management engine. Unlike traditional tools that suffer from "Semantic Decay" and "Merge Conflict Hell," this system treats every business idea, technical RFC, and code component as a **Universal Proposal** managed in a real-time state engine.
+`agentRoadmap` is a decentralized, agent-native project management engine. This system treats every business idea, technical RFC, and code component as a **Universal Proposal** managed in a real-time state engine.
 
 ### **The "Database-First" Doctrine**
 * **Source of Truth:** SpacetimeDB (Memory-resident, ACID-compliant).
@@ -30,18 +30,11 @@ To boot the system after a fresh start:
     npm install -g agentRoadmap
     roadmap init
     ```
-2.  **Initialize Database:**
+2.  **Launch the Dashboard:**
     ```bash
-    cd spacetimedb-module
-    spacetime publish --project-name agent-roadmap-v2
+    roadmap board
     ```
-3.  **Generate Bindings:**
-    ```bash
-    spacetime generate --lang typescript --out-dir ../src/bindings
-    ```
-4.  **Onboard Agents:**
-    Use the `register_agent` reducer to onboard the workforce pool.
-5.  **Issue First Directive:**
+3.  **Issue First Directive:**
     ```bash
     roadmap proposal create "Define Core Architecture" --domain CORE --type DIRECTIVE
     ```
@@ -58,13 +51,13 @@ agentRoadmap/
 │   ├── product/             # State Machine definitions & RFC Templates
 │   ├── workforce/           # Agent Fleet profiles & squad definitions
 │   ├── context/             # Token efficiency context and memory management 
-│   ├── spending/            # Auditable and traceble token spending
-│   └── model/               # MCP and model repository for fine tune resource allocation
+│   ├── spending/            # Auditable and traceable token spending
+│   └── model/               # MCP and model repository
 ├── src/                     # THE BODY: Execution Layer (TypeScript)
-│   ├── core/proposal/       # Unified Proposal Lifecycle Manager
+│   ├── core/                # Unified Proposal Lifecycle Manager
 │   ├── bindings/            # Auto-generated DB Interface
 │   ├── mcp/                 # Model Context Protocol (LLM connectivity)
-│   └── web/                 # TUI and Web Dashboard (WebSockets / Subscriptions)
+│   └── ui/                  # TUI Dashboard (WebSockets / Subscriptions)
 └── package.json             # Enterprise-wide configuration
 ```
 
@@ -81,23 +74,29 @@ The enterprise is powered by a specialized workforce divided into **Squads**.
 
 ---
 
-## 🏛️ Governance: The 9-Stage Lifecycle
-Every entity (Directive, Capability, Technical RFC, Component) must progress through the unified state machine:
+## 🏛️ Governance: The Refined Lifecycle
+Every entity progresses through a simplified state machine:
 
-1.  **New:** Initial entry with visionary directive.
-2.  **Draft:** Research and enrichment of proposal development, define acceptance criteria.
-3.  **Review:** Peer and Skeptic analysis.
-4.  **Active:**  AI agents coding and unit testing phase.
-5.  **Accepted:** Passes all `proposal_criteria` and regression tests
-6.  **Complete:** Merged into the main, job delivered.
-7.  **Rejected / Abandoned / Replaced:** Historical archives.
+1.  **Draft:** Initial entry, research, and enrichment of proposal development. Define acceptance criteria.
+2.  **Review:** Peer and Skeptic analysis.
+3.  **Building:** AI agents coding and unit testing phase.
+4.  **Accepted:** Passes all `proposal_criteria` and regression tests.
+5.  **Complete:** Merged into the main, job delivered.
+
+**Universal Maturity Model:** Within each state, entities track fine-grained progress:
+*   **new**: Freshly entered state (White).
+*   **active**: Work in progress (Yellow).
+*   **mature**: Ready to move to the next state (Green, indicated with `✓`).
+*   **obsolete**: No longer relevant (Grey, indicated with `✖`).
+
+**Archives:** Rejected, Abandoned, and Replaced items are moved to historical archives and hidden from the main board by default.
 
 ---
 
 ## 🛡️ Security & Provenance
-* **Zero-Trust:** Agents operate under strict `security_acl`. No agent has "root" access; everything is a requested permission.
-* **Version Ledger:** Every change to a proposal is recorded in `proposal_version` with a Git-style delta and an actor identity.
-* **Anti-Pollution:** Tactical "Ops Noise" (logs/minor bugs) is kept in the database, ensuring the `roadmap/` folder remains high-signal.
+* **Zero-Trust:** Agents operate under strict `security_acl`. No agent has "root" access.
+* **Version Ledger:** Every change to a proposal is recorded in `proposal_version` with a Git-style delta.
+* **Anti-Pollution:** Tactical "Ops Noise" is kept in the database, ensuring the `roadmap/` folder remains high-signal.
 
 ---
 

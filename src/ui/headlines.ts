@@ -6,6 +6,7 @@
 
 // @ts-ignore - blessed types may not be installed
 import type blessed from "blessed";
+import { box, log } from "./blessed.ts";
 
 export interface PulseMessage {
     id: string;
@@ -30,7 +31,7 @@ export function renderHeadlines(
     if (!container) {
         screen.children.forEach((child: any) => child.destroy());
 
-        container = (screen as any).box({
+        container = box({
             top: 0,
             left: 0,
             width: "100%",
@@ -41,7 +42,7 @@ export function renderHeadlines(
         (screen as any)._headlinesContainer = container;
 
         // Header
-        (screen as any).box({
+        box({
             parent: container,
             top: 0,
             left: 0,
@@ -54,7 +55,7 @@ export function renderHeadlines(
         });
 
         // Main Feed Area (LOG for auto-scroll)
-        feedLog = (screen as any).log({
+        feedLog = log({
             parent: container,
             top: 3,
             left: 0,
@@ -71,7 +72,7 @@ export function renderHeadlines(
         container._feedLog = feedLog;
 
         // Footer
-        (screen as any).box({
+        box({
             parent: container,
             bottom: 0,
             left: 0,

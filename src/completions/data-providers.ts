@@ -23,7 +23,7 @@ async function withCore<T>(callback: CoreCallback<T>, fallback: T): Promise<T> {
 }
 
 function getDefaultStatuses(): string[] {
-	return ["Potential", "Active", "Accepted", "Complete", "Abandoned"];
+	return ["New", "Active", "Accepted", "Complete", "Abandoned"];
 }
 
 /**

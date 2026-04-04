@@ -1,5 +1,5 @@
 import type { Directive, DirectiveBucket, DirectiveSummary, Proposal } from "../../types/index.ts";
-import { isReachedStatus, isReady, isTerminalStatus } from "../../utils/status.ts";
+import { isCompleteStatus, isReady, isTerminalStatus } from "../../utils/status.ts";
 
 const NO_DIRECTIVE_KEY = "__none";
 
@@ -259,7 +259,7 @@ export function getDirectiveLabel(directiveId: string | undefined, directiveEnti
 }
 
 /** Re-exported for consumers */
-export { isReachedStatus, isReady, isTerminalStatus };
+export { isCompleteStatus, isReady, isTerminalStatus };
 
 /**
  * Create a directive bucket for a given directive
@@ -286,7 +286,7 @@ function createBucket(
 		counts[status] = (counts[status] ?? 0) + 1;
 	}
 
-	const doneCount = bucketProposals.filter((t) => isReachedStatus(t.status)).length;
+	const doneCount = bucketProposals.filter((t) => isCompleteStatus(t.status)).length;
 	const progress = bucketProposals.length > 0 ? Math.round((doneCount / bucketProposals.length) * 100) : 0;
 	const isCompleted = bucketProposals.length > 0 && doneCount === bucketProposals.length;
 

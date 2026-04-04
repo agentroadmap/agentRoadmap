@@ -35,7 +35,7 @@ export async function updateReadmeWithBoard(
 	const tableStartIndex = lines.findIndex(
 		(line) =>
 			line.includes("|") &&
-			(line.includes("Potential") || line.includes("Active") || line.includes("Reached") || line.includes("---")),
+			(line.includes("New") || line.includes("Active") || line.includes("Complete") || line.includes("---")),
 	);
 	const boardTable = lines.slice(tableStartIndex).join("\n").trim();
 

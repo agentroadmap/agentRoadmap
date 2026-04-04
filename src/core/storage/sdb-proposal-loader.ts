@@ -19,8 +19,18 @@ function toMs(timestamp: any): number {
 
 /** Convert an SDB row to the Proposal format expected by UI components */
 function rowToProposal(row: any): Proposal {
-  const displayId = row.display_id || row.id;
-  const status = row.status || "New";
+  const id = String(row.display_id || row.id);
+  let status = row.status || "Draft";
+
+  // Map legacy statuses to new workflow
+  if (status === "New" || status === "Potential") {
+      status = "Draft";
+  } else if (status === "Active") {
+      status = "Building";
+  } else if (status === "Reached") {
+      status = "Complete";
+  }
+
   const bodyText = String(row.body_markdown || "");
 
   // Fetch criteria for this proposal (would be better in a separate query but keeping it compatible with existing loader signature for now)
@@ -29,7 +39,7 @@ function rowToProposal(row: any): Proposal {
   const acceptanceCriteriaItems = AcceptanceCriteriaManager.parseAllCriteria(bodyText);
 
   return {
-    id: String(displayId),
+    id: String(id),
     title: String(row.title),
     rawContent: bodyText,
     description: String(row.description || "") || extractStructuredSection(bodyText, "description") || "",
@@ -45,7 +55,7 @@ function rowToProposal(row: any): Proposal {
     parentProposalId: row.parent_id ? String(row.parent_id) : undefined,
     proof: [],
     directive: row.parent_id ? String(row.parent_id) : undefined,
-    maturity: row.maturity_level === 0 ? "skeleton" : (row.maturity_level === 1 ? "contracted" : "audited"),
+    maturity: row.maturity_level === 0 ? "new" : (row.maturity_level === 1 ? "active" : (row.maturity_level === 2 ? "mature" : "obsolete")),
     ready: status === "Complete",
     createdDate: row.created_at ? new Date(toMs(row.created_at)).toISOString() : new Date().toISOString(),
     updatedDate: row.updated_at ? new Date(toMs(row.updated_at)).toISOString() : undefined,

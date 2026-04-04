@@ -6,6 +6,7 @@
 
 // @ts-ignore - blessed types may not be installed
 import type blessed from "blessed";
+import { box, log, textbox } from "./blessed.ts";
 import { callReducerSync } from '../core/storage/sdb-client.ts';
 
 export interface ChatMessage {
@@ -34,7 +35,7 @@ export function renderChat(
     if (!container) {
         screen.children.forEach((child: any) => child.destroy());
 
-        container = (screen as any).box({
+        container = box({
             top: 0,
             left: 0,
             width: "100%",
@@ -45,7 +46,7 @@ export function renderChat(
         (screen as any)._chatContainer = container;
 
         // Left Sidebar (Channels)
-        sidebar = (screen as any).box({
+        sidebar = box({
             parent: container,
             top: 0,
             left: 0,
@@ -59,7 +60,7 @@ export function renderChat(
         container._sidebar = sidebar;
 
         // Main Chat Area (LOG for auto-scroll)
-        chatLog = (screen as any).log({
+        chatLog = log({
             parent: container,
             top: 0,
             left: 25,
@@ -76,7 +77,7 @@ export function renderChat(
         container._chatLog = chatLog;
 
         // Message Input
-        const inputContainer = (screen as any).box({
+        const inputContainer = box({
             parent: container,
             bottom: 1,
             left: 25,
@@ -86,7 +87,7 @@ export function renderChat(
             style: { border: { fg: "yellow" } }
         });
 
-        inputField = (screen as any).textbox({
+        inputField = textbox({
             parent: inputContainer,
             top: 0,
             left: 1,
@@ -99,7 +100,7 @@ export function renderChat(
         container._inputField = inputField;
 
         // Footer
-        (screen as any).box({
+        box({
             parent: container,
             bottom: 0,
             left: 0,

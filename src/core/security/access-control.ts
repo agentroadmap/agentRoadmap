@@ -50,7 +50,7 @@ export interface Agent {
 
 export interface ProposalPhase {
 	proposalId: string;
-	currentStatus: string; // "Potential", "In Progress", "Review", "Reached"
+	currentStatus: string; // "New", "In Progress", "Review", "Reached"
 	previousStatus?: string;
 }
 
@@ -163,8 +163,8 @@ const DEFAULT_ROLE_PERMISSIONS: RolePermissions[] = [
  * Valid proposal transitions (phase-gate rules).
  */
 const VALID_TRANSITIONS: Record<string, string[]> = {
-	"Potential": ["In Progress"],
-	"In Progress": ["Review", "Potential"], // Can demote back
+	"New": ["In Progress"],
+	"In Progress": ["Review", "New"], // Can demote back
 	"Review": ["Reached", "In Progress"], // Can reject back to progress
 	"Reached": [], // Terminal proposal (use demote for exceptional cases)
 };

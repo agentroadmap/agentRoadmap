@@ -173,7 +173,7 @@ roadmap state edit 7 -s "Active" -a @agent-k  # Multiple commands: change status
 ---
 id: state-42
 title: Add GraphQL resolver
-status: Potential
+status: New
 assignee: [@agent]
 labels: [backend, api]
 ---
@@ -433,7 +433,7 @@ implementation.
 
 ```bash
 # 1. Identify work
-roadmap state list -s "Potential" --plain
+roadmap state list -s "New" --plain
 
 # 2. Read state details
 roadmap state 42 --plain
@@ -545,7 +545,7 @@ roadmap search "bug" --priority high --plain
 | With final summary | `roadmap state create "Title" --final-summary "PR-style summary"`                 |
 | With references  | `roadmap state create "Title" --ref src/api.ts --ref https://github.com/issue/123`   |
 | With documentation | `roadmap state create "Title" --doc https://design-docs.example.com`               |
-| With all options | `roadmap state create "Title" -d "Desc" -a @agent -s "Potential" -l auth --priority high --ref src/api.ts --doc docs/spec.md` |
+| With all options | `roadmap state create "Title" -d "Desc" -a @agent -s "New" -l auth --priority high --ref src/api.ts --doc docs/spec.md` |
 | Create draft     | `roadmap state create "Title" --draft`                                               |
 | Create substate   | `roadmap state create "Title" -p 42`                                                 |
 
@@ -645,7 +645,7 @@ Tests:
 | View state          | `roadmap state 42 --plain`                    |
 | List states         | `roadmap state list --plain`                  |
 | Search states       | `roadmap search "topic" --plain`              |
-| Search with filter | `roadmap search "api" --status "Potential" --plain` |
+| Search with filter | `roadmap search "api" --status "New" --plain` |
 | Filter by status   | `roadmap state list -s "Active" --plain` |
 | Filter by assignee | `roadmap state list -a @agent --plain`         |
 | Archive state       | `roadmap state archive 42`                    |

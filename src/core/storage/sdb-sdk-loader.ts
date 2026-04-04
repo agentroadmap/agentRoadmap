@@ -27,9 +27,10 @@ function toMs(timestamp: any): number {
 
 export async function getSdbData(): Promise<SdbData> {
     try {
-        const rows = querySdbSync("SELECT * FROM proposal");
-        const directivesRows = querySdbSync("SELECT id, display_id, title, body_markdown as description, status FROM proposal WHERE proposal_type = 'DIRECTIVE'");
-        const messages = querySdbSync("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 100");
+        const { querySdb } = await import("./sdb-client.ts");
+        const rows = await querySdb("SELECT * FROM proposal");
+        const directivesRows = await querySdb("SELECT id, display_id, title, body_markdown as description, status FROM proposal WHERE proposal_type = 'DIRECTIVE'");
+        const messages = await querySdb("SELECT * FROM message_ledger ORDER BY timestamp DESC LIMIT 100");
         
         const proposals: Proposal[] = rows.map((row: any) => {
             const id = String(row.display_id || row.id);

@@ -6,7 +6,7 @@ import { parseDecision, parseDocument, parseProposal } from "../../markdown/pars
 import type { Decision, Document, Proposal, ProposalListFilter } from "../../types/index.ts";
 import { normalizeProposalId, normalizeProposalIdentity, proposalIdsEqual } from "../../utils/proposal-path.ts";
 import { sortByProposalId } from "../../utils/proposal-sorting.ts";
-import { isReachedStatus, isReady, isTerminalStatus } from "../proposal/directives.ts";
+import { isCompleteStatus, isReady, isTerminalStatus } from "../proposal/directives.ts";
 // SQLite removed — SpacetimeDB is the sole source of truth
 
 interface ContentSnapshot {
@@ -109,7 +109,9 @@ export class ContentStore {
 			throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
 		}
 
-		console.log("[DEBUG] getProposals: returning", this.proposals.size, "proposals");
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] getProposals: returning", this.proposals.size, "proposals");
+		}
 		let proposals = this.cachedProposals;
 		if (filter?.status) {
 			const statusLower = filter.status.toLowerCase();
@@ -136,7 +138,7 @@ export class ContentStore {
 		}
 
 		// Always calculate readiness for consistency
-		const doneIds = new Set(this.cachedProposals.filter(s => isReachedStatus(s.status)).map(s => s.id));
+		const doneIds = new Set(this.cachedProposals.filter(s => isCompleteStatus(s.status)).map(s => s.id));
 		proposals = proposals.map(proposal => ({
 			...proposal,
 			ready: isReady(proposal, doneIds)
@@ -276,7 +278,9 @@ export class ContentStore {
 			this.filesystem.listDecisions(),
 		]);
 
-		console.log("[DEBUG] ContentStore.replaceProposals: count=", proposals.length, "sources=", proposals.slice(0, 3).map(s => s.source).join(","));
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] ContentStore.replaceProposals: count=", proposals.length, "sources=", proposals.slice(0, 3).map(s => s.source).join(","));
+		}
 		this.replaceProposals(proposals);
 		this.replaceDocuments(documents);
 		this.replaceDecisions(decisions);
@@ -284,7 +288,7 @@ export class ContentStore {
 		// Sync with SQLite in the background
 		this.enqueue(async () => {
 			for (const proposal of proposals) {
-			if (proposal.status === "Reached") console.log("[DEBUG] Reached proposal found:", proposal.id, "source:", proposal.source, "branch:", proposal.branch);
+			if (proposal.status === "Complete" && process.env.DEBUG) console.error("[DEBUG] Complete proposal found:", proposal.id, "source:", proposal.source, "branch:", proposal.branch);
 				if (proposal.filePath) {
 					const stats = await stat(proposal.filePath);
 					const body = this.buildProposalBodyText(proposal);
@@ -740,7 +744,7 @@ export class ContentStore {
 	private replaceProposals(proposals: Proposal[]): void {
 		this.proposals.clear();
 		for (const proposal of proposals) {
-			if (proposal.status === "Reached") console.log("[DEBUG] Reached proposal found:", proposal.id, "source:", proposal.source, "branch:", proposal.branch);
+			if (proposal.status === "Complete" && process.env.DEBUG) console.error("[DEBUG] Complete proposal found:", proposal.id, "source:", proposal.source, "branch:", proposal.branch);
 			this.proposals.set(proposal.id, proposal);
 		}
 		this.cachedProposals = sortByProposalId(Array.from(this.proposals.values()));
@@ -841,7 +845,9 @@ export class ContentStore {
 		if (!proposals) {
 			return;
 		}
-		console.log("[DEBUG] ContentStore.replaceProposals: count=", proposals.length, "sources=", proposals.slice(0, 3).map(s => s.source).join(","));
+		if (process.env.DEBUG) {
+			console.error("[DEBUG] ContentStore.replaceProposals: count=", proposals.length, "sources=", proposals.slice(0, 3).map(s => s.source).join(","));
+		}
 		this.replaceProposals(proposals);
 		this.notify("proposals");
 	}

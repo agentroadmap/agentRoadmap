@@ -6,6 +6,7 @@
 
 // @ts-ignore - blessed types may not be installed
 import type blessed from "blessed";
+import { box, log } from "./blessed.ts";
 
 export interface WorkforceAgent {
 	id: string;
@@ -60,7 +61,7 @@ export function renderCockpit(
 		screen.children.forEach((child: any) => child.destroy());
 
 		// Create persistent container
-		container = (screen as any).box({
+		container = box({
 			top: 0,
 			left: 0,
 			width: "100%",
@@ -70,7 +71,7 @@ export function renderCockpit(
 		(screen as any)._cockpitContainer = container;
 
 		// Header
-		headerBox = (screen as any).box({
+		headerBox = box({
 			parent: container,
 			top: 0,
 			left: 0,
@@ -83,7 +84,7 @@ export function renderCockpit(
 		container._headerBox = headerBox;
 
 		// 1. Workforce [Top Left]
-		workforceBox = (screen as any).box({
+		workforceBox = box({
 			parent: container,
 			top: 3,
 			left: 0,
@@ -98,7 +99,7 @@ export function renderCockpit(
 		container._workforceBox = workforceBox;
 
 		// 2. Pipeline [Top Right]
-		pipelineBox = (screen as any).box({
+		pipelineBox = box({
 			parent: container,
 			top: 3,
 			left: "50%",
@@ -113,7 +114,7 @@ export function renderCockpit(
 		container._pipelineBox = pipelineBox;
 
 		// 3. Ledger [Bottom Left]
-		ledgerBox = (screen as any).box({
+		ledgerBox = box({
 			parent: container,
 			top: "50%",
 			left: 0,
@@ -144,7 +145,7 @@ export function renderCockpit(
 		container._terminalLog = terminalLog;
 
 		// Footer
-		(screen as any).box({
+		box({
 			parent: container,
 			bottom: 0,
 			left: 0,
