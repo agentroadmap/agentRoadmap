@@ -1,6 +1,6 @@
 For a 100-agent enterprise operating on **SpacetimeDB** and **OpenClaw**, a shared vocabulary is the only thing preventing "Agent Hallucination" and "Human Confusion." 
 
-This **`glossary.md`** should be placed in your `business/` or `product/` directory so both your sons (SMEs) and your agents (Workforce) use the same definitions.
+This **`glossary.md`** should be placed in your `business/` or `product/` directory so SMEs and your agents (Workforce) use the same definitions.
 
 ---
 
