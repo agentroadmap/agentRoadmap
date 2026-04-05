@@ -1,0 +1,4 @@
+# .gitleaksignore — intentionally ignored secrets
+# Test fixtures for secrets scanner validation (src/test/proposal-52-secrets-manager.test.ts)
+# These are fake secrets used to test pattern detection, not real credentials.
+src/test/proposal-52-secrets-manager.test.ts
