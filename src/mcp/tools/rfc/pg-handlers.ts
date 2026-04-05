@@ -78,7 +78,7 @@ export async function transitionProposal(args: {
     // Execute transition
     await query(
       `UPDATE proposal SET status = UPPER($1), maturity_level = $2,
-              updated_at = NOW(), 3
+              updated_at = NOW()
        WHERE id = $4`,
       [args.to_state.toUpperCase(), toMaturity, args.rationale || null, proposalId]
     );
