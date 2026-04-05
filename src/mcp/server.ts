@@ -409,7 +409,12 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 		const rfc = new RfcWorkflowHandlers(server);
 		rfc.register();
 
-		console.log('[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow');
+		// SMDL configurable workflow tools (load YAML, load builtins, list)
+		const { SMDLWorkflowHandlers } = await import('./tools/workflow/smdl-mcp.ts');
+		const smdl = new SMDLWorkflowHandlers(server);
+		smdl.register();
+
+		console.log('[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL');
 	} else {
 		// SpacetimeDB-backed tools (fallback)
 		registerSdbProposalTools(server, projectRoot);
