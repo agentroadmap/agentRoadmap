@@ -111,8 +111,8 @@ export function workflowToSql(wf: WorkflowDefinition): string {
     sql.push(`VALUES`);
 
     const rows = wf.transitions.map((t) => {
-      const roles = JSON.stringify(t.allowed_roles || []);
-      return `  ('${esc(wf.metadata.name)}', '${esc(t.from)}', '${esc(t.to)}', '${esc(roles)}'::jsonb, ${!!t.requires_ac})`;
+      const roles = (t.allowed_roles || []).map(r => "'" + esc(r) + "'").join(', ');
+      return `  ('${esc(wf.metadata.name)}', '${esc(t.from)}', '${esc(t.to)}', ARRAY[${roles || 'NULL'}], ${!!t.requires_ac})`;
     });
 
     sql.push(rows.join(',\n'));
