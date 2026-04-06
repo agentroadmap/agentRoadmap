@@ -1,0 +1,12 @@
+product: agentHive
+  version: 0.6
+  module: 
+    - name: product deveopment
+        description: proposal autonomous pipeline -state machine with maturity and dependency
+    - name: workforce
+        description: registration, resorce allocation (model api key workspace, worktree etc. ACL), budget allowance, loading profile from agency-agents github
+    - name: Efficiency
+        description: model management, context management and optimization, cache write, agent memory management, local cache with pgvextor
+    - name: Utility
+        description: MCP tool, Messaging, User tools: TUI, Web Dash and Mobile App
+

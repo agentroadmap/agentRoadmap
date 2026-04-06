@@ -1,0 +1,77 @@
+# .gitlab-ci.yml — agentRoadmap CI (shell executor)
+
+stages:
+  - security
+  - check
+  - test
+  - build
+
+variables:
+  NODE_ENV: test
+
+# ─── Stage 0: Security ────────────────────────────────────────
+secret-scan:
+  stage: security
+  script:
+    - gitleaks detect --source . --verbose
+  allow_failure: true
+
+dependency-audit:
+  stage: security
+  script:
+    - npm ci
+    - npm audit --audit-level=high
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  allow_failure: true
+
+# ─── Stage 1: Check ───────────────────────────────────────────
+type-check:
+  stage: check
+  script:
+    - npm ci
+    - npm run check:types
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+
+lint:
+  stage: check
+  script:
+    - npm ci
+    - npm run check
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  allow_failure: true
+
+# ─── Stage 2: Test ────────────────────────────────────────────
+test:
+  stage: test
+  script:
+    - npm ci
+    - npm test
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  timeout: 10m
+
+# ─── Stage 3: Build ───────────────────────────────────────────
+build:
+  stage: build
+  script:
+    - npm ci
+    - npm run build
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week

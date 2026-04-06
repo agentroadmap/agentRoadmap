@@ -1,0 +1,15 @@
+[Unit]
+Description=AgentHive MCP SSE Server
+After=network.target
+
+[Service]
+Type=simple
+User=gary
+Group=gary
+EnvironmentFile=/etc/agentroadmap/env
+ExecStart=/usr/local/bin/agentroadmap-mcp.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
