@@ -28,7 +28,7 @@ All DDL is in `/roadmap/docs/data_model/`:
 - **Utility** (P077): MCP tools, messaging, notifications, outbox pattern
 
 ## Architecture
-- Config: `provider: Postgres`, `schema: roadmap` at `/roadmap/config.yaml`
+- Config: `provider: Postgres`, `schema: roadmap` at `/roadmap/roadmap.yaml`
 - MCP server: port 6421 (`agenthive-mcp.service`)
 - WS bridge: port 3001
 - Environment: `.env` file at repo root
