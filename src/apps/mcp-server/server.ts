@@ -436,7 +436,7 @@ export async function createMcpServer(
 		});
 
 		const { PgAgentHandlers } = await import("./tools/agents/pg-handlers.ts");
-		const agents = new PgAgentHandlers(server, projectRoot);
+		const agents = new PgAgentHandlers();
 		server.addTool({
 			name: "agent_list",
 			description: "List registered agents",
