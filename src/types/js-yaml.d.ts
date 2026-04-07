@@ -1,1 +1,1 @@
-declare module "js-yaml";
+export * from "../shared/types/js-yaml.d.ts";

@@ -1,0 +1,99 @@
+@startuml rfc_state_machine
+skinparam state {
+  BackgroundColor White
+  BorderColor #888780
+  FontName sans-serif
+  FontSize 13
+}
+skinparam shadowing false
+skinparam ArrowColor #888780
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #888780
+
+title Vision & Directive Driven RFC State Machine
+
+[*] --> Draft : Proposal — identifies need
+
+state Draft {
+  Draft : AI research & enhance\nSummary · Motivation · Design · Tradeoffs
+}
+
+state "Decision" as D1 <<choice>>
+state "Decision" as D2 <<choice>>
+state "Decision" as D3 <<choice>>
+state "Decision" as D4 <<choice>>
+
+state Review {
+  Review : [GATE] AI feedback & debate\nDefine acceptance criteria
+}
+
+state Develop {
+  Develop : AI design, build, test\nCode, tests, proven results
+}
+
+state Merge {
+  Merge : [GATE] AI code review · e2e\nRegression, integration tests
+}
+
+state Complete {
+  Complete : Release dependency resolved
+}
+
+' Local wait states (self-contained, no spaghetti)
+state "⏳ wait" as W1
+state "⏳ wait" as W2
+state "⏳ wait" as W3
+state "⏳ wait" as W4
+
+' Local terminal stubs for discard/reject
+state "🗑" as X1 <<end>>
+state "🗑" as X2 <<end>>
+state "🗑" as X3 <<end>>
+state "🗑" as X4 <<end>>
+
+' --- Draft → D1 ---
+Draft -down-> D1
+D1 -down->  Review : ⚖ mature
+D1 -left->  Draft  : 🔄 revise/split
+D1 -right-> W1     : ⏳ depend
+D1 -->      X1     : 🗑 discard
+
+' --- Review → D2 ---
+Review -down-> D2
+D2 -down->  Develop : ⚖ mature
+D2 -left->  Review   : 🔄 revise/split
+D2 -right-> W2      : ⏳ depend
+D2 -->      X2      : 🗑 reject
+
+' --- Develop → D3 ---
+Develop -down-> D3
+D3 -down->  Merge  : ⚖ mature
+D3 -left->  Develop : 🔄 revise/split
+D3 -right-> W3     : ⏳ depend
+D3 -->      X3     : 🗑 reject
+
+' --- Merge → D4 ---
+Merge -down-> D4
+D4 -down->  Complete : ⚖ approved
+D4 -left->  Merge  : 🔄 revise/split
+D4 -right-> W4       : ⏳ depend
+D4 -->      X4       : 🗑 reject
+
+' --- Complete ---
+Complete -down-> [*]
+
+legend right
+  **[GATE]**  Human approval required
+  **⚖**       Mature decision — advance
+  **🔄**       Revise or split (one level up)
+  **⏳**       Blocked — wait for dependency
+  **🗑**        Discard / reject (local terminal)
+  ---
+  All states support:
+  · Escalation to frontier model or human
+  · Circuit breaker on runaway loop
+endlegend
+
+footer agentRoadmap v2.5 Architecture
+@enduml
+

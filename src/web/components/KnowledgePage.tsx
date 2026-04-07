@@ -1,4 +1,2 @@
-// TODO: implement KnowledgePage — stub created 2026-04-01
-export default function KnowledgePage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/KnowledgePage.tsx";
+export * from "../../apps/dashboard-web/components/KnowledgePage.tsx";

@@ -1,4 +1,2 @@
-// TODO: implement StatisticsPage — stub created 2026-04-01
-export default function StatisticsPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/StatisticsPage.tsx";
+export * from "../../apps/dashboard-web/components/StatisticsPage.tsx";

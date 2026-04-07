@@ -1,4 +1,2 @@
-// TODO: implement NotFoundPage — stub created 2026-04-01
-export default function NotFoundPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/NotFoundPage.tsx";
+export * from "../../apps/dashboard-web/components/NotFoundPage.tsx";

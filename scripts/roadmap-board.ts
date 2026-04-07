@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { FileSystem } from "../src/file-system/operations.ts";
-import { initPoolFromConfig, query } from "../src/postgres/pool.ts";
+import { FileSystem } from "../src/infra/file-system/operations.ts";
+import { initPoolFromConfig, query } from "../src/infra/postgres/pool.ts";
 
 type BoardRow = {
 	display_id: string;
@@ -32,7 +32,7 @@ async function main() {
 	const fs = new FileSystem(process.cwd());
 	const config = await fs.loadConfig();
 	if (config?.database?.provider !== "Postgres" || !config.database) {
-		throw new Error("Roadmap board requires database.provider=Postgres in roadmap/roadmap.yaml.");
+		throw new Error("Roadmap board requires database.provider=Postgres in roadmap.yaml.");
 	}
 
 	initPoolFromConfig(config.database);

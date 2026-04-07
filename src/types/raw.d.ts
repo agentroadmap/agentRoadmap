@@ -1,4 +1,2 @@
-declare module "*.md?raw" {
-	const content: string;
-	export default content;
-}
+export { default } from "../shared/types/raw.d.ts";
+export * from "../shared/types/raw.d.ts";

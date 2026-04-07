@@ -4,12 +4,12 @@
 You are helping migrate the AgentHive roadmap application from a disk-based storage layer to a fully PostgreSQL-native system using the **v2 data model**. The live database is `agenthive`, schema `roadmap`, running on PostgreSQL 16 via Docker (host: 127.0.0.1, port: 5432).
 
 ## Data Model Source
-All DDL is in `/roadmap/docs/data_model/`:
-- `roadmap-ddl-v2.sql` — Full v2 schema (~30 tables)
-- `roadmap-ddl-v2-additions.sql` — Additions (~12 tables)
-- `data_model_change.md` — Migration analysis
-- `new_data_model_guide.md` — Implementation rules
-- `init.yaml` — 4 module definitions
+Schema artifacts are split between `/database/ddl/`, `/database/dml/`, and canonical proposal docs:
+- `database/ddl/roadmap-ddl-v2.sql` — Full v2 schema (~30 tables)
+- `database/ddl/roadmap-ddl-v2-additions.sql` — Additions (~12 tables)
+- `docs/pillars/1-proposal/data-model-change.md` — Migration analysis
+- `docs/pillars/1-proposal/new-data-model-guide.md` — Implementation rules
+- `database/dml/init.yaml` — 4 module definitions
 
 ## Critical Breaking Changes (v1 → v2)
 | v1 (OLD) | v2 (NEW) |
@@ -28,17 +28,17 @@ All DDL is in `/roadmap/docs/data_model/`:
 - **Utility** (P077): MCP tools, messaging, notifications, outbox pattern
 
 ## Architecture
-- Config: `provider: Postgres`, `schema: roadmap` at `/roadmap/roadmap.yaml`
+- Config: `provider: Postgres`, `schema: roadmap` at `/roadmap.yaml`
 - MCP server: port 6421 (`agenthive-mcp.service`)
 - WS bridge: port 3001
 - Environment: `.env` file at repo root
 
 ## Key Files to Rewrite
-- `src/postgres/proposal-storage.ts` — all storage adapters
-- `src/mcp/tools/rfc/pg-handlers.ts` — MCP tool handlers
+- `src/infra/postgres/proposal-storage-v2.ts` — Postgres storage adapter
+- `src/apps/mcp-server/tools/rfc/pg-handlers.ts` — MCP tool handlers
 - `src/core/roadmap.ts` — core query layer
-- `src/cli.ts` — CLI commands
-- `scripts/board.ts` — board script
+- `src/apps/cli.ts` — CLI commands
+- `scripts/roadmap-board.ts` — board script
 
 ## Important Column Changes
 - `blocked_by_dependencies` column added to `proposal` (sync'd via `fn_sync_blocked_flag` trigger)

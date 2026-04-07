@@ -1,4 +1,2 @@
-// TODO: implement SearchResultsPage — stub created 2026-04-01
-export default function SearchResultsPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/SearchResultsPage.tsx";
+export * from "../../apps/dashboard-web/components/SearchResultsPage.tsx";

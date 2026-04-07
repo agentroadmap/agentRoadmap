@@ -1,4 +1,2 @@
-// TODO: implement DecisionsPage — stub created 2026-04-01
-export default function DecisionsPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/DecisionsPage.tsx";
+export * from "../../apps/dashboard-web/components/DecisionsPage.tsx";

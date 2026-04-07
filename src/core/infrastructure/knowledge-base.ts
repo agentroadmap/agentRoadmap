@@ -10,9 +10,7 @@
  * AC#4: Knowledge base accessible via MCP tool
  */
 
-import { mkdirSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, basename } from "node:path";
-// SQLite removed
+import { query } from "../../infra/postgres/pool.ts";
 
 /** Types of knowledge entries */
 export type KnowledgeEntryType = "solution" | "pattern" | "decision" | "obstacle" | "learned";
@@ -97,106 +95,16 @@ export interface ExtractedPattern {
 	relatedEntries: string[];
 }
 
-const DB_FILENAME = "knowledge-base.db";
-
 /**
  * Knowledge Base for collective agent intelligence.
+ * Backed by Postgres — tables are created by a separate migration.
  */
 export class KnowledgeBase {
-	private db: DatabaseSync | null = null;
-	private dbPath: string;
+	// projectRoot kept for backwards-compatible constructor signature; not used with Postgres
 	private projectRoot: string;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
-		const roadmapDir = join(projectRoot, "roadmap");
-		this.dbPath = join(roadmapDir, ".cache", DB_FILENAME);
-	}
-
-	/**
-	 * Initialize the database connection and schema.
-	 */
-	private ensureInitialized(): void {
-		if (this.db) return;
-
-		const dir = join(this.projectRoot, "roadmap", ".cache");
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true });
-		}
-
-		this.db = new DatabaseSync(this.dbPath);
-		this.initializeSchema();
-	}
-
-	/**
-	 * Create database tables if they don't exist.
-	 */
-	private initializeSchema(): void {
-		if (!this.db) return;
-
-		this.db.exec(`
-			CREATE TABLE IF NOT EXISTS knowledge_entries (
-				id TEXT PRIMARY KEY,
-				type TEXT NOT NULL,
-				title TEXT NOT NULL,
-				content TEXT NOT NULL,
-				keywords TEXT NOT NULL,
-				related_proposals TEXT,
-				source_proposal_id TEXT,
-				author TEXT NOT NULL,
-				confidence INTEGER DEFAULT 50,
-				helpful_count INTEGER DEFAULT 0,
-				reference_count INTEGER DEFAULT 0,
-				tags TEXT,
-				created_at TEXT NOT NULL,
-				updated_at TEXT NOT NULL,
-				metadata TEXT
-			);
-
-			CREATE TABLE IF NOT EXISTS extracted_patterns (
-				id TEXT PRIMARY KEY,
-				name TEXT NOT NULL,
-				description TEXT NOT NULL,
-				code_example TEXT,
-				first_seen_at TEXT NOT NULL,
-				usage_count INTEGER DEFAULT 0,
-				success_rate INTEGER DEFAULT 0,
-				related_entries TEXT
-			);
-
-			-- FTS5 virtual table for full-text search
-			CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-				title,
-				content,
-				keywords,
-				tags,
-				content=knowledge_entries,
-				content_rowid=rowid
-			);
-
-			-- Triggers to keep FTS in sync
-			CREATE TRIGGER IF NOT EXISTS knowledge_entries_ai AFTER INSERT ON knowledge_entries BEGIN
-				INSERT INTO knowledge_fts(rowid, title, content, keywords, tags)
-				VALUES (new.rowid, new.title, new.content, new.keywords, new.tags);
-			END;
-
-			CREATE TRIGGER IF NOT EXISTS knowledge_entries_ad AFTER DELETE ON knowledge_entries BEGIN
-				INSERT INTO knowledge_fts(knowledge_fts, rowid, title, content, keywords, tags)
-				VALUES ('delete', old.rowid, old.title, old.content, old.keywords, old.tags);
-			END;
-
-			CREATE TRIGGER IF NOT EXISTS knowledge_entries_au AFTER UPDATE ON knowledge_entries BEGIN
-				INSERT INTO knowledge_fts(knowledge_fts, rowid, title, content, keywords, tags)
-				VALUES ('delete', old.rowid, old.title, old.content, old.keywords, old.tags);
-				INSERT INTO knowledge_fts(rowid, title, content, keywords, tags)
-				VALUES (new.rowid, new.title, new.content, new.keywords, new.tags);
-			END;
-
-			CREATE INDEX IF NOT EXISTS idx_knowledge_type ON knowledge_entries(type);
-			CREATE INDEX IF NOT EXISTS idx_knowledge_author ON knowledge_entries(author);
-			CREATE INDEX IF NOT EXISTS idx_knowledge_confidence ON knowledge_entries(confidence);
-			CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge_entries(source_proposal_id);
-		`);
 	}
 
 	/**
@@ -211,10 +119,9 @@ export class KnowledgeBase {
 	/**
 	 * AC#1: Add a knowledge entry (solution, pattern, decision, etc.)
 	 */
-	addEntry(entry: Omit<KnowledgeEntry, "id" | "createdAt" | "updatedAt" | "helpfulCount" | "referenceCount">): KnowledgeEntry {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
+	async addEntry(
+		entry: Omit<KnowledgeEntry, "id" | "createdAt" | "updatedAt" | "helpfulCount" | "referenceCount">,
+	): Promise<KnowledgeEntry> {
 		const now = new Date().toISOString();
 		const id = this.generateId();
 
@@ -227,25 +134,28 @@ export class KnowledgeBase {
 			referenceCount: 0,
 		};
 
-		this.db.prepare(`
-			INSERT INTO knowledge_entries (id, type, title, content, keywords, related_proposals, source_proposal_id, author, confidence, helpful_count, reference_count, tags, created_at, updated_at, metadata)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`).run(
-			fullEntry.id,
-			fullEntry.type,
-			fullEntry.title,
-			fullEntry.content,
-			JSON.stringify(fullEntry.keywords),
-			JSON.stringify(fullEntry.relatedProposals),
-			fullEntry.sourceProposalId || null,
-			fullEntry.author,
-			fullEntry.confidence,
-			fullEntry.helpfulCount,
-			fullEntry.referenceCount,
-			JSON.stringify(fullEntry.tags),
-			fullEntry.createdAt,
-			fullEntry.updatedAt,
-			fullEntry.metadata ? JSON.stringify(fullEntry.metadata) : null,
+		await query(
+			`INSERT INTO knowledge_entries
+				(id, type, title, content, keywords, related_proposals, source_proposal_id, author,
+				 confidence, helpful_count, reference_count, tags, created_at, updated_at, metadata)
+			VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15::jsonb)`,
+			[
+				fullEntry.id,
+				fullEntry.type,
+				fullEntry.title,
+				fullEntry.content,
+				JSON.stringify(fullEntry.keywords),
+				JSON.stringify(fullEntry.relatedProposals),
+				fullEntry.sourceProposalId ?? null,
+				fullEntry.author,
+				fullEntry.confidence,
+				fullEntry.helpfulCount,
+				fullEntry.referenceCount,
+				JSON.stringify(fullEntry.tags),
+				fullEntry.createdAt,
+				fullEntry.updatedAt,
+				fullEntry.metadata ? JSON.stringify(fullEntry.metadata) : null,
+			],
 		);
 
 		return fullEntry;
@@ -253,77 +163,64 @@ export class KnowledgeBase {
 
 	/**
 	 * AC#1: Search knowledge base by keywords.
-	 * Uses FTS5 for efficient full-text search.
+	 * Uses ILIKE for broad compatibility; a later migration can add a tsvector column.
 	 */
-	search(query: KnowledgeSearchQuery): KnowledgeSearchResult[] {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
+	async search(searchQuery: KnowledgeSearchQuery): Promise<KnowledgeSearchResult[]> {
+		const likeTerms = searchQuery.keywords.map((k) => `%${k}%`);
+		// Build an OR condition across all keyword terms
+		const likeClause = likeTerms
+			.map((_, i) => `(title ILIKE $${i + 1} OR content ILIKE $${i + 1} OR keywords::text ILIKE $${i + 1})`)
+			.join(" OR ");
 
-		const searchTerms = query.keywords.map(k => `"${k}"`).join(" OR ");
+		let paramIndex = likeTerms.length + 1;
+		const params: unknown[] = [...likeTerms];
 
-		let sql = `
-			SELECT e.*, rank
-			FROM knowledge_fts fts
-			JOIN knowledge_entries e ON e.rowid = fts.rowid
-			WHERE knowledge_fts MATCH ?
-		`;
-		const params: any[] = [searchTerms];
+		let sql = `SELECT * FROM knowledge_entries WHERE (${likeClause})`;
 
-		// Add filters
-		if (query.type) {
-			sql += ` AND e.type = ?`;
-			params.push(query.type);
+		if (searchQuery.type) {
+			sql += ` AND type = $${paramIndex++}`;
+			params.push(searchQuery.type);
 		}
 
-		if (query.minConfidence !== undefined) {
-			sql += ` AND e.confidence >= ?`;
-			params.push(query.minConfidence);
+		if (searchQuery.minConfidence !== undefined) {
+			sql += ` AND confidence >= $${paramIndex++}`;
+			params.push(searchQuery.minConfidence);
 		}
 
-		if (query.relatedProposal) {
-			sql += ` AND e.related_proposals LIKE ?`;
-			params.push(`%${query.relatedProposal}%`);
+		if (searchQuery.relatedProposal) {
+			sql += ` AND related_proposals::text ILIKE $${paramIndex++}`;
+			params.push(`%${searchQuery.relatedProposal}%`);
 		}
 
-		sql += ` ORDER BY rank DESC, e.confidence DESC, e.helpful_count DESC`;
+		sql += ` ORDER BY confidence DESC, helpful_count DESC`;
 
-		if (query.limit) {
-			sql += ` LIMIT ?`;
-			params.push(query.limit);
-		} else {
-			sql += ` LIMIT 20`;
-		}
+		const limit = searchQuery.limit ?? 20;
+		sql += ` LIMIT $${paramIndex++}`;
+		params.push(limit);
 
-		const rows = this.db.prepare(sql).all(...params) as any[];
+		const result = await query(sql, params);
 
-		return rows.map((row) => {
+		return result.rows.map((row: any) => {
 			const entry = this.hydrateEntry(row);
-			const matchedKeywords = query.keywords.filter(k =>
-				entry.keywords.some(ek => ek.toLowerCase().includes(k.toLowerCase())) ||
-				entry.title.toLowerCase().includes(k.toLowerCase()) ||
-				entry.content.toLowerCase().includes(k.toLowerCase())
+			const matchedKeywords = searchQuery.keywords.filter(
+				(k) =>
+					entry.keywords.some((ek) => ek.toLowerCase().includes(k.toLowerCase())) ||
+					entry.title.toLowerCase().includes(k.toLowerCase()) ||
+					entry.content.toLowerCase().includes(k.toLowerCase()),
 			);
 
-			// Calculate relevance based on FTS rank and keyword matches
-			const relevanceScore = Math.min(100, Math.max(0,
-				50 + (row.rank * -10) + (matchedKeywords.length * 10) + (entry.confidence / 5)
-			));
+			const relevanceScore = Math.min(100, Math.max(0, 50 + matchedKeywords.length * 10 + entry.confidence / 5));
 
-			return {
-				entry,
-				relevanceScore,
-				matchedKeywords,
-			};
+			return { entry, relevanceScore, matchedKeywords };
 		});
 	}
 
 	/**
 	 * AC#2: Extract and store a pattern from successful solutions.
 	 */
-	extractPattern(pattern: Omit<ExtractedPattern, "id" | "usageCount" | "successRate">): ExtractedPattern {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
+	async addPattern(
+		pattern: Omit<ExtractedPattern, "id" | "usageCount" | "successRate">,
+	): Promise<ExtractedPattern> {
 		const id = `PAT-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
 
 		const fullPattern: ExtractedPattern = {
@@ -333,53 +230,62 @@ export class KnowledgeBase {
 			successRate: 0,
 		};
 
-		this.db.prepare(`
-			INSERT INTO extracted_patterns (id, name, description, code_example, first_seen_at, usage_count, success_rate, related_entries)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`).run(
-			fullPattern.id,
-			fullPattern.name,
-			fullPattern.description,
-			fullPattern.codeExample || null,
-			fullPattern.firstSeenAt,
-			fullPattern.usageCount,
-			fullPattern.successRate,
-			JSON.stringify(fullPattern.relatedEntries),
+		await query(
+			`INSERT INTO extracted_patterns
+				(id, name, description, code_example, first_seen_at, usage_count, success_rate, related_entries)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+			[
+				fullPattern.id,
+				fullPattern.name,
+				fullPattern.description,
+				fullPattern.codeExample ?? null,
+				fullPattern.firstSeenAt,
+				fullPattern.usageCount,
+				fullPattern.successRate,
+				JSON.stringify(fullPattern.relatedEntries),
+			],
 		);
 
 		return fullPattern;
 	}
 
 	/**
+	 * Alias for addPattern — kept so callers using the old name still work.
+	 */
+	async extractPattern(
+		pattern: Omit<ExtractedPattern, "id" | "usageCount" | "successRate">,
+	): Promise<ExtractedPattern> {
+		return this.addPattern(pattern);
+	}
+
+	/**
 	 * AC#2: Get all extracted patterns.
 	 */
-	getPatterns(options?: { minUsageCount?: number; minSuccessRate?: number }): ExtractedPattern[] {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
+	async getPatterns(options?: { minUsageCount?: number; minSuccessRate?: number }): Promise<ExtractedPattern[]> {
+		let paramIndex = 1;
+		const params: unknown[] = [];
 		let sql = `SELECT * FROM extracted_patterns WHERE 1=1`;
-		const params: any[] = [];
 
 		if (options?.minUsageCount !== undefined) {
-			sql += ` AND usage_count >= ?`;
+			sql += ` AND usage_count >= $${paramIndex++}`;
 			params.push(options.minUsageCount);
 		}
 
 		if (options?.minSuccessRate !== undefined) {
-			sql += ` AND success_rate >= ?`;
+			sql += ` AND success_rate >= $${paramIndex++}`;
 			params.push(options.minSuccessRate);
 		}
 
 		sql += ` ORDER BY usage_count DESC, success_rate DESC`;
 
-		const rows = this.db.prepare(sql).all(...params) as any[];
-		return rows.map((row) => this.hydratePattern(row));
+		const result = await query(sql, params);
+		return result.rows.map((row: any) => this.hydratePattern(row));
 	}
 
 	/**
 	 * AC#3: Record a decision with rationale.
 	 */
-	recordDecision(decision: {
+	async recordDecision(decision: {
 		title: string;
 		content: string;
 		rationale: string;
@@ -387,16 +293,16 @@ export class KnowledgeBase {
 		author: string;
 		relatedProposalId?: string;
 		tags?: string[];
-	}): KnowledgeEntry {
+	}): Promise<KnowledgeEntry> {
 		return this.addEntry({
 			type: "decision",
 			title: decision.title,
 			content: `## Rationale\n${decision.rationale}\n\n## Decision\n${decision.content}\n\n## Alternatives Considered\n${decision.alternatives.map((a, i) => `${i + 1}. ${a}`).join("\n")}`,
-			keywords: [decision.title.toLowerCase(), ...decision.title.split(/\s+/).map(w => w.toLowerCase())],
+			keywords: [decision.title.toLowerCase(), ...decision.title.split(/\s+/).map((w) => w.toLowerCase())],
 			relatedProposals: decision.relatedProposalId ? [decision.relatedProposalId] : [],
 			sourceProposalId: decision.relatedProposalId,
 			author: decision.author,
-			confidence: 80, // Decisions start with high confidence
+			confidence: 80,
 			tags: ["decision", ...(decision.tags || [])],
 		});
 	}
@@ -404,147 +310,202 @@ export class KnowledgeBase {
 	/**
 	 * AC#3: Get all decisions.
 	 */
-	getDecisions(options?: { relatedProposal?: string }): KnowledgeEntry[] {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
+	async getDecisions(options?: { relatedProposal?: string }): Promise<KnowledgeEntry[]> {
+		let paramIndex = 1;
+		const params: unknown[] = [];
 		let sql = `SELECT * FROM knowledge_entries WHERE type = 'decision'`;
-		const params: any[] = [];
 
 		if (options?.relatedProposal) {
-			sql += ` AND related_proposals LIKE ?`;
+			sql += ` AND related_proposals::text ILIKE $${paramIndex++}`;
 			params.push(`%${options.relatedProposal}%`);
 		}
 
 		sql += ` ORDER BY created_at DESC`;
 
-		const rows = this.db.prepare(sql).all(...params) as any[];
-		return rows.map((row) => this.hydrateEntry(row));
+		const result = await query(sql, params);
+		return result.rows.map((row: any) => this.hydrateEntry(row));
 	}
 
 	/**
 	 * Mark an entry as helpful (upvote).
 	 */
-	markHelpful(entryId: string): boolean {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
+	async markHelpful(entryId: string): Promise<boolean> {
+		const result = await query(
+			`UPDATE knowledge_entries SET helpful_count = helpful_count + 1, updated_at = $1 WHERE id = $2`,
+			[new Date().toISOString(), entryId],
+		);
+		return (result.rowCount ?? 0) > 0;
+	}
 
-		const result = this.db.prepare(`
-			UPDATE knowledge_entries SET helpful_count = helpful_count + 1, updated_at = ?
-			WHERE id = ?
-		`).run(new Date().toISOString(), entryId);
-
-		return result.changes > 0;
+	/**
+	 * Increment the helpful count for an entry (alias matching required interface).
+	 */
+	async incrementHelpful(id: string): Promise<void> {
+		await this.markHelpful(id);
 	}
 
 	/**
 	 * Increment reference count when entry is used.
 	 */
-	incrementReference(entryId: string): boolean {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
-		const result = this.db.prepare(`
-			UPDATE knowledge_entries SET reference_count = reference_count + 1, updated_at = ?
-			WHERE id = ?
-		`).run(new Date().toISOString(), entryId);
-
-		return result.changes > 0;
+	async incrementReference(entryId: string): Promise<void> {
+		await query(
+			`UPDATE knowledge_entries SET reference_count = reference_count + 1, updated_at = $1 WHERE id = $2`,
+			[new Date().toISOString(), entryId],
+		);
 	}
 
 	/**
 	 * Update pattern usage stats.
 	 */
-	updatePatternUsage(patternId: string, successful: boolean): void {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
+	async updatePatternUsage(patternId: string, successful: boolean): Promise<void> {
+		const patResult = await query(`SELECT * FROM extracted_patterns WHERE id = $1`, [patternId]);
+		if (patResult.rows.length === 0) return;
 
-		const pattern = this.db.prepare("SELECT * FROM extracted_patterns WHERE id = ?").get(patternId) as any;
-		if (!pattern) return;
-
+		const pattern = patResult.rows[0] as any;
 		const newUsageCount = pattern.usage_count + 1;
-		const currentSuccessTotal = pattern.success_rate * pattern.usage_count / 100;
+		const currentSuccessTotal = (pattern.success_rate * pattern.usage_count) / 100;
 		const newSuccessTotal = currentSuccessTotal + (successful ? 1 : 0);
 		const newSuccessRate = Math.round((newSuccessTotal / newUsageCount) * 100);
 
-		this.db.prepare(`
-			UPDATE extracted_patterns SET usage_count = ?, success_rate = ?
-			WHERE id = ?
-		`).run(newUsageCount, newSuccessRate, patternId);
+		await query(
+			`UPDATE extracted_patterns SET usage_count = $1, success_rate = $2 WHERE id = $3`,
+			[newUsageCount, newSuccessRate, patternId],
+		);
 	}
 
 	/**
 	 * Get an entry by ID.
 	 */
-	getEntry(entryId: string): KnowledgeEntry | null {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
+	async getEntry(entryId: string): Promise<KnowledgeEntry | null> {
+		const result = await query(`SELECT * FROM knowledge_entries WHERE id = $1`, [entryId]);
+		return result.rows.length > 0 ? this.hydrateEntry(result.rows[0]) : null;
+	}
 
-		const row = this.db.prepare("SELECT * FROM knowledge_entries WHERE id = ?").get(entryId) as any;
-		return row ? this.hydrateEntry(row) : null;
+	/**
+	 * Update an entry by ID with partial fields.
+	 */
+	async updateEntry(
+		id: string,
+		updates: Partial<Omit<KnowledgeEntry, "id" | "createdAt">>,
+	): Promise<KnowledgeEntry | null> {
+		const existing = await this.getEntry(id);
+		if (!existing) return null;
+
+		const merged: KnowledgeEntry = {
+			...existing,
+			...updates,
+			id,
+			updatedAt: new Date().toISOString(),
+		};
+
+		await query(
+			`UPDATE knowledge_entries SET
+				type = $1, title = $2, content = $3,
+				keywords = $4::jsonb, related_proposals = $5::jsonb,
+				source_proposal_id = $6, author = $7, confidence = $8,
+				helpful_count = $9, reference_count = $10,
+				tags = $11::jsonb, updated_at = $12, metadata = $13::jsonb
+			WHERE id = $14`,
+			[
+				merged.type,
+				merged.title,
+				merged.content,
+				JSON.stringify(merged.keywords),
+				JSON.stringify(merged.relatedProposals),
+				merged.sourceProposalId ?? null,
+				merged.author,
+				merged.confidence,
+				merged.helpfulCount,
+				merged.referenceCount,
+				JSON.stringify(merged.tags),
+				merged.updatedAt,
+				merged.metadata ? JSON.stringify(merged.metadata) : null,
+				id,
+			],
+		);
+
+		return merged;
 	}
 
 	/**
 	 * Get entries by source proposal.
 	 */
-	getEntriesByProposal(proposalId: string): KnowledgeEntry[] {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
-
-		const rows = this.db.prepare(
-			"SELECT * FROM knowledge_entries WHERE source_proposal_id = ? OR related_proposals LIKE ? ORDER BY created_at DESC"
-		).all(proposalId, `%${proposalId}%`) as any[];
-
-		return rows.map((row) => this.hydrateEntry(row));
+	async getEntriesByProposal(proposalId: string): Promise<KnowledgeEntry[]> {
+		const result = await query(
+			`SELECT * FROM knowledge_entries
+			WHERE source_proposal_id = $1 OR related_proposals::text ILIKE $2
+			ORDER BY created_at DESC`,
+			[proposalId, `%${proposalId}%`],
+		);
+		return result.rows.map((row: any) => this.hydrateEntry(row));
 	}
 
 	/**
 	 * Get statistics about the knowledge base.
 	 */
-	getStats(): {
+	async getStats(): Promise<{
 		totalEntries: number;
 		entriesByType: Record<KnowledgeEntryType, number>;
 		totalPatterns: number;
 		averageConfidence: number;
 		topContributors: Array<{ author: string; count: number }>;
 		mostHelpful: Array<{ id: string; title: string; helpfulCount: number }>;
-	} {
-		this.ensureInitialized();
-		if (!this.db) throw new Error("Database not initialized");
+	}> {
+		const [totalRes, patternRes, avgRes, typeRes, contribRes, helpfulRes] = await Promise.all([
+			query(`SELECT COUNT(*) AS c FROM knowledge_entries`),
+			query(`SELECT COUNT(*) AS c FROM extracted_patterns`),
+			query(`SELECT AVG(confidence) AS avg FROM knowledge_entries`),
+			query(`SELECT type, COUNT(*) AS count FROM knowledge_entries GROUP BY type`),
+			query(
+				`SELECT author, COUNT(*) AS count FROM knowledge_entries GROUP BY author ORDER BY count DESC LIMIT 5`,
+			),
+			query(
+				`SELECT id, title, helpful_count FROM knowledge_entries ORDER BY helpful_count DESC LIMIT 5`,
+			),
+		]);
 
-		const totalCount = (this.db.prepare("SELECT COUNT(*) as c FROM knowledge_entries").get() as any).c;
-		const patternCount = (this.db.prepare("SELECT COUNT(*) as c FROM extracted_patterns").get() as any).c;
-		const avgConfidence = (this.db.prepare("SELECT AVG(confidence) as avg FROM knowledge_entries").get() as any).avg || 0;
-
-		// Entries by type
-		const typeRows = this.db.prepare("SELECT type, COUNT(*) as count FROM knowledge_entries GROUP BY type").all() as any[];
 		const entriesByType: Record<string, number> = {};
-		for (const row of typeRows) {
-			entriesByType[row.type] = row.count;
+		for (const row of typeRes.rows as any[]) {
+			entriesByType[row.type] = Number(row.count);
 		}
 
-		// Top contributors
-		const contributorRows = this.db.prepare(
-			"SELECT author, COUNT(*) as count FROM knowledge_entries GROUP BY author ORDER BY count DESC LIMIT 5"
-		).all() as any[];
-
-		// Most helpful entries
-		const helpfulRows = this.db.prepare(
-			"SELECT id, title, helpful_count FROM knowledge_entries ORDER BY helpful_count DESC LIMIT 5"
-		).all() as any[];
-
 		return {
-			totalEntries: totalCount,
+			totalEntries: Number(totalRes.rows[0].c),
 			entriesByType: entriesByType as Record<KnowledgeEntryType, number>,
-			totalPatterns: patternCount,
-			averageConfidence: Math.round(avgConfidence),
-			topContributors: contributorRows.map((r) => ({ author: r.author, count: r.count })),
-			mostHelpful: helpfulRows.map((r) => ({ id: r.id, title: r.title, helpfulCount: r.helpful_count })),
+			totalPatterns: Number(patternRes.rows[0].c),
+			averageConfidence: Math.round(Number(avgRes.rows[0].avg) || 0),
+			topContributors: (contribRes.rows as any[]).map((r) => ({ author: r.author, count: Number(r.count) })),
+			mostHelpful: (helpfulRes.rows as any[]).map((r) => ({
+				id: r.id,
+				title: r.title,
+				helpfulCount: Number(r.helpful_count),
+			})),
 		};
 	}
 
 	/**
+	 * Remove all entries and patterns from the knowledge base.
+	 */
+	async clear(): Promise<void> {
+		await query(`DELETE FROM knowledge_entries`);
+		await query(`DELETE FROM extracted_patterns`);
+	}
+
+	/**
+	 * No-op: Postgres connections are managed by the pool.
+	 * Kept for interface compatibility.
+	 */
+	close(): void {
+		// nothing to do — pool handles connection lifecycle
+	}
+
+	// -------------------------------------------------------------------------
+	// Private hydration helpers
+	// -------------------------------------------------------------------------
+
+	/**
 	 * Hydrate a database row into a KnowledgeEntry.
+	 * Handles both raw JSON strings (legacy) and already-parsed values (Postgres jsonb).
 	 */
 	private hydrateEntry(row: any): KnowledgeEntry {
 		return {
@@ -552,17 +513,17 @@ export class KnowledgeBase {
 			type: row.type as KnowledgeEntryType,
 			title: row.title,
 			content: row.content,
-			keywords: JSON.parse(row.keywords || "[]"),
-			relatedProposals: JSON.parse(row.related_proposals || "[]"),
-			sourceProposalId: row.source_proposal_id || undefined,
+			keywords: this.parseJsonField(row.keywords, []),
+			relatedProposals: this.parseJsonField(row.related_proposals, []),
+			sourceProposalId: row.source_proposal_id ?? undefined,
 			author: row.author,
-			confidence: row.confidence,
-			helpfulCount: row.helpful_count,
-			referenceCount: row.reference_count,
-			tags: JSON.parse(row.tags || "[]"),
+			confidence: Number(row.confidence),
+			helpfulCount: Number(row.helpful_count),
+			referenceCount: Number(row.reference_count),
+			tags: this.parseJsonField(row.tags, []),
 			createdAt: row.created_at,
 			updatedAt: row.updated_at,
-			metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+			metadata: row.metadata ? this.parseJsonField(row.metadata, undefined) : undefined,
 		};
 	}
 
@@ -574,22 +535,28 @@ export class KnowledgeBase {
 			id: row.id,
 			name: row.name,
 			description: row.description,
-			codeExample: row.code_example || undefined,
+			codeExample: row.code_example ?? undefined,
 			firstSeenAt: row.first_seen_at,
-			usageCount: row.usage_count,
-			successRate: row.success_rate,
-			relatedEntries: JSON.parse(row.related_entries || "[]"),
+			usageCount: Number(row.usage_count),
+			successRate: Number(row.success_rate),
+			relatedEntries: this.parseJsonField(row.related_entries, []),
 		};
 	}
 
 	/**
-	 * Close the database connection.
+	 * Parse a field that may be a JSON string or already parsed (Postgres jsonb returns objects).
 	 */
-	close(): void {
-		if (this.db) {
-			this.db.close();
-			this.db = null;
+	private parseJsonField<T>(value: unknown, fallback: T): T {
+		if (value === null || value === undefined) return fallback;
+		if (typeof value === "string") {
+			try {
+				return JSON.parse(value) as T;
+			} catch {
+				return fallback;
+			}
 		}
+		// Already parsed by pg driver (jsonb column)
+		return value as T;
 	}
 }
 

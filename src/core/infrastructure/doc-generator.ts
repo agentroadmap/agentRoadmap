@@ -13,6 +13,7 @@ import { readdirSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSy
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import type { Proposal, RoadmapConfig } from "../../types/index.ts";
+import { FileSystem } from "../../infra/file-system/operations.ts";
 
 export interface DocGeneratorOptions {
 	outputDir: string;
@@ -1058,24 +1059,12 @@ export async function generateDocs(
 	};
 
 	try {
-		// Load config
-		const configPath = join(projectRoot, "roadmap", "config.yml");
-		let projectName = options.projectName || "Project";
-
-		if (existsSync(configPath)) {
-			try {
-				const configContent = readFileSync(configPath, "utf-8");
-				const nameMatch = configContent.match(/project_name:\s*["']?([^"'\n]+)["']?/);
-				if (nameMatch) {
-					projectName = nameMatch[1]!.trim();
-				}
-			} catch {
-				// Use default
-			}
-		}
+		const filesystem = new FileSystem(projectRoot);
+		const config = await filesystem.loadConfig();
+		let projectName = options.projectName || config?.projectName || "Project";
 
 		// Load proposals
-		const proposalsDir = join(projectRoot, "roadmap", "proposals");
+		const proposalsDir = filesystem.proposalsDir;
 		const proposals = loadProposals(proposalsDir);
 
 		// Build summary
@@ -1205,8 +1194,9 @@ export async function watchAndRegenerate(
 	options: DocGeneratorOptions,
 	callback?: (result: GenerationResult) => void
 ): Promise<() => void> {
-	const proposalsDir = join(projectRoot, "roadmap", "proposals");
-	const configPath = join(projectRoot, "roadmap", "config.yml");
+	const filesystem = new FileSystem(projectRoot);
+	const proposalsDir = filesystem.proposalsDir;
+	const configPath = filesystem.configFilePath;
 
 	// Initial generation
 	await generateDocs(projectRoot, options);

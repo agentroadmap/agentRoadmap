@@ -1,4 +1,2 @@
-// TODO: implement MapPage — stub created 2026-04-01
-export default function MapPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/MapPage.tsx";
+export * from "../../apps/dashboard-web/components/MapPage.tsx";

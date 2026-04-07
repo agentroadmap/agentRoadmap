@@ -1,4 +1,2 @@
-// TODO: implement ProposalsPage — stub created 2026-04-01
-export default function ProposalsPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/ProposalsPage.tsx";
+export * from "../../apps/dashboard-web/components/ProposalsPage.tsx";

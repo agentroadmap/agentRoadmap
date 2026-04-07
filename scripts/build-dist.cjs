@@ -13,9 +13,9 @@ console.log('Building ' + outfile + '...');
 
 try {
   fs.mkdirSync(path.join(outdir, 'mcp'), { recursive: true });
-  fs.copyFileSync('src/guidelines/agent-guidelines.md', path.join(outdir, 'agent-guidelines.md'));
-  fs.copyFileSync('src/guidelines/project-manager-roadmap.md', path.join(outdir, 'project-manager-roadmap.md'));
-  fs.copyFileSync('src/guidelines/mcp/agent-nudge.md', path.join(outdir, 'mcp/agent-nudge.md'));
+  fs.copyFileSync('src/apps/guidelines/agent-guidelines.md', path.join(outdir, 'agent-guidelines.md'));
+  fs.copyFileSync('src/apps/guidelines/project-manager-roadmap.md', path.join(outdir, 'project-manager-roadmap.md'));
+  fs.copyFileSync('src/apps/guidelines/mcp/agent-nudge.md', path.join(outdir, 'mcp/agent-nudge.md'));
 
   const mcpFiles = [
     'chat-skill.md', 'init-required.md', 'overview.md', 
@@ -23,15 +23,88 @@ try {
     'proposal-execution.md', 'proposal-finalization.md'
   ];
   for (const file of mcpFiles) {
-    fs.copyFileSync(path.join('src/guidelines/mcp', file), path.join(outdir, file));
+    fs.copyFileSync(path.join('src/apps/guidelines/mcp', file), path.join(outdir, file));
   }
 } catch (e) {
   console.error('Failed to copy assets:', e.message);
 }
 
 try {
-  execSync(`bun build src/cli.ts --target=node --outfile="${bundlePath}"`, { stdio: 'inherit' });
-  const wrapper = `#!/usr/bin/env node\nimport('./${bundleName}').catch(err => { console.error(err); process.exit(1); });\n`;
+  execSync(`bun build src/apps/cli.ts --target=node --outfile="${bundlePath}"`, { stdio: 'inherit' });
+  const wrapper = `#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+
+function defaultResolveBinary(platform, arch) {
+  return path.join(__dirname, 'node_modules', \`agent-roadmap-\${platform}-\${arch}\`, 'roadmap');
+}
+
+function isInstalledBinaryPath(entryPath) {
+  return /(?:^|[\\\\/])agent-roadmap-[^\\\\/]+[\\\\/].*roadmap(?:\\.exe)?$/.test(entryPath);
+}
+
+function resolveLaunchConfig(options = {}) {
+  const {
+    baseDir = __dirname,
+    execPath = process.execPath,
+    platform = process.platform,
+    arch = process.arch,
+    rawArgs = process.argv.slice(2),
+    existsSync = fs.existsSync,
+    resolveBinary = defaultResolveBinary,
+  } = options;
+
+  const sourcePath = path.join(baseDir, 'src', 'apps', 'cli.ts');
+  const legacySourcePath = path.join(baseDir, 'src', 'cli.ts');
+  const bundledBinaryPath = path.join(baseDir, 'dist', 'roadmap');
+  const cleanedArgs = rawArgs.filter((arg) => {
+    if (arg === sourcePath || arg === legacySourcePath || arg === bundledBinaryPath) {
+      return false;
+    }
+    return !isInstalledBinaryPath(arg);
+  });
+
+  if (existsSync(sourcePath)) {
+    return {
+      command: execPath,
+      launchArgs: [sourcePath],
+      cleanedArgs,
+    };
+  }
+
+  if (existsSync(legacySourcePath)) {
+    return {
+      command: execPath,
+      launchArgs: [legacySourcePath],
+      cleanedArgs,
+    };
+  }
+
+  if (existsSync(bundledBinaryPath)) {
+    return {
+      command: bundledBinaryPath,
+      launchArgs: [],
+      cleanedArgs,
+    };
+  }
+
+  const platformBinaryPath = resolveBinary(platform, arch);
+  return {
+    command: platformBinaryPath,
+    launchArgs: [],
+    cleanedArgs,
+  };
+}
+
+module.exports.resolveLaunchConfig = resolveLaunchConfig;
+
+if (require.main === module) {
+  import('./${bundleName}').catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+`;
   fs.writeFileSync(outfile, wrapper);
   fs.chmodSync(outfile, 0o755);
 } catch (e) {

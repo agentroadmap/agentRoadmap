@@ -1,7 +1,7 @@
 // WebSocket Bridge for AgentRoadmap
 // Run with: node --import jiti/register scripts/ws-bridge-runner.js
 
-import { startWebSocketServer } from '../src/web/websocket-server.ts';
+import { startWebSocketServer } from '../src/apps/dashboard-web/websocket-server.ts';
 
 const port = process.env.WS_PORT || 3001;
 console.log(`Starting WebSocket bridge on port ${port}...`);

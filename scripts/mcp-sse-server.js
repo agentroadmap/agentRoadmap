@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 
-const serverModule = await import('../src/mcp/server.ts');
+const serverModule = await import('../src/apps/mcp-server/server.ts');
 const createMcpServer = serverModule.createMcpServer || serverModule.default?.createMcpServer;
 
 if (!createMcpServer) {

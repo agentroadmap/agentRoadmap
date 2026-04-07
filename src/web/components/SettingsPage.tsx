@@ -1,4 +1,2 @@
-// TODO: implement SettingsPage — stub created 2026-04-01
-export default function SettingsPage(props: Record<string, unknown>) {
-  return null;
-}
+export { default } from "../../apps/dashboard-web/components/SettingsPage.tsx";
+export * from "../../apps/dashboard-web/components/SettingsPage.tsx";

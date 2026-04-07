@@ -1244,7 +1244,7 @@ export class Core {
 
 	private async extractLegacyConfigDirectives(): Promise<string[]> {
 		try {
-			const configPath = join(this.fs.rootDir, DEFAULT_DIRECTORIES.ROADMAP, "config.yml");
+			const configPath = this.fs.configFilePath;
 			const content = await readFile(configPath, "utf-8");
 			const lines = content.split("\n");
 			for (let i = 0; i < lines.length; i += 1) {
