@@ -348,12 +348,11 @@ COMMENT ON COLUMN roadmap.proposal.display_id  IS 'P+number id used in lists/dis
 COMMENT ON COLUMN roadmap.proposal.parent_id   IS 'Parent proposal id; constructs a hierarchical relation';
 COMMENT ON COLUMN roadmap.proposal.type        IS 'Controlled term for proposal type; dictates workflow via proposal_type_config';
 COMMENT ON COLUMN roadmap.proposal.status      IS 'Current state within the workflow state machine; values are open, validated against proposal_valid_transitions';
-COMMENT ON COLUMN roadmap.proposal.maturity    IS 'Jsonb map of stage → maturity label, e.g. {"Draft":"Mature","Review":"Active"}';
+COMMENT ON COLUMN roadmap.proposal.maturity    IS 'DROPPED by migration 012. Replaced by maturity_state TEXT. Universal maturity scale: New → Active → Mature → Obsolete applies within every state. History in proposal_maturity_transitions.';
 COMMENT ON COLUMN roadmap.proposal.priority    IS 'Loosely described priority in markdown; queue ordering is DAG-derived via v_proposal_queue, not this field';
 COMMENT ON COLUMN roadmap.proposal.dependency  IS 'Prose description of dependencies; structured dependencies live in proposal_dependencies';
 COMMENT ON COLUMN roadmap.proposal.body_vector IS 'pgvector embedding for semantic search';
 COMMENT ON COLUMN roadmap.proposal.tags        IS 'Search tags; may include category, domain, and intelligently identified keywords';
-COMMENT ON COLUMN roadmap.proposal.maturity    IS '{"Draft":"Mature","Review":"Mature","Develop":"Active"}';
 COMMENT ON COLUMN roadmap.proposal.audit       IS 'Array of audit events: [{"TS":"<iso8601>","Agent":"<name>","Activity":"<verb>","Reason":"<text>"}]';
 
 -- FK: proposal.type → proposal_type_config (deferred so seed data can be inserted first)
