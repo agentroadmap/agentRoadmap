@@ -907,21 +907,15 @@ export class Core {
 	}
 
 	private mapPgMaturity(row: ProposalRow): Proposal["maturity"] | undefined {
-		if (!row.maturity || typeof row.maturity !== "object") {
-			return undefined;
-		}
-
-		const currentLabel =
-			row.maturity[row.status] ?? Object.values(row.maturity)[0];
-		switch (String(currentLabel ?? "").toLowerCase()) {
+		// maturity_state is now a direct TEXT column — no JSONB parsing needed
+		const state = row.maturity_state;
+		if (!state) return undefined;
+		switch (state) {
 			case "new":
-				return "new";
 			case "active":
-				return "active";
 			case "mature":
-				return "mature";
 			case "obsolete":
-				return "obsolete";
+				return state;
 			default:
 				return undefined;
 		}

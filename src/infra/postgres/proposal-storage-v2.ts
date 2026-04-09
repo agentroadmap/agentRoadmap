@@ -6,7 +6,7 @@
 import { getPool, query } from "./pool.ts";
 
 const PROPOSAL_COLUMNS = `
-  id, display_id, parent_id, type, status, maturity, title,
+  id, display_id, parent_id, type, status, maturity_state, title,
   summary, motivation, design, drawbacks, alternatives,
   dependency, priority, tags, audit, created_at, modified_at
 `;
@@ -17,7 +17,7 @@ export type ProposalRow = {
 	parent_id: number | null;
 	type: string;
 	status: string;
-	maturity: Record<string, string>; // jsonb map of stage → maturity label
+	maturity_state: 'new' | 'active' | 'mature' | 'obsolete';
 	title: string;
 	summary: string | null;
 	motivation: string | null;
@@ -420,6 +420,49 @@ export async function transitionProposal(
        LIMIT 1
      )`,
 		[reason ?? "system", transitionedBy, proposalId, toState],
+	);
+
+	return rows[0];
+}
+
+/**
+ * Set the maturity_state of a proposal.
+ * When set to 'mature', the DB trigger trg_gate_ready fires pg_notify
+ * which enqueues a gate task in transition_queue.
+ */
+export async function setMaturity(
+	proposalId: number,
+	maturityState: 'new' | 'active' | 'mature' | 'obsolete',
+	agentIdentity: string,
+): Promise<ProposalRow | null> {
+	const { rows } = await query<ProposalRow>(
+		`WITH _actor AS (
+	       SELECT set_config('app.agent_identity', $1, true) AS agent_identity
+	     )
+	     UPDATE proposal
+	     SET maturity_state = $2, modified_at = NOW()
+	     FROM _actor
+	     WHERE id = $3
+	     RETURNING ${PROPOSAL_COLUMNS}`,
+		[agentIdentity, maturityState, proposalId],
+	);
+
+	if (!rows[0]) return null;
+
+	// Also append to audit
+	await query(
+		`UPDATE proposal
+	     SET audit = audit || $1::jsonb
+	     WHERE id = $2`,
+		[
+			JSON.stringify({
+				TS: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+				Agent: agentIdentity,
+				Activity: 'MaturityChange',
+				To: maturityState,
+			}),
+			proposalId,
+		],
 	);
 
 	return rows[0];

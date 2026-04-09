@@ -43,7 +43,7 @@ export class PgProposalHandlers {
 			}
 			const lines = proposals.map((p) => {
 				const did = p.display_id ?? `#${p.id}`;
-				return `[${did}] ${p.title || "(no title)"} — status: ${p.status}, type: ${p.type}, maturity: ${this.formatMaturity(p.maturity, p.status)}`;
+				return `[${did}] ${p.title || "(no title)"} — status: ${p.status}, type: ${p.type}, maturity: ${p.maturity_state ?? "unknown"}`;
 			});
 			return { content: [{ type: "text", text: lines.join("\n") }] };
 		} catch (err) {
@@ -218,6 +218,32 @@ export class PgProposalHandlers {
 				};
 			}
 
+			// Gate transitions require decision notes
+			const gateTransitions: Record<string, string[]> = {
+				"Draft": ["Review"],
+				"Review": ["Develop"],
+				"Develop": ["Merge"],
+				"Merge": ["Complete"],
+			};
+
+			// Get current status to check if this is a gate transition
+			const current = await pg.getProposal(id);
+			if (current) {
+				const allowedTargets = gateTransitions[current.status];
+				if (allowedTargets?.includes(args.status)) {
+					if (!args.summary || args.summary.trim().length === 0) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Gate transition ${current.status} → ${args.status} requires decision notes. Please provide a summary with your reasoning.`,
+								},
+							],
+						};
+					}
+				}
+			}
+
 			const updated = await pg.transitionProposal(
 				id,
 				args.status,
@@ -255,6 +281,56 @@ export class PgProposalHandlers {
 			};
 		} catch (err) {
 			return errorResult("Failed to delete proposal", err);
+		}
+	}
+
+	async setMaturity(args: {
+		id: string;
+		maturity: string;
+		agent?: string;
+	}): Promise<CallToolResult> {
+		try {
+			const id = await pg.resolveProposalId(args.id);
+			if (id === null) {
+				return {
+					content: [{ type: "text", text: `Proposal ${args.id} not found.` }],
+				};
+			}
+
+			const validStates = ["new", "active", "mature", "obsolete"];
+			const maturityState = args.maturity.toLowerCase();
+			if (!validStates.includes(maturityState)) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Invalid maturity state "${args.maturity}". Must be one of: ${validStates.join(", ")}`,
+						},
+					],
+				};
+			}
+
+			const updated = await pg.setMaturity(
+				id,
+				maturityState as "new" | "active" | "mature" | "obsolete",
+				args.agent ?? "system",
+			);
+			if (!updated) {
+				return {
+					content: [{ type: "text", text: `Proposal ${args.id} not found.` }],
+				};
+			}
+
+			let message = `Set maturity of ${args.id} to ${maturityState}`;
+			if (maturityState === "mature") {
+				message += " — gate pipeline triggered";
+			}
+
+			return {
+				content: [{ type: "text", text: message }],
+			};
+		} catch (err) {
+			return errorResult("Failed to set maturity", err);
 		}
 	}
 
@@ -297,7 +373,7 @@ export class PgProposalHandlers {
 			const lines = proposals.map((p) => {
 				const did = p.display_id ?? `#${p.id}`;
 				const preview = this.buildPreview(p);
-				return `[${did}] ${p.title || "(no title)"} — status: ${p.status}, type: ${p.type}, maturity: ${this.formatMaturity(p.maturity, p.status)}\n  ${preview}`;
+				return `[${did}] ${p.title || "(no title)"} — status: ${p.status}, type: ${p.type}, maturity: ${p.maturity_state ?? "unknown"}\n  ${preview}`;
 			});
 			return {
 				content: [
