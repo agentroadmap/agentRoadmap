@@ -56,7 +56,7 @@ export type ProposalSummary = Pick<
 	| "title"
 	| "status"
 	| "priority"
-	| "maturity"
+	| "maturity_state"
 	| "tags"
 	| "audit"
 	| "created_at"
