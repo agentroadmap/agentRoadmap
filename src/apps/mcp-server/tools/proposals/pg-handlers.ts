@@ -338,55 +338,6 @@ export class PgProposalHandlers {
 		}
 	}
 
-	async setMaturity(args: {
-		id: string;
-		maturity: string;
-		agent?: string;
-	}): Promise<CallToolResult> {
-		try {
-			const id = await pg.resolveProposalId(args.id);
-			if (id === null) {
-				return {
-					content: [{ type: "text", text: `Proposal ${args.id} not found.` }],
-				};
-			}
-
-			const validStates = ["new", "active", "mature", "obsolete"];
-			const maturityState = args.maturity.toLowerCase();
-			if (!validStates.includes(maturityState)) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Invalid maturity state "${args.maturity}". Must be one of: ${validStates.join(", ")}`,
-						},
-					],
-				};
-			}
-
-			const updated = await pg.setMaturity(
-				id,
-				maturityState as "new" | "active" | "mature" | "obsolete",
-				args.agent ?? "system",
-			);
-			if (!updated) {
-				return {
-					content: [{ type: "text", text: `Proposal ${args.id} not found.` }],
-				};
-			}
-
-			let message = `Set maturity of ${args.id} to ${maturityState}`;
-			if (maturityState === "mature") {
-				message += " — gate pipeline triggered";
-			}
-
-			return {
-				content: [{ type: "text", text: message }],
-			};
-		} catch (err) {
-			return errorResult("Failed to set maturity", err);
-		}
-	}
 
 	async getVersions(args: { id: string }): Promise<CallToolResult> {
 		try {
