@@ -23,7 +23,7 @@ type ResolvedProposal = {
 	type: string;
 	title: string;
 	status: string;
-	maturity: Record<string, string> | null;
+	maturity_state: 'new' | 'active' | 'mature' | 'obsolete';
 	summary: string | null;
 	motivation: string | null;
 	design: string | null;
@@ -88,7 +88,7 @@ async function resolveProposalRecord(
        p.type,
        p.title,
        p.status,
-       p.maturity,
+       p.maturity_state,
        p.summary,
        p.motivation,
        p.design,
@@ -249,15 +249,10 @@ function deriveTransitionReason(
 
 function deriveMaturityLabel(
 	proposal: ResolvedProposal,
-	fromState: string,
-	toState: string,
+	_fromState: string,
+	_toState: string,
 ): string {
-	return (
-		proposal.maturity?.[toState] ??
-		proposal.maturity?.[fromState] ??
-		Object.values(proposal.maturity ?? {})[0] ??
-		(toState.toLowerCase() === "complete" ? "Mature" : "Active")
-	);
+	return proposal.maturity_state ?? "new";
 }
 
 // ─── State Transitions ──────────────────────────────────────────────────────
