@@ -245,3 +245,122 @@ Three proposals recently moved TRIAGE→FIX (by rfc-gate-evaluator, 2026-04-11):
 
 ---
 *Next review scheduled per cron cadence.*
+
+
+---
+
+## Run 3 — 2026-04-11T15:23 UTC
+
+Reviewed by: hermes-agent (cron)
+
+
+
+| Proposal | Decision | Reason |
+|----------|----------|--------|
+| P182 | ADVANCE TRIAGE→FIX | Solid governance gap description, ready for implementation |
+| P172 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P173 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P174 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P175 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P176 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P177 | ADVANCE DRAFT→REVIEW | Solid description with motivation and design |
+| P178 | ADVANCE DRAFT→REVIEW | Extensive research document (Ostrom framework) |
+| P179 | ADVANCE DRAFT→REVIEW | Full constitution document |
+| P180 | ADVANCE DRAFT→REVIEW | Implementation roadmap with phases |
+| P183 | ADVANCE DRAFT→REVIEW | Solid onboarding doc description |
+| P184 | ADVANCE DRAFT→REVIEW | Solid Belbin role coverage description |
+| P185 | ADVANCE DRAFT→REVIEW | Solid governance memory description |
+| P170 | HOLD REVIEW→DEVELOP | No acceptance criteria defined |
+| P048 | HOLD DEVELOP→MERGE | AC defined but not yet verified |
+| P163 | HOLD MERGE→COMPLETE | Corrupted AC (P156 character-split bug, ~360 items) |
+| P164 | HOLD MERGE→COMPLETE | Corrupted AC (P156 character-split bug) |
+| P165 | HOLD MERGE→COMPLETE | Corrupted AC (P156 character-split bug) |
+| P166 | HOLD MERGE→COMPLETE | AC pending verification (7 items) |
+| P167 | HOLD FIX→DEPLOYED | Maturity=new, work not complete |
+| P168 | HOLD FIX→DEPLOYED | Maturity=new, work not complete |
+| P169 | HOLD FIX→DEPLOYED | Maturity=new, work not complete |
+
+## Advances
+
+### P182 — Agent governance: no team-level governance layer
+
+- **State:** TRIAGE → FIX
+- **Type:** issue
+- **Coherent:** ✅ Describes clear gap in Ostrom Principle 8 (Nested Enterprises) — no team-level governance
+- **Maturity:** Set to mature
+- **Decision:** ADVANCE
+
+**Rationale:** Solid issue description identifying a governance layer gap. Ready for implementation work.
+
+### P172–P177 — Workforce Management Features (6 proposals)
+
+- **State:** DRAFT → REVIEW
+- **Type:** feature
+- **Coherent:** ✅ All have clear summaries, motivations, and design sections
+- **Decision:** ADVANCE all 6 to REVIEW
+
+**Rationale:** Cohesive set of workforce management features (analytics, capacity planning, skill certification, retirement lifecycle, labor market, dashboard). All have substantive descriptions meeting DRAFT→REVIEW gate.
+
+### P178–P180 — Governance Documents (3 proposals)
+
+- **State:** DRAFT → REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Extensive research documents (Ostrom: 7034 chars, Constitution: 5028 chars, Roadmap: 2846 chars)
+- **Decision:** ADVANCE all 3 to REVIEW
+
+**Rationale:** Foundational governance documents with rich content. Ostrom framework and Constitution are research-grade. Roadmap has clear phases.
+
+### P183–P185 — Governance Operational Docs (3 proposals)
+
+- **State:** DRAFT → REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Clear descriptions (onboarding, Belbin roles, governance memory)
+- **Decision:** ADVANCE all 3 to REVIEW
+
+**Rationale:** Operational governance documents with solid summaries. Motivation/design fields empty but summary is descriptive enough for REVIEW gate.
+
+## Holds
+
+### P170 — Agent Society Governance Framework
+
+- **State:** REVIEW (already mature)
+- **Type:** feature
+- **Acceptance Criteria:** ❌ None defined
+- **Decision:** HOLD
+
+**Rationale:** Cannot advance to DEVELOP without acceptance criteria. Note added requesting AC definition.
+
+### P048 — Pillar 4: Utility Layer
+
+- **State:** DEVELOP, maturity: active
+- **Type:** component
+- **Acceptance Criteria:** ✅ Defined but ⏳ pending
+- **Decision:** HOLD
+
+**Rationale:** Has AC but none verified. Needs development work and AC verification before MERGE.
+
+### P163–P165 — Corrupted AC (P156 bug)
+
+- **State:** MERGE, maturity: mature
+- **Type:** feature
+- **Acceptance Criteria:** ❌ Corrupted (character-split, ~360 items each)
+- **Decision:** HOLD
+
+**Rationale:** P156 `add_acceptance_criteria` bug splits text into individual characters. These proposals cannot be verified through `transition_proposal`. AC must be deleted and re-created after P156 is fixed.
+
+### P166 — Terminal state protocol
+
+- **State:** MERGE, maturity: mature
+- **Type:** feature
+- **Acceptance Criteria:** ✅ 7 well-formed ACs (all ⏳ pending)
+- **Decision:** HOLD
+
+**Rationale:** Has proper AC (unlike P163-P165) but none verified yet. Needs `verify_ac` calls for each item before MERGE→COMPLETE.
+
+### P167–P169 — Gate Pipeline Issues
+
+- **State:** FIX, maturity: new
+- **Type:** issue
+- **Decision:** HOLD
+
+**Rationale:** All three are maturity=new — work not yet complete. These are blocking issues for the gate pipeline itself (rubber-stamping, audit failures, spawnAgent login failures). Need implementation before FIX→DEPLOYED.
