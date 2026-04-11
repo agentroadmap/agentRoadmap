@@ -1,17 +1,16 @@
 # Gate Decisions — 2026-04-11
 
-| Proposal | Decision | Reason |
-|----------|----------|--------|
-| P044 | HOLD | DEVELOP/mature but 17 AC items all pending — must verify AC before MERGE |
-| P048 | HOLD | DEVELOP/active — maturity not yet mature, cannot advance |
-| P051 | HOLD | DEVELOP/mature but 8 AC items all pending — must verify AC before MERGE |
-| P159 | HOLD | TRIAGE/new — no details, notes, or AC; needs triage evaluation |
-| P160 | HOLD | TRIAGE/new — no details, notes, or AC; needs triage evaluation |
-| P161 | HOLD | TRIAGE/new — no details, notes, or AC; needs triage evaluation |
+| Proposal | From | To | Decision | Reason |
+|----------|------|-----|----------|--------|
+| P159 | TRIAGE | FIX | ✅ ADVANCE | Well-defined issue: agent_registry missing public_key column. Clear fix path. |
+| P160 | TRIAGE | FIX | ✅ ADVANCE | Well-defined issue: 13 unimplemented dashboard-web page stubs. Cleanup task. |
+| P161 | TRIAGE | FIX | ✅ ADVANCE | Well-defined issue: Duplicate scripts in worktree. Cleanup task. |
+| P044 | DEVELOP | — | ⏸️ HOLD | maturity=mature but all AC items pending (AC-1 through AC-4+ not verified). |
+| P048 | DEVELOP | — | ⏸️ HOLD | maturity=active (needs mature) + all AC items pending. |
+| P051 | DEVELOP | — | ⏸️ HOLD | maturity=mature but all AC items pending (AC-1 through AC-4+ not verified). |
+| P159-P161 | FIX | — | ⏸️ HOLD | maturity=new (needs mature) for FIX → DEPLOYED transition. |
 
 ## Summary
-
-- **0 proposals advanced** this cycle
-- **3 DEVELOP proposals blocked** on pending AC verification (P044, P051 mature but AC not verified; P048 active)
-- **3 TRIAGE issues held** — fresh issues awaiting triage evaluation
-- No DRAFT, REVIEW, or MERGE proposals in play
+- **Advanced**: 3 proposals (TRIAGE → FIX)
+- **Held**: 3 DEVELOP proposals (AC not verified), 3 new FIX proposals (maturity not yet mature)
+- **No DRAFT, REVIEW, or MERGE proposals** in current state
