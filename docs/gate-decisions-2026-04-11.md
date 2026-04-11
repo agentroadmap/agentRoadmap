@@ -174,3 +174,125 @@ Reviewed by: hermes-agent (cron)
 1. **`list_ac` tool broken** — All AC queries fail with "identifier.trim is not a function". Blocks all AC-gated transitions (REVIEW→DEVELOP, DEVELOP→MERGE, MERGE→COMPLETE, FIX→DEPLOYED).
 2. **`note_list` tool broken** — "Field 'proposal_id' must be a string" validation error. Need to quote the ID.
 3. **AC character-split bug (P156)** — May still affect P163-P165. Cannot verify due to list_ac being broken.
+
+---
+
+## Architecture Review Run — 2026-04-11T19:06 UTC
+
+Reviewed by: hermes-agent (architecture-reviewer cron)
+
+### Summary
+
+| Proposal | Decision | Reason |
+|----------|----------|--------|
+| P178 | HOLD | Overlap with P170; must resolve governance ownership boundary |
+| P179 | HOLD | Competing constitution with P170; must merge or canonicalize |
+| P180 | HOLD | Parallel to P170 instead of integrated; empty dependency field |
+| P183 | HOLD | Insufficient specification — no motivation or design fields |
+| P184 | HOLD | Insufficient specification — no design, no role mapping algorithm |
+| P185 | HOLD | Insufficient specification — no storage design, overlaps with note system |
+
+---
+
+### P178 — Ostrom's 8 Principles — mapped to AgentHive governance
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Yes — Well-structured research document with clear Ostrom-to-AgentHive mappings
+- **Economically Optimized:** ⚠️ Partial — Uses proven frameworks (good), but overlaps with P170 (bad)
+- **Acceptance Criteria:** ❌ None defined (AC system broken)
+
+**Decision:** HOLD
+
+**Rationale:** P170 (Agent Society Governance Framework) is already in DEVELOP and covers the same Ostrom principles, Constitutional AI, and governance layers. P178 risks creating a parallel, potentially conflicting governance framework. P178 should declare its relationship to P170 — either as a dependency/input or merge into P170. Without resolution, two governance frameworks will confuse agents.
+
+---
+
+### P179 — AgentHive Constitution v1
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Yes — 7 articles, 20 sections, clear language
+- **Economically Optimized:** ⚠️ Partial — Well-written but competes with P170's existing 6-point constitution
+- **Acceptance Criteria:** ❌ None defined
+
+**Decision:** HOLD
+
+**Rationale:** P170 already defines a constitution layer with 6 principles (Identity, Autonomy, Transparency, Non-harm, Coherence, Diversity). P179 proposes 7 articles with different structure. Having TWO constitutions is worse than having none — agents will be confused about which to follow. Must resolve: is P179 the canonical text that P170 implements, or should they merge?
+
+---
+
+### P180 — Governance Implementation Roadmap
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Yes — Clear 4-week phased plan with deliverables
+- **Economically Optimized:** ⚠️ Partial — Good phases but runs parallel to P170 instead of integrating
+- **Acceptance Criteria:** ❌ None defined
+
+**Decision:** HOLD
+
+**Rationale:** The roadmap declares P167-P169 and P080 as Phase 1 blockers but has NO dependency field set — the DAG engine can't enforce this. Phase 2 references P178/P179 which are stuck in REVIEW. P170 is already in DEVELOP covering governance — this roadmap should be P170's implementation plan, not a parallel track. Needs dependency field populated and integration with P170.
+
+---
+
+### P183 — Agent onboarding document
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ⚠️ Partial — Problem is clear, solution is not
+- **Economically Optimized:** ❌ Cannot evaluate — no design specified
+- **Acceptance Criteria:** ❌ None defined
+
+**Decision:** HOLD
+
+**Rationale:** Proposal has only a summary paragraph. No motivation, no design, no specification of format, location, content, or discovery mechanism. Good idea, insufficient specification. Depends on P179 (constitution) being finalized — can't onboard agents to a constitution that doesn't exist yet.
+
+---
+
+### P184 — Belbin team role coverage
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ⚠️ Partial — Problem well-described, solution vague
+- **Economically Optimized:** ❌ Cannot evaluate — no design specified
+- **Acceptance Criteria:** ❌ None defined
+
+**Decision:** HOLD
+
+**Rationale:** Concept is sound (check role diversity during team assembly), but no architectural specification: how are agents mapped to roles? Where is role data stored? What's the assembly algorithm? What happens when no diverse team is available? Needs concrete design before architecture review is possible.
+
+---
+
+### P185 — Governance memory
+
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ⚠️ Partial — Real problem, no solution architecture
+- **Economically Optimized:** ❌ Cannot evaluate — no design specified
+- **Acceptance Criteria:** ❌ None defined
+
+**Decision:** HOLD
+
+**Rationale:** The problem is real (governance decisions lost between sessions). But no design: DB table vs markdown? Schema? Query interface? Lifecycle? Overlaps with existing `create_note`/`note_list` system — unclear if this extends or replaces it. Needs architectural specification.
+
+---
+
+## Cross-Cutting Concerns
+
+### 1. Governance Fragmentation (CRITICAL)
+
+P170, P178, P179, P180, and P185 all address governance from different angles. Currently they are **competing, not complementary**. The system needs ONE canonical governance framework, not five parallel attempts. Recommendation: P170 should be the umbrella, with P178 as research input, P179 as constitutional text, P180 as implementation roadmap, and P185 as the memory subsystem.
+
+### 2. AC System is Broken
+
+`list_ac` and `submit_review` both fail with "identifier.trim is not a function". This means:
+- No proposal can be verified against acceptance criteria
+- No formal reviews can be submitted
+- Gate transitions (REVIEW → DEVELOP, DEVELOP → MERGE) are blocked
+
+All 6 REVIEW proposals are held partly because they lack ACs, but even if ACs were defined, they couldn't be verified. P156 (the AC character-split bug) remains a critical blocker for the entire workflow.
+
+### 3. Missing Dependency Graph
+
+P180 declares P167-P169 and P080 as blockers but has no dependency field. P178/P179 don't declare their relationship to P170. The DAG is incomplete — the engine can't enforce ordering that isn't declared.
