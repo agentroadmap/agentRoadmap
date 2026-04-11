@@ -36,7 +36,7 @@ async function main() {
     batchSize: 10,
   });
 
-  await cron.start();
+  await cron.run();
   logger.log("PipelineCron started successfully");
   logger.log("Listening for pg_notify events on: proposal_gate_ready, transition_queued, proposal_maturity_changed");
   logger.log("Fallback polling every 30 seconds");
