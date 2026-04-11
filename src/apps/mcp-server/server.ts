@@ -29,6 +29,7 @@ import { registerProtocolTools } from "./tools/protocol/index.ts";
 import { registerTeamTools } from "./tools/teams/index.ts";
 import { registerTestingTools } from "./tools/testing/index.ts";
 import { registerWorkflowTools } from "./tools/workflow/index.ts";
+import { registerDependencyTools } from "./tools/dependencies/index.ts";
 import type {
 	CallToolResult,
 	GetPromptResult,
@@ -1035,6 +1036,7 @@ export async function createMcpServer(
 		console.log("[MCP] Using legacy filesystem proposal tools");
 	}
 	registerTestingTools(server);
+	registerDependencyTools(server);
 
 	// Start background maintenance tasks
 	const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
