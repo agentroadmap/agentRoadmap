@@ -414,6 +414,8 @@ export async function createMcpServer(
 		type SendMessageArgs = Parameters<typeof msg.sendMessage>[0];
 		type ReadMessagesArgs = Parameters<typeof msg.readMessages>[0];
 		type ListChannelsArgs = Parameters<typeof msg.listChannels>[0];
+		type SubscribeArgs = Parameters<typeof msg.subscribe>[0];
+		type ListSubscriptionsArgs = Parameters<typeof msg.listSubscriptions>[0];
 		server.addTool({
 			name: "msg_send",
 			description: "Send message via Postgres message_ledger",
@@ -433,13 +435,19 @@ export async function createMcpServer(
 		});
 		server.addTool({
 			name: "msg_read",
-			description: "Read messages from Postgres",
+			description:
+				"Read messages from Postgres. With wait_ms, blocks until new messages arrive via pg_notify (0-30000ms).",
 			inputSchema: {
 				type: "object",
 				properties: {
-					agent: { type: "string" },
-					channel: { type: "string" },
-					limit: { type: "number" },
+					agent: { type: "string", description: "Filter by agent identity" },
+					channel: { type: "string", description: "Filter by channel name" },
+					limit: { type: "number", description: "Max messages to return (default 50)" },
+					wait_ms: {
+						type: "number",
+						description:
+							"Block up to N milliseconds waiting for new messages via pg_notify (0-30000). Returns immediately if messages exist.",
+					},
 				},
 			},
 			handler: (a) => msg.readMessages(a as ReadMessagesArgs),
@@ -449,6 +457,48 @@ export async function createMcpServer(
 			description: "List channels",
 			inputSchema: { type: "object", properties: {} },
 			handler: (a) => msg.listChannels(a as ListChannelsArgs),
+		});
+		// P149: Channel subscription for push notifications
+		server.addTool({
+			name: "chan_subscribe",
+			description:
+				"Subscribe or unsubscribe from a channel to receive push notifications via pg_notify when new messages arrive. Subscriptions persist in the database.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					agent_identity: {
+						type: "string",
+						description: "Agent identity for the subscription",
+					},
+					channel: {
+						type: "string",
+						description:
+							"Channel to subscribe to (direct, team:<name>, broadcast, system)",
+					},
+					subscribe: {
+						type: "boolean",
+						description: "True to subscribe, false to unsubscribe. Defaults to true.",
+					},
+				},
+				required: ["agent_identity", "channel"],
+			},
+			handler: (a) => msg.subscribe(a as SubscribeArgs),
+		});
+		// P149: List active subscriptions
+		server.addTool({
+			name: "chan_subscriptions",
+			description:
+				"List channel subscriptions, optionally filtered by agent. Shows who is subscribed to which channels.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					agent_identity: {
+						type: "string",
+						description: "Filter by agent identity (optional)",
+					},
+				},
+			},
+			handler: (a) => msg.listSubscriptions(a as ListSubscriptionsArgs),
 		});
 
 		const { PgAgentHandlers } = await import("./tools/agents/pg-handlers.ts");
