@@ -37,14 +37,31 @@ export const DEFAULT_FILES = {
 } as const;
 
 /**
- * Default proposal statuses
+ * Default proposal statuses — ordered by workflow
+ * RFC workflow: Draft → Review → Develop → Merge → Complete
+ * Quick Fix workflow: TRIAGE → FIX → DEPLOYED
  */
 export const DEFAULT_STATUSES = [
+	// RFC workflow (feature, component, product)
 	"Draft",
-	"Review",
+	"Review", 
 	"Develop",
 	"Merge",
 	"Complete",
+	// Quick Fix workflow (issue)
+	"TRIAGE",
+	"FIX",
+	"DEPLOYED",
+	// Other statuses
+	"OPEN",
+	"REVIEWING",
+	"APPROVED",
+	"CLOSED",
+	"REJECTED",
+	"DISCARDED",
+	"WONT_FIX",
+	"ESCALATE",
+	"DEPLOYED",
 ] as const;
 
 /**
