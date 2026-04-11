@@ -6,15 +6,24 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, "..");
 
 const serverModule = await import("../src/apps/mcp-server/server.ts");
+const httpCompatModule = await import("../src/apps/mcp-server/http-compat.ts");
 const createMcpServer =
 	serverModule.createMcpServer || serverModule.default?.createMcpServer;
+const handleDirectMcpRequest =
+	httpCompatModule.handleDirectMcpRequest ||
+	httpCompatModule.default?.handleDirectMcpRequest;
 
 if (!createMcpServer) {
 	console.error("[MCP] Failed to load createMcpServer from server module");
 	process.exit(1);
 }
+if (!handleDirectMcpRequest) {
+	console.error("[MCP] Failed to load direct MCP request handler");
+	process.exit(1);
+}
 
 const app = express();
+const directMcpServer = await createMcpServer(projectRoot);
 
 // Session tracking: sessionId → { server, transport }
 const sessions = new Map();
@@ -29,6 +38,20 @@ app.get("/health", async (_req, res) => {
 		sessions: sessionCount,
 		timestamp: new Date().toISOString(),
 	});
+});
+
+app.post(["/mcp", "/api/mcp"], express.json(), async (req, res) => {
+	try {
+		const response = await handleDirectMcpRequest(directMcpServer, req.body);
+		res.status(response.status).json(response.body);
+	} catch (err) {
+		console.error("[MCP] Direct MCP request failed:", String(err));
+		res.status(500).json({
+			jsonrpc: "2.0",
+			id: null,
+			error: { code: -32000, message: "Direct MCP request failed" },
+		});
+	}
 });
 
 app.get("/sse", async (_req, res) => {

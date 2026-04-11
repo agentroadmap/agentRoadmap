@@ -15,6 +15,7 @@ import { RelayService } from "../../core/messaging/relay.ts";
 import { Core } from "../../core/roadmap.ts";
 import type { ContentStore } from "../../core/storage/content-store.ts";
 import { createMcpServer, type McpServer } from "../../mcp/server.ts";
+import { handleDirectMcpRequest } from "../mcp-server/http-compat.ts";
 import type {
 	Proposal,
 	ProposalUpdateInput,
@@ -634,6 +635,13 @@ export class RoadmapServer {
 			});
 		}
 
+		if (
+			method === "POST" &&
+			(pathname === "/mcp" || pathname === "/api/mcp")
+		) {
+			return await this.handleDirectMcp(req);
+		}
+
 		// API Routes
 		if (pathname.startsWith("/api/")) {
 			if (pathname === "/api/proposals") {
@@ -799,6 +807,36 @@ export class RoadmapServer {
 		}
 
 		return await this.handleRequest(req);
+	}
+
+	private async handleDirectMcp(req: Request): Promise<Response> {
+		await this.ensureServicesReady();
+		if (!this.mcpServer) {
+			return Response.json(
+				{
+					jsonrpc: "2.0",
+					id: null,
+					error: { code: -32000, message: "MCP server not available" },
+				},
+				{ status: 500 },
+			);
+		}
+
+		try {
+			const payload = await req.json();
+			const response = await handleDirectMcpRequest(this.mcpServer, payload);
+			return Response.json(response.body, { status: response.status });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return Response.json(
+				{
+					jsonrpc: "2.0",
+					id: null,
+					error: { code: -32700, message },
+				},
+				{ status: 400 },
+			);
+		}
 	}
 
 	private async handleRequest(req: Request): Promise<Response> {
