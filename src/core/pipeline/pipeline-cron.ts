@@ -443,7 +443,8 @@ export class PipelineCron {
 	): Promise<void> {
 		await this.queryFn(
 			`UPDATE roadmap.transition_queue
-       SET status = 'dispatched',
+       SET status = 'processing',
+           processing_at = now(),
            last_error = NULL
        WHERE id = $1`,
 			[id],
