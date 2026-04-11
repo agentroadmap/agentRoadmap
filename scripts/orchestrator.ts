@@ -1,12 +1,13 @@
 /**
- * AgentHive Orchestrator — Event-driven agent dispatcher with SKEPTIC GATE.
+ * AgentHive Orchestrator — Event-driven agent dispatcher with dynamic agent deployment.
  * 
- * The skeptic participates in EVERY gate decision:
- *   - Before advancing REVIEW → DEVELOP: skeptic must not block
- *   - Before advancing DEVELOP → MERGE: skeptic must not block
- *   - Before advancing MERGE → COMPLETE: skeptic must not block
+ * When state machine calls:
+ *   - DRAFT → dispatch Architect to enhance
+ *   - REVIEW → dispatch Reviewer + Skeptic to evaluate
+ *   - DEVELOP → dispatch Developer to implement
+ *   - MERGE → dispatch Git Specialist to integrate
  * 
- * If the skeptic blocks, the proposal CANNOT advance.
+ * Research & Architecture agents run on-demand when proposals need them.
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -21,148 +22,121 @@ const logger = {
   error: (...args: unknown[]) => console.error("[Orchestrator]", ...args),
 };
 
-// Gate transitions that require skeptic review
-const GATED_TRANSITIONS = new Set([
-  "REVIEW→DEVELOP",
-  "DEVELOP→MERGE", 
-  "MERGE→COMPLETE"
-]);
+// Agent dispatch map: state → agents to call
+const AGENT_DISPATCH: Record<string, string[]> = {
+  DRAFT: ["architect", "researcher"],
+  TRIAGE: ["triage-agent", "system-monitor"],
+  REVIEW: ["reviewer", "skeptic-alpha", "skeptic-beta", "architecture-reviewer"],
+  FIX: ["fix-agent", "developer"],
+  DEVELOP: ["developer", "skeptic-beta", "token-tracker"],
+  MERGE: ["merge-agent", "git-specialist", "messaging-tester"],
+  COMPLETE: ["documenter", "pillar-researcher"],
+  DEPLOYED: ["system-monitor", "token-tracker"],
+};
 
-interface SkepticVerdict {
-  approved: boolean;
-  challenges: string[];
-  blockers: string[];
-  alternatives: string[];
-}
+// Agent prompts
+const AGENT_PROMPTS: Record<string, string> = {
+  architect: "You are an Architecture Agent. Enhance this DRAFT proposal with acceptance criteria, design rationale, and implementation plan.",
+  reviewer: "You are an RFC Reviewer. Evaluate this proposal for coherence, economic optimization, and structural soundness.",
+  "skeptic-alpha": "You are SKEPTIC ALPHA. Challenge this proposal's design decisions. Demand evidence. Question assumptions.",
+  "skeptic-beta": "You are SKEPTIC BETA. Review implementation quality. Check test coverage. Validate error handling.",
+  "architecture-reviewer": "You are the Architecture Reviewer. Analyze design completeness, scalability, and integration constraints.",
+  developer: "You are a Senior Developer. Implement all acceptance criteria. Write production code and tests.",
+  "git-specialist": "You are a Git Specialist. Integrate branches, resolve conflicts, run tests.",
+  "token-tracker": "You are the Token Efficiency Agent. Track usage, calculate costs, suggest optimizations.",
+  "messaging-tester": "You are the Messaging Tester. Test A2A communication. Verify channel subscriptions.",
+  "system-monitor": "You are the System Monitor. Spot inconsistencies. Make proposals for rectifications.",
+  "pillar-researcher": "You are the Pillar Researcher. Research complementary components. Propose refinements.",
+  documenter: "You are a Documenter. Write documentation for completed proposals.",
+  researcher: "You are a Researcher. Gather context for proposals that need investigation.",
+  "triage-agent": "You are a Triage Agent. Evaluate issues and decide what to work on.",
+  "fix-agent": "You are a Fix Agent. Implement code changes to resolve issues.",
+};
 
-// Run skeptic review on a proposal
-async function skepticReview(proposalId: string, fromState: string, toState: string): Promise<SkepticVerdict> {
-  const client = new Client({ name: "skeptic-gate", version: "1.0.0" });
+// Dispatch agent to cubic
+async function dispatchAgent(agent: string, proposalId: string, task: string): Promise<string | null> {
+  const client = new Client({ name: "orchestrator", version: "1.0.0" });
   const transport = new SSEClientTransport(new URL(MCP_URL));
   
   try {
     await client.connect(transport);
     
-    // Get proposal details
-    const result = await client.callTool({
-      name: "prop_get",
-      arguments: { id: proposalId }
+    // Find or create cubic for this agent
+    const existing = await client.callTool({ name: "cubic_list", arguments: {} });
+    const data = JSON.parse(existing.content?.[0]?.text || "{}");
+    
+    let cubicId: string | null = null;
+    
+    // Look for existing cubic for this agent
+    for (const cubic of data.cubics || []) {
+      if (cubic.name?.toLowerCase().includes(agent.toLowerCase()) && !cubic.lock) {
+        cubicId = cubic.id;
+        break;
+      }
+    }
+    
+    // Create new cubic if needed
+    if (!cubicId) {
+      const created = await client.callTool({
+        name: "cubic_create",
+        arguments: {
+          name: `${agent} — Working on ${proposalId}`,
+          agents: [agent, "reviewer"],
+          proposals: [proposalId],
+        },
+      });
+      const createdData = JSON.parse(created.content?.[0]?.text || "{}");
+      if (createdData.success && createdData.cubic) {
+        cubicId = createdData.cubic.id;
+      }
+    }
+    
+    if (!cubicId) {
+      logger.error(`Failed to create cubic for ${agent}`);
+      return null;
+    }
+    
+    // Focus cubic (acquire lock)
+    const focused = await client.callTool({
+      name: "cubic_focus",
+      arguments: {
+        cubicId,
+        agent,
+        task: `${AGENT_PROMPTS[agent] || ""} Working on: ${proposalId}. ${task}`,
+        phase: "design",
+      },
     });
-    const data = JSON.parse(result.content?.[0]?.text || "{}");
     
-    const verdict: SkepticVerdict = {
-      approved: true,
-      challenges: [],
-      blockers: [],
-      alternatives: []
-    };
-    
-    // D2 GATE: REVIEW → DEVELOP
-    if (fromState === "REVIEW" && toState === "DEVELOP") {
-      // Rule: MUST have all acceptance criteria
-      if (!data.acceptance_criteria?.length) {
-        verdict.approved = false;
-        verdict.blockers.push("No acceptance criteria defined");
-        verdict.challenges.push("How can we verify implementation without ACs?");
-        verdict.challenges.push("What defines 'done' for this feature?");
-      }
-      
-      // Rule: Must have design
-      if (!data.design) {
-        verdict.approved = false;
-        verdict.blockers.push("No design document");
-      }
-      
-      // Rule: Must have motivation
-      if (!data.motivation) {
-        verdict.challenges.push("Why is this needed? No motivation stated.");
-      }
-      
-      // Alternatives check
-      verdict.alternatives.push("Have we considered existing solutions?");
-      verdict.alternatives.push("Is this the simplest approach?");
-    }
-    
-    // D3 GATE: DEVELOP → MERGE
-    if (fromState === "DEVELOP" && toState === "MERGE") {
-      // Rule: Must be mature
-      if (data.maturity_state !== "mature") {
-        verdict.approved = false;
-        verdict.blockers.push("Maturity is not 'mature'");
-      }
-      
-      // Integration challenges
-      verdict.challenges.push("Has code been reviewed?");
-      verdict.challenges.push("Do all ACs pass tests?");
-      verdict.challenges.push("Are integration constraints met?");
-      verdict.challenges.push("Will this work with other proposals?");
-      
-      // Check for circular dependencies
-      verdict.alternatives.push("Are there circular dependencies?");
-      verdict.alternatives.push("Will this scale to 1000+ proposals?");
-    }
-    
-    // D4 GATE: MERGE → COMPLETE
-    if (fromState === "MERGE" && toState === "COMPLETE") {
-      verdict.challenges.push("Is the merge truly complete?");
-      verdict.challenges.push("Are all tests passing?");
-      verdict.challenges.push("Is documentation updated?");
-    }
-    
-    // Log the verdict
-    logger.log(`🔍 SKEPTIC REVIEW: ${proposalId} (${fromState} → ${toState})`);
-    logger.log(`   Approved: ${verdict.approved ? "YES" : "NO — BLOCKED"}`);
-    if (verdict.blockers.length > 0) {
-      logger.log(`   Blockers: ${verdict.blockers.join("; ")}`);
-    }
-    if (verdict.challenges.length > 0) {
-      logger.log(`   Challenges: ${verdict.challenges.length} questions`);
-    }
-    
-    return verdict;
+    logger.log(`🚀 Dispatched ${agent} to ${cubicId} for ${proposalId}`);
+    return cubicId;
     
   } finally {
     await client.close();
   }
 }
 
-// Check if transition is allowed (with skeptic gate)
-async function canAdvance(proposalId: string, fromState: string, toState: string): Promise<boolean> {
-  // Check if this is a gated transition
-  const transitionKey = `${fromState}→${toState}`;
-  if (!GATED_TRANSITIONS.has(transitionKey)) {
-    return true; // Not gated, allow
+// Handle state change and dispatch agents
+async function handleStateChange(proposalId: string, newState: string) {
+  const agents = AGENT_DISPATCH[newState];
+  
+  if (!agents || agents.length === 0) {
+    logger.log(`No agents for state: ${newState}`);
+    return;
   }
   
-  // Run skeptic review
-  const verdict = await skepticReview(proposalId, fromState, toState);
+  logger.log(`📢 State change: ${proposalId} → ${newState}`);
+  logger.log(`   Dispatching: ${agents.join(", ")}`);
   
-  if (!verdict.approved) {
-    logger.warn(`🚨 SKEPTIC BLOCKED: ${proposalId} cannot advance from ${fromState} to ${toState}`);
-    logger.warn(`   Reasons: ${verdict.blockers.join("; ")}`);
-    
-    // Log blocker to audit
-    await query(
-      `INSERT INTO roadmap.audit_log (actor, action, resource_type, resource_id, details, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [
-        "skeptic",
-        "gate_blocked",
-        "proposal",
-        proposalId,
-        JSON.stringify({ from: fromState, to: toState, blockers: verdict.blockers })
-      ]
-    );
-    
-    return false;
+  // Dispatch all agents for this state
+  for (const agent of agents) {
+    const task = `Handle ${newState} for ${proposalId}`;
+    await dispatchAgent(agent, proposalId, task);
   }
-  
-  return true;
 }
 
-// Main orchestrator loop
+// Main orchestrator
 async function main() {
-  logger.log("Starting Orchestrator with SKEPTIC GATE...");
+  logger.log("Starting Orchestrator with dynamic agent deployment...");
   
   const pool = getPool();
   const pgClient = await pool.connect();
@@ -172,8 +146,7 @@ async function main() {
   await pgClient.query("LISTEN proposal_maturity_changed");
   await pgClient.query("LISTEN transition_queued");
   
-  logger.log("Listening for notifications with skeptic gate enabled");
-  logger.log("Gated transitions: REVIEW→DEVELOP, DEVELOP→MERGE, MERGE→COMPLETE");
+  logger.log("Listening for state changes to dispatch agents...");
   
   // Handle notifications
   pgClient.on("notification", async (msg: { channel: string; payload?: string }) => {
@@ -191,24 +164,35 @@ async function main() {
         [proposalId]
       );
       
-      if (result.rows.length === 0) return;
-      
-      const proposal = result.rows[0];
-      
-      // Check if this is a gated transition
-      const transitionKey = `${proposal.status}→${getNextState(proposal.status)}`;
-      if (GATED_TRANSITIONS.has(transitionKey)) {
-        const allowed = await canAdvance(proposalId, proposal.status, getNextState(proposal.status));
-        if (!allowed) {
-          logger.log(`⏳ ${proposal.display_id} blocked by skeptic — waiting for resolution`);
-        }
+      if (result.rows.length > 0) {
+        const proposal = result.rows[0];
+        await handleStateChange(proposalId, proposal.status);
       }
     } catch (e) {
       logger.error("Error handling notification:", e);
     }
   });
   
-  logger.log("Orchestrator with skeptic gate running...");
+  // Poll for proposals needing agents (every 2 minutes)
+  setInterval(async () => {
+    try {
+      const result = await query(
+        `SELECT id, display_id, status, maturity_state 
+         FROM roadmap.proposal 
+         WHERE maturity_state = 'new' 
+         ORDER BY priority DESC NULLS LAST 
+         LIMIT 5`
+      );
+      
+      for (const proposal of result.rows) {
+        await handleStateChange(proposal.id, proposal.status);
+      }
+    } catch (e) {
+      logger.error("Polling error:", e);
+    }
+  }, 2 * 60 * 1000); // Every 2 minutes
+  
+  logger.log("Orchestrator running with dynamic agent deployment...");
   
   // Graceful shutdown
   const shutdown = async (signal: string) => {
@@ -220,18 +204,6 @@ async function main() {
   
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
-}
-
-function getNextState(currentState: string): string {
-  const transitions: Record<string, string> = {
-    DRAFT: "REVIEW",
-    REVIEW: "DEVELOP",
-    DEVELOP: "MERGE",
-    MERGE: "COMPLETE",
-    TRIAGE: "FIX",
-    FIX: "DEPLOYED"
-  };
-  return transitions[currentState] || currentState;
 }
 
 main().catch((err) => {
