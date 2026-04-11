@@ -90,4 +90,69 @@ export function registerMemoryTools(server: McpServer): void {
 			});
 		},
 	});
+
+	// P062: memory_list — list all memory entries for an agent/layer
+	server.addTool({
+		name: "memory_list",
+		description: "List agent memory entries from Postgres",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agent_identity: { type: "string" },
+				layer: { type: "string" },
+			},
+			required: [],
+		},
+		handler: async (args: Record<string, unknown>) =>
+			await handlers.memoryList({
+				agent_identity:
+					typeof args.agent_identity === "string"
+						? args.agent_identity
+						: undefined,
+				layer: typeof args.layer === "string" ? args.layer : undefined,
+			}),
+	});
+
+	// P062: memory_delete — delete memory entries
+	server.addTool({
+		name: "memory_delete",
+		description: "Delete agent memory entries from Postgres",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agent_identity: { type: "string" },
+				layer: { type: "string" },
+				key: { type: "string" },
+			},
+			required: [],
+		},
+		handler: async (args: Record<string, unknown>) =>
+			await handlers.deleteMemory({
+				agent_identity: String(args.agent_identity ?? "system"),
+				layer: String(args.layer ?? "working"),
+				key: typeof args.key === "string" ? args.key : undefined,
+			}),
+	});
+
+	// P062: memory_summary — aggregate summary of memory entries
+	server.addTool({
+		name: "memory_summary",
+		description: "Get a summary of agent memory entries grouped by agent/layer",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agent_identity: { type: "string" },
+				layer: { type: "string" },
+			},
+			required: [],
+		},
+		handler: async (args: Record<string, unknown>) =>
+			await handlers.memorySummary({
+				agent_identity:
+					typeof args.agent_identity === "string"
+						? args.agent_identity
+						: undefined,
+				layer: typeof args.layer === "string" ? args.layer : undefined,
+			}),
+	});
 }

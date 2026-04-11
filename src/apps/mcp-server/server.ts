@@ -11,6 +11,7 @@ import {
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { RelayService } from "../../core/messaging/relay.ts";
+import { PipelineCron } from "../../core/pipeline/pipeline-cron.ts";
 import { Core } from "../../core/roadmap.ts";
 import * as pgPool from "../../postgres/pool.ts";
 import { getPackageName } from "../../shared/utils/app-info.ts";
@@ -57,6 +58,9 @@ const INSTRUCTIONS_NORMAL =
 	"At the beginning of each session, read the roadmap://workflow/overview resource to understand how AgentHive proposals, workflow stages, and maturity are managed through the roadmap MCP surface. Additional detailed guides are available as resources when needed.";
 const INSTRUCTIONS_FALLBACK =
 	"The roadmap workspace is not initialized in this directory. Read the roadmap://init-required resource for setup instructions.";
+
+// Track whether gate pipeline (PipelineCron) has already been started to avoid duplicates
+let gatePipelineStarted = false;
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -598,15 +602,24 @@ export async function createMcpServer(
 			handler: (a) =>
 				spending.getTokenEfficiencyReport(a as GetTokenEfficiencyReportArgs),
 		});
+		// P059: Enhanced model_list with capability filtering and is_active support
 		server.addTool({
 			name: "model_list",
-			description: "List registered models",
-			inputSchema: { type: "object", properties: {} },
+			description: "List registered models with optional capability and cost filters",
+			inputSchema: {
+				type: "object",
+				properties: {
+					capability: { type: "string", description: "Filter by capability, e.g. 'tool_use=true'" },
+					max_cost_per_1k_input: { type: "string", description: "Max cost per 1k input tokens" },
+					active_only: { type: "boolean", description: "Only show active models (default: true)" },
+				},
+			},
 			handler: (a) => models.listModels(a as ListModelsArgs),
 		});
+		// P059: Enhanced model_add with is_active and context_window support
 		server.addTool({
 			name: "model_add",
-			description: "Register a model",
+			description: "Register or update a model",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -615,8 +628,10 @@ export async function createMcpServer(
 					cost_per_1k_input: { type: "string" },
 					cost_per_1k_output: { type: "string" },
 					max_tokens: { type: "string" },
-					capabilities: { type: "string" },
+					context_window: { type: "string" },
+					capabilities: { type: "string", description: "JSON object, e.g. '{\"tool_use\":true,\"vision\":true}'" },
 					rating: { type: "string" },
+					is_active: { type: "string", description: "'true' or 'false' to activate/deactivate" },
 				},
 				required: ["model_name"],
 			},
@@ -692,13 +707,16 @@ export async function createMcpServer(
 			},
 			handler: (a) => memory.memoryList(a as MemoryListArgs),
 		});
+		// P062: memory_summary with optional filters
 		server.addTool({
 			name: "memory_summary",
-			description: "Get agent memory summary",
+			description: "Get agent memory summary grouped by agent/layer",
 			inputSchema: {
 				type: "object",
-				properties: { agent_identity: { type: "string" } },
-				required: ["agent_identity"],
+				properties: {
+					agent_identity: { type: "string", description: "Filter by agent identity (optional)" },
+					layer: { type: "string", description: "Filter by memory layer (optional)" },
+				},
 			},
 			handler: (a) => memory.memorySummary(a as MemorySummaryArgs),
 		});
@@ -738,6 +756,10 @@ export async function createMcpServer(
 			},
 			handler: (a) => memory.searchMemory(a as SearchMemoryArgs),
 		});
+
+		// P078: Escalation Management tools
+		const { registerEscalationTools } = await import("./tools/escalation/index.ts");
+		registerEscalationTools(server);
 
 		// Proposal CRUD tools via backend-switch (prop_list, prop_get, prop_create, prop_update, prop_transition, prop_delete)
 		// Already registered at line 352 via registerProposalTools
@@ -1027,9 +1049,9 @@ export async function createMcpServer(
 			handler: (a) => fed.removeHost(a as FedRemoveHostArgs),
 		});
 
-		console.log(
-			"[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL, cubics, pulse, federation",
-		);
+	console.log(
+		"[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL, cubics, pulse, federation",
+	);
 	} else {
 		registerFilesystemProposalTools(server, config);
 		registerMessageTools(server);
