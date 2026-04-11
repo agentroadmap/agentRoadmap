@@ -1769,7 +1769,7 @@ function buildProposalFromOptions(
 			? { maturity: String(options.maturity).toLowerCase() as any }
 			: {}),
 		...(options.type
-			? { proposalType: String(options.type).toUpperCase() }
+			? { proposalType: String(options.type).toLowerCase() }
 			: {}),
 		...(options.domain
 			? { domainId: String(options.domain).toUpperCase() }
@@ -1817,7 +1817,7 @@ proposalCmd
 	.option("-s, --status <status>")
 	.option(
 		"-t, --type <type>",
-		"proposal type (DIRECTIVE, CAPABILITY, TECHNICAL, COMPONENT, OPS_ISSUE)",
+		"proposal type (product, component, feature, issue)",
 	)
 	.option("--domain <domainId>", "domain ID (e.g. CORE, INFRA)")
 	.option(
@@ -1921,7 +1921,7 @@ proposalCmd
 	)
 	.option(
 		"--maturity <level>",
-		"proposal maturity level (skeleton, contracted, audited)",
+		"proposal maturity level (new, active, mature, obsolete)",
 	)
 	.option(
 		"--needs <capability>",
@@ -3044,7 +3044,7 @@ proposalCmd
 	)
 	.option(
 		"-T, --type <type>",
-		"proposal type (DIRECTIVE, CAPABILITY, TECHNICAL, COMPONENT, OPS_ISSUE)",
+		"proposal type (product, component, feature, issue)",
 	)
 	.option("--domain <domainId>", "domain ID (e.g. CORE, INFRA)")
 	.option(
@@ -3183,7 +3183,7 @@ proposalCmd
 	)
 	.option(
 		"--maturity <level>",
-		"proposal maturity level (skeleton, contracted, audited)",
+		"proposal maturity level (new, active, mature, obsolete)",
 	)
 	.option(
 		"--builder <agent>",
@@ -3648,7 +3648,7 @@ proposalCmd
 		}
 
 		if (options.type !== undefined) {
-			editArgs.proposalType = String(options.type).toUpperCase();
+			editArgs.proposalType = String(options.type).toLowerCase();
 		}
 		if (options.domain !== undefined) {
 			editArgs.domainId = String(options.domain).toUpperCase();
