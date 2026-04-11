@@ -1,57 +1,63 @@
 # Gate Decisions — 2026-04-11
 
-Reviewed by: rfc-gate-evaluator (cron)
-Timestamp: 2026-04-11T11:01 UTC
+Reviewed by: hermes-agent (cron)
+Timestamp: 2026-04-11T07:15 UTC
 
 ## Summary
 
 | Proposal | Decision | Reason |
 |----------|----------|--------|
-| P079 | HOLD | maturity=obsolete, AC pending — not ready |
-| P086 | HOLD | maturity=new, no AC defined — not ready |
-| P154 | HOLD | maturity=new, no AC defined — not ready |
-| P155 | HOLD | maturity=new, no AC defined — not ready |
-| P159 | HOLD | maturity=new, no AC defined — not ready |
-| P160 | HOLD | maturity=new, no AC defined — not ready |
-| P161 | HOLD | maturity=new, no AC defined — not ready |
-| P162 | HOLD | No acceptance criteria defined |
-| P045 | HOLD | maturity=active, AC pending — not ready |
-| P046 | HOLD | maturity=active, AC pending — not ready |
-| P047 | HOLD | maturity=active, AC pending — not ready |
-| P048 | HOLD | maturity=active, AC pending — not ready |
-| P066 | HOLD | maturity=active, AC pending — not ready |
-| P067 | HOLD | maturity=active, AC pending — not ready |
-| P068 | HOLD | maturity=active, AC pending — not ready |
+| P162 | HOLD | No acceptance criteria defined; review note added with suggested AC |
+| P154 | HOLD | FIX maturity=new, no work started |
+| P155 | HOLD | FIX maturity=new, no work started |
+| P159 | HOLD | FIX maturity=new, no work started |
+| P160 | HOLD | FIX maturity=new, no work started |
+| P161 | HOLD | FIX maturity=new, no work started |
+| P45-P48 | HOLD | DEVELOP maturity=active, AC all pending |
+| P66-P68 | HOLD | DEVELOP maturity=active, AC all pending |
 
-## Gate Check Results
+## Details
 
-### QUICK FIX WORKFLOW
+### P162 — CLI proposal list should group by proposal type then show states in natural workflow order
 
-**TRIAGE → FIX**: No proposals in TRIAGE state.
+- **State:** REVIEW
+- **Type:** feature
+- **Coherent:** ✅ Yes — clear problem statement, current vs desired behavior, concrete example output
+- **Economically Optimized:** ✅ Yes — straightforward CLI formatting change, no architectural complexity
+- **Acceptance Criteria:** ❌ None defined
 
-**FIX → DEPLOYED**: 7 proposals in FIX state.
-- All have maturity=new or obsolete (gate requires mature)
-- Most have no AC or AC items pending verification (gate requires all AC pass)
-- None eligible for advancement
+**Decision:** HOLD
 
-### RFC WORKFLOW
+**Rationale:** Proposal is well-written and the intent is clear. However, no acceptance criteria have been defined, which is required for REVIEW→DEVELOP transition. Added review note with 4 suggested AC items covering: feature grouping, issue grouping, mixed output, and empty section handling.
 
-**DRAFT → REVIEW**: No proposals in DRAFT state.
+### FIX Proposals (P154, P155, P159, P160, P161)
 
-**REVIEW → DEVELOP**: 1 proposal (P162).
-- P162: Well-structured proposal with clear description, motivation, and design. However, **no acceptance criteria defined**. Per gate rules, AC must be present before advancing to DEVELOP. HOLD until ACs are added.
+- **State:** FIX
+- **Maturity:** new (all)
+- **Work started:** No commits found referencing these proposals
 
-**DEVELOP → MERGE**: 7 proposals in DEVELOP state.
-- All 7 pillar/feature proposals (P045-P048, P066-P068) have maturity=active
-- All AC items show ⏳ pending status
-- Gate requires maturity=mature AND all AC verified (pass)
-- None eligible for advancement
+**Decision:** HOLD (all)
 
-**MERGE → COMPLETE**: No proposals in MERGE state.
+**Rationale:** These are all newly created FIX proposals with no work started yet. No code changes, no commits. They are waiting to be claimed/leased by agents for work.
 
-## Notes
+### DEVELOP Proposals (P45-P48, P66-P68)
 
-- The pipeline is healthy — proposals are flowing through the system
-- FIX proposals (P159-P161) were recently created and need agent work before they can advance
-- DEVELOP proposals are large pillar/component items — expected to be long-running
-- P162 is the closest candidate for advancement — needs ACs added to proceed
+- **State:** DEVELOP
+- **Maturity:** active (all)
+- **AC Status:** All AC items show ⏳ pending (not verified)
+
+**Decision:** HOLD (all)
+
+**Rationale:** All 7 pillar/feature proposals are in active development. AC items exist but none have been verified (pass). Gate requires maturity=mature AND all AC verified before DEVELOP→MERGE transition. These are large, multi-AC proposals that need substantial work.
+
+### TRIAGE Proposals
+
+**Decision:** N/A
+
+**Rationale:** No proposals currently in TRIAGE state.
+
+### MERGE Proposals
+
+**Decision:** N/A
+
+**Rationale:** No proposals currently in MERGE state.
