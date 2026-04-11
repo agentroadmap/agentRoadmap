@@ -818,14 +818,38 @@ export async function getDependencies(args: {
 			};
 		}
 
-		const { rows } = await query(
-			`SELECT p.display_id, d.dependency_type as dep_type, d.id as dep_id
-       FROM proposal_dependencies d
-       JOIN proposal p ON p.id = d.to_proposal_id
-       WHERE d.from_proposal_id = $1
-       ORDER BY d.dependency_type, p.display_id`,
-			[proposalId],
-		);
+		// Use v_blocking_diagram for effective blocking status (migration 020).
+		// Falls back to raw query if view doesn't exist yet.
+		let rows;
+		try {
+			const result = await query(
+				`SELECT related_display_id, related_title, related_status,
+				        related_maturity, dependency_type, resolved_at,
+				        is_effective_blocker
+				 FROM roadmap.v_blocking_diagram
+				 WHERE proposal_id = $1 AND direction = 'i_depend_on'
+				 ORDER BY is_effective_blocker DESC, dependency_type, related_display_id`,
+				[proposalId],
+			);
+			rows = result.rows;
+		} catch {
+			// View doesn't exist yet — fall back to raw query
+			const result = await query(
+				`SELECT p.display_id AS related_display_id, p.title AS related_title,
+				        p.status AS related_status, p.maturity_state AS related_maturity,
+				        d.dependency_type, d.resolved_at,
+				        CASE WHEN d.dependency_type = 'blocks'
+				              AND p.maturity_state NOT IN ('mature', 'obsolete')
+				              AND d.resolved_at IS NULL
+				         THEN true ELSE false END AS is_effective_blocker
+				 FROM proposal_dependencies d
+				 JOIN proposal p ON p.id = d.to_proposal_id
+				 WHERE d.from_proposal_id = $1
+				 ORDER BY is_effective_blocker DESC, d.dependency_type, p.display_id`,
+				[proposalId],
+			);
+			rows = result.rows;
+		}
 
 		if (!rows.length) {
 			return {
@@ -835,17 +859,65 @@ export async function getDependencies(args: {
 			};
 		}
 
-		const lines = rows.map((r) => `→ ${r.display_id} [${r.dep_type}]`);
+		const lines = rows.map((r) => {
+			const statusIcon = r.is_effective_blocker ? "🔴" : "✅";
+			const maturity = r.related_maturity ? ` [${r.related_maturity}]` : "";
+			return `${statusIcon} → ${r.related_display_id} [${r.dependency_type}]${maturity}`;
+		});
+
+		const effectiveBlocks = rows.filter((r) => r.is_effective_blocker).length;
+		const header = effectiveBlocks > 0
+			? `### Dependencies for ${args.proposal_id} (${effectiveBlocks} blocking)`
+			: `### Dependencies for ${args.proposal_id} (clear ✓)`;
+
 		return {
 			content: [
 				{
 					type: "text",
-					text: `### Dependencies for ${args.proposal_id}\n${lines.join("\n")}`,
+					text: `${header}\n${lines.join("\n")}`,
 				},
 			],
 		};
 	} catch (err) {
 		return errorResult("Failed to get dependencies", err);
+	}
+}
+
+export async function resolveDependency(args: {
+	dep_id: number;
+	resolved_by: string;
+}): Promise<CallToolResult> {
+	try {
+		const { rows } = await query(
+			`UPDATE proposal_dependencies
+			 SET resolved_at = NOW(), resolved_by = $1
+			 WHERE id = $2 AND resolved_at IS NULL
+			 RETURNING id, from_proposal_id, to_proposal_id, dependency_type`,
+			[args.resolved_by, args.dep_id],
+		);
+
+		if (!rows.length) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Dependency ${args.dep_id} not found or already resolved.`,
+					},
+				],
+			};
+		}
+
+		const dep = rows[0];
+		return {
+			content: [
+				{
+					type: "text",
+					text: `✅ Dependency ${args.dep_id} resolved: ${dep.from_proposal_id} → ${dep.to_proposal_id} [${dep.dependency_type}] (by ${args.resolved_by})`,
+				},
+			],
+		};
+	} catch (err) {
+		return errorResult("Failed to resolve dependency", err);
 	}
 }
 
@@ -1187,13 +1259,27 @@ export class RfcWorkflowHandlers {
 
 		this.server.addTool({
 			name: "get_dependencies",
-			description: "Get dependencies for a proposal",
+			description: "Get dependencies for a proposal — shows effective blocking status (mature/obsolete upstream auto-resolved)",
 			inputSchema: {
 				type: "object",
 				properties: { proposal_id: { type: "string" } },
 				required: ["proposal_id"],
 			},
 			handler: (args: any) => getDependencies(args),
+		});
+
+		this.server.addTool({
+			name: "resolve_dependency",
+			description: "Manually resolve a dependency so it no longer blocks. Pass dep_id from get_dependencies output.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					dep_id: { type: "number", description: "The dependency ID from proposal_dependencies" },
+					resolved_by: { type: "string", description: "Agent or user identity resolving this" },
+				},
+				required: ["dep_id", "resolved_by"],
+			},
+			handler: (args: any) => resolveDependency(args),
 		});
 
 		// Reviews

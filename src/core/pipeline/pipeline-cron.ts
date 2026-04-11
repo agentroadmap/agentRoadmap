@@ -128,7 +128,7 @@ function looksLikeWorktreeName(
 ): value is string {
 	if (!value) return false;
 	return WORKTREE_PREFIXES.some(
-		(prefix) => value.startsWith(`${prefix}-`) || value === prefix,
+		(prefix) => value.startsWith(`${prefix}-`) || value.startsWith(`${prefix}/`) || value === prefix,
 	);
 }
 
@@ -456,13 +456,13 @@ export class PipelineCron {
 				: null) ??
 			this.defaultWorktree;
 
-		if (!looksLikeWorktreeName(worktree)) {
-			throw new Error(
-				`No valid worktree available for transition ${transition.id}`,
-			);
-		}
+	if (!looksLikeWorktreeName(worktree)) {
+		throw new Error(
+			`No valid worktree available for transition ${transition.id}`,
+		);
+	}
 
-		return worktree;
+	return worktree.replace("/", "-");
 	}
 
 	private resolveTask(

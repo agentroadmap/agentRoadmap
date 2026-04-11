@@ -5285,6 +5285,18 @@ export class Core {
 	}> {
 		const config = await this.fs.loadConfig();
 
+		// When Postgres is the proposal backend, query it directly so the
+		// overview reflects live state instead of stale filesystem data.
+		if (await this.isPostgresProposalBackend(config)) {
+			progressCallback?.("Loading roadmap data from Postgres...");
+			const proposals = await this.queryProposals({
+				includeCrossBranch: false,
+			});
+			const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
+			const drafts = await this.fs.listDrafts();
+			return { proposals, drafts, statuses };
+		}
+
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const resolutionStrategy =
 			config?.proposalResolutionStrategy || "most_progressed";

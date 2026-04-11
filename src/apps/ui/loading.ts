@@ -115,6 +115,7 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 	if (showSpinner) {
 		// Start spinner animation in the title
 		spinnerInterval = setInterval(() => {
+			if (closed) return;
 			spinnerIndex = (spinnerIndex + 1) % SPINNER_CHARS.length;
 			const spinnerChar = SPINNER_CHARS[spinnerIndex];
 			loadingBox.setLabel?.(` ${spinnerChar} Loading `);
@@ -136,13 +137,16 @@ function createLoadingScreenBase(config: LoadingScreenConfig): {
 		}
 	});
 
-	// Close function
+	// Close function — set `closed` first so the spinner guard and
+	// update callbacks bail out even if a tick is already queued.
 	const close = () => {
-		if (!closed) {
-			closed = true;
-			if (spinnerInterval) clearInterval(spinnerInterval);
-			screen.destroy();
+		if (closed) return;
+		closed = true;
+		if (spinnerInterval) {
+			clearInterval(spinnerInterval);
+			spinnerInterval = null;
 		}
+		screen.destroy();
 	};
 
 	return {

@@ -83,8 +83,6 @@ function buildClaudeArgs(
 		"--print", // non-interactive: print response and exit
 		"--model",
 		model,
-		"--max-tokens",
-		String(req.maxTokens ?? 4096),
 		req.task,
 	];
 	return { argv, env: { ANTHROPIC_MODEL: model } };
