@@ -11,6 +11,7 @@ import {
 	ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { RelayService } from "../../core/messaging/relay.ts";
+import { PipelineCron } from "../../core/pipeline/pipeline-cron.ts";
 import { Core } from "../../core/roadmap.ts";
 import * as pgPool from "../../postgres/pool.ts";
 import { getPackageName } from "../../shared/utils/app-info.ts";
@@ -55,6 +56,9 @@ const INSTRUCTIONS_NORMAL =
 	"At the beginning of each session, read the roadmap://workflow/overview resource to understand how AgentHive proposals, workflow stages, and maturity are managed through the roadmap MCP surface. Additional detailed guides are available as resources when needed.";
 const INSTRUCTIONS_FALLBACK =
 	"The roadmap workspace is not initialized in this directory. Read the roadmap://init-required resource for setup instructions.";
+
+// Track whether gate pipeline (PipelineCron) has already been started to avoid duplicates
+let gatePipelineStarted = false;
 
 type ServerInitOptions = {
 	debug?: boolean;
@@ -1024,9 +1028,9 @@ export async function createMcpServer(
 			handler: (a) => fed.removeHost(a as FedRemoveHostArgs),
 		});
 
-		console.log(
-			"[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL, cubics, pulse, federation",
-		);
+	console.log(
+		"[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL, cubics, pulse, federation",
+	);
 	} else {
 		registerFilesystemProposalTools(server, config);
 		registerMessageTools(server);
