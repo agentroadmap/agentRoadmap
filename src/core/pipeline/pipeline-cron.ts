@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { getPool, query } from "../../infra/postgres/pool.ts";
+import { spawnAgent, type SpawnRequest, type SpawnResult } from "../../core/orchestration/agent-spawner.ts";
 
 const MCP_URL = process.env.MCP_URL || "http://127.0.0.1:6421/sse";
 
@@ -424,19 +425,50 @@ export class PipelineCron {
 				},
 			});
 
-			// 3. Mark transition dispatched — agent will complete asynchronously
-			await this.markTransitionDispatched(transition.id);
+		// 3. Spawn the agent process inside its worktree
+		// Normalize worktree name: metadata may use 'claude/one', filesystem uses 'claude-one'
+		const rawWorktree =
+			readString(transition.metadata, "spawn.worktree") ??
+			agentName;
+		const worktreeName = rawWorktree.replace("/", "-");
+		const timeoutMs =
+			readNumber(transition.metadata, "spawn.timeoutMs") ?? 300_000;
+
+		const spawnReq: SpawnRequest = {
+			worktree: worktreeName,
+			task,
+			proposalId: Number(proposalId),
+			stage: transition.to_stage,
+			timeoutMs,
+		};
+
+		this.logger.log(
+			`[PipelineCron] Spawning agent in worktree=${worktreeName} for proposal=${proposalId} gate=${readString(transition.metadata, "gate") ?? "?"}`,
+		);
+
+		const result: SpawnResult = await spawnAgent(spawnReq);
+
+		if (result.exitCode === 0) {
+			// Agent completed successfully — mark transition done
+			await this.markTransitionDone(transition.id);
 			this.logger.log(
-				`[PipelineCron] Dispatched transition ${transition.id} for proposal ${proposalId} via MCP cubic ${cubicId}`,
+				`[PipelineCron] Agent completed OK (run=${result.agentRunId}) for proposal=${proposalId}`,
 			);
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			await this.handleTransitionFailure(transition, message);
-		} finally {
-			await client.close();
+		} else {
+			// Agent failed — mark transition failed with error info
+			await this.handleTransitionFailure(
+				transition,
+				`Agent exit code ${result.exitCode}: ${result.stderr.slice(0, 500)}`,
+			);
 		}
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : String(error);
+		await this.handleTransitionFailure(transition, message);
+	} finally {
+		await client.close();
 	}
+}
 
 	private async markTransitionDispatched(
 		id: TransitionQueueId,
