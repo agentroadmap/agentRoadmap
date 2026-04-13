@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { getPool, query } from "../../infra/postgres/pool.ts";
+import { spawnAgent as defaultSpawnAgent, type SpawnRequest, type SpawnResult } from "../../core/orchestration/agent-spawner.ts";
 
 const MCP_URL = process.env.MCP_URL || "http://127.0.0.1:6421/sse";
 
@@ -61,6 +62,7 @@ export interface PipelineCronDeps {
 	batchSize?: number;
 	setIntervalFn?: typeof setInterval;
 	clearIntervalFn?: typeof clearInterval;
+	spawnAgentFn?: (req: SpawnRequest) => Promise<SpawnResult>;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -94,6 +96,28 @@ function readString(
 		const value = source[key];
 		if (typeof value === "string" && value.trim().length > 0) {
 			return value.trim();
+		}
+	}
+
+	return null;
+}
+
+function readNumber(
+	source: JsonRecord | null,
+	...keys: string[]
+): number | null {
+	if (!source) return null;
+
+	for (const key of keys) {
+		const value = source[key];
+		if (typeof value === "number" && Number.isFinite(value)) {
+			return value;
+		}
+		if (typeof value === "string" && value.trim().length > 0) {
+			const parsed = Number(value);
+			if (Number.isFinite(parsed)) {
+				return parsed;
+			}
 		}
 	}
 
@@ -148,6 +172,7 @@ export class PipelineCron {
 	private readonly batchSize: number;
 	private readonly setIntervalFn: typeof setInterval;
 	private readonly clearIntervalFn: typeof clearInterval;
+	private readonly spawnAgentFn: (req: SpawnRequest) => Promise<SpawnResult>;
 
 	private listenerClient: ListenerClient | null = null;
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -185,6 +210,7 @@ export class PipelineCron {
 		this.batchSize = deps.batchSize ?? DEFAULT_BATCH_SIZE;
 		this.setIntervalFn = deps.setIntervalFn ?? setInterval;
 		this.clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
+		this.spawnAgentFn = deps.spawnAgentFn ?? defaultSpawnAgent;
 	}
 
 	async run(): Promise<void> {
@@ -407,20 +433,42 @@ export class PipelineCron {
 				},
 			});
 
-	// 3. Dispatch complete — the orchestrator picks up focused cubics and spawns
-	//    agents asynchronously. No subprocess needed here; the orchestrator's
-	//    notification handler drives actual agent execution.
-	this.logger.log(
-		`[PipelineCron] Cubic ${cubicId.substring(0, 8)} focused for proposal=${proposalId} agent=${agentName} phase=${transition.to_stage?.toLowerCase() ?? "build"}`,
-	);
+	// 3. Spawn the agent process inside its worktree
+	// Normalize worktree name: metadata may use 'claude/one', filesystem uses 'claude-one'
+	const rawWorktree =
+			(spawnMeta ? readString(spawnMeta, "worktree") : null) ??
+			this.defaultWorktree;
+		const worktreeName = rawWorktree.replace("/", "-");
+		const timeoutMs =
+			(spawnMeta ? readNumber(spawnMeta, "timeoutMs") : null) ?? 300_000;
+		const model = spawnMeta ? readString(spawnMeta, "model") ?? undefined : undefined;
 
-	// Mark transition dispatched — the orchestrator will handle agent execution.
-	// The orchestrator's completion path (or a future webhook) should call
-	// fn_mark_transition_done() when the agent work finishes.
-	await this.markTransitionDone(transition.id);
-	this.logger.log(
-		`[PipelineCron] Transition ${transition.id} dispatched for proposal=${proposalId}`,
-	);
+		const spawnReq: SpawnRequest = {
+			worktree: worktreeName,
+			task,
+			proposalId: Number(proposalId),
+			stage: transition.to_stage,
+			model,
+			timeoutMs,
+		};
+
+		this.logger.log(
+			`[PipelineCron] Spawning agent in worktree=${worktreeName} for proposal=${proposalId} gate=${readString(transition.metadata, "gate") ?? "?"}`,
+		);
+
+		const result: SpawnResult = await this.spawnAgentFn(spawnReq);
+
+		if (result.exitCode === 0) {
+			await this.markTransitionDone(transition.id);
+			this.logger.log(
+				`[PipelineCron] Agent completed OK (run=${result.agentRunId}) for proposal=${proposalId}`,
+			);
+		} else {
+			await this.handleTransitionFailure(
+				transition,
+				`Agent exit code ${result.exitCode}: ${result.stderr.slice(0, 500)}`,
+			);
+		}
 } catch (error) {
 	const message =
 		error instanceof Error ? error.message : String(error);

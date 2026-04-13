@@ -210,11 +210,12 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 			break;
 	}
 
-	// Assemble process environment (agent-scoped, not inheriting secrets from host)
+	// Assemble process environment — subscription model (no API keys).
+	// The claude CLI reads auth from ~/.claude/ so HOME must be correct.
 	const processEnv: Record<string, string> = {
-		// Carry through essential PATH
+		// Essential PATH and HOME (HOME must match the user who ran `claude auth login`)
 		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-		HOME: process.env.HOME ?? "/root",
+		HOME: process.env.HOME ?? "/home/andy",
 		// Agent-specific overrides from .env.agent
 		DATABASE_URL: agentEnv.DATABASE_URL ?? "",
 		AGENT_WORKTREE: worktree,
@@ -222,16 +223,6 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		// Git identity isolation
 		GIT_CONFIG_GLOBAL: `${GITCONFIG_ROOT}/${worktree}.gitconfig`,
 		GIT_CONFIG_NOSYSTEM: "1",
-		// API keys: pass through from host environment (agents need them)
-		...(process.env.ANTHROPIC_API_KEY && {
-			ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-		}),
-		...(process.env.GEMINI_API_KEY && {
-			GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-		}),
-		...(process.env.OPENAI_API_KEY && {
-			OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-		}),
 		// Provider-specific overrides from argv builder
 		...extraEnv,
 	};

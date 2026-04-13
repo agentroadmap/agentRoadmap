@@ -156,10 +156,11 @@ function createIntervalFns(
 }
 
 describe("PipelineCron", () => {
-	it("listens on the pipeline channels and schedules the 30s poll", async () => {
+	it("listens on the pipeline channels, schedules the 30s poll, and drains ready transitions", async () => {
 		const listener = createListener();
 		const sqlCalls: SqlCall[] = [];
 		const claimResponses = [[createTransition()], []];
+		const spawnCalls: Array<Record<string, unknown>> = [];
 		let pollDelay = 0;
 
 		const queryFn = createQueryFn(claimResponses, sqlCalls);
@@ -171,6 +172,17 @@ describe("PipelineCron", () => {
 		const cron = new PipelineCron({
 			queryFn,
 			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnCalls.push(request as unknown as Record<string, unknown>);
+				return {
+					agentRunId: "run-1",
+					worktree: request.worktree,
+					exitCode: 0,
+					stdout: "ok",
+					stderr: "",
+					durationMs: 12,
+				};
+			},
 			logger: createLogger(),
 			defaultWorktree: "copilot-one",
 			setIntervalFn: intervals.setIntervalFn,
@@ -184,8 +196,11 @@ describe("PipelineCron", () => {
 			"LISTEN transition_queued",
 		]);
 		assert.equal(pollDelay, 30_000);
-
-		// Transition should be marked done after MCP dispatch
+		assert.equal(spawnCalls.length, 1);
+		assert.equal(spawnCalls[0].worktree, "copilot-one");
+		assert.equal(spawnCalls[0].proposalId, 42);
+		assert.equal(spawnCalls[0].stage, "Review");
+		assert.match(String(spawnCalls[0].task), /Transition queue row: 1/);
 		assert.ok(
 			sqlCalls.some((call) => call.text.includes("SET status = 'done'")),
 		);
@@ -193,6 +208,64 @@ describe("PipelineCron", () => {
 		await cron.stop();
 		intervals.dispose();
 		assert.equal(listener.releaseCalled(), true);
+	});
+
+	it("prefers explicit spawn metadata when building spawnAgent requests", async () => {
+		const listener = createListener();
+		const claimResponses = [
+			[
+				createTransition({
+					metadata: {
+						spawn: {
+							worktree: "claude-andy",
+							task: "Review this transition with the architect worktree.",
+							model: "claude-sonnet-4-6",
+							timeoutMs: 45_000,
+						},
+					},
+				}),
+			],
+			[],
+		];
+		const spawnCalls: Array<Record<string, unknown>> = [];
+
+		const queryFn = createQueryFn(claimResponses);
+		const connectListener: ConnectListener = async () => listener.client;
+		const intervals = createIntervalFns();
+
+		const cron = new PipelineCron({
+			queryFn,
+			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnCalls.push(request as unknown as Record<string, unknown>);
+				return {
+					agentRunId: "run-2",
+					worktree: request.worktree,
+					exitCode: 0,
+					stdout: "ok",
+					stderr: "",
+					durationMs: 10,
+				};
+			},
+			logger: createLogger(),
+			defaultWorktree: "copilot-one",
+			setIntervalFn: intervals.setIntervalFn,
+			clearIntervalFn: intervals.clearIntervalFn,
+		});
+
+		await cron.run();
+
+		assert.deepEqual(spawnCalls[0], {
+			worktree: "claude-andy",
+			task: "Review this transition with the architect worktree.",
+			proposalId: 42,
+			stage: "Review",
+			model: "claude-sonnet-4-6",
+			timeoutMs: 45_000,
+		});
+
+		await cron.stop();
+		intervals.dispose();
 	});
 
 	it("requeues failed transitions when attempts remain", async () => {
@@ -203,9 +276,6 @@ describe("PipelineCron", () => {
 			[],
 		];
 
-		// Note: with MCP-only dispatch, failures come from the MCP connection,
-		// not from a subprocess. This test validates the retry SQL logic.
-
 		const queryFn = createQueryFn(claimResponses, sqlCalls);
 		const connectListener: ConnectListener = async () => listener.client;
 		const intervals = createIntervalFns();
@@ -213,6 +283,14 @@ describe("PipelineCron", () => {
 		const cron = new PipelineCron({
 			queryFn,
 			connectListener,
+			spawnAgentFn: async (request) => ({
+				agentRunId: "run-3",
+				worktree: request.worktree,
+				exitCode: 1,
+				stdout: "",
+				stderr: "boom",
+				durationMs: 11,
+			}),
 			logger: createLogger(),
 			defaultWorktree: "copilot-one",
 			setIntervalFn: intervals.setIntervalFn,
@@ -221,13 +299,59 @@ describe("PipelineCron", () => {
 
 		await cron.run();
 
-		// With MCP dispatch, transitions are marked done immediately
-		// after cubic_create + cubic_focus succeed.
-		// Failure handling would only trigger if MCP connection fails.
-		const doneUpdate = sqlCalls.find((call) =>
-			call.text.includes("SET status = 'done'"),
+		const retryUpdate = sqlCalls.find((call) =>
+			call.text.includes("SET status = 'pending'"),
 		);
-		assert.ok(doneUpdate);
+		assert.ok(retryUpdate);
+	assert.deepEqual(retryUpdate.params, [
+		7,
+		1,
+		"Agent exit code 1: boom",
+	]);
+
+		await cron.stop();
+		intervals.dispose();
+	});
+
+	it("marks transitions failed when the final attempt fails", async () => {
+		const listener = createListener();
+		const sqlCalls: SqlCall[] = [];
+		const claimResponses = [
+			[createTransition({ id: 9, attempt_count: 3, max_attempts: 3 })],
+			[],
+		];
+
+		const queryFn = createQueryFn(claimResponses, sqlCalls);
+		const connectListener: ConnectListener = async () => listener.client;
+		const intervals = createIntervalFns();
+
+		const cron = new PipelineCron({
+			queryFn,
+			connectListener,
+			spawnAgentFn: async (request) => ({
+				agentRunId: "run-4",
+				worktree: request.worktree,
+				exitCode: 2,
+				stdout: "",
+				stderr: "still failing",
+				durationMs: 11,
+			}),
+			logger: createLogger(),
+			defaultWorktree: "copilot-one",
+			setIntervalFn: intervals.setIntervalFn,
+			clearIntervalFn: intervals.clearIntervalFn,
+		});
+
+		await cron.run();
+
+		const failedUpdate = sqlCalls.find((call) =>
+			call.text.includes("SET status = 'failed'"),
+		);
+		assert.ok(failedUpdate);
+	assert.deepEqual(failedUpdate.params, [
+		9,
+		"Agent exit code 2: still failing",
+	]);
 
 		await cron.stop();
 		intervals.dispose();
@@ -240,15 +364,26 @@ describe("PipelineCron", () => {
 			[createTransition({ id: "11", proposal_id: "77", to_stage: "Build" })],
 			[],
 		];
-		const sqlCalls: SqlCall[] = [];
+		const spawnCalls: Array<Record<string, unknown>> = [];
 
-		const queryFn = createQueryFn(claimResponses, sqlCalls);
+		const queryFn = createQueryFn(claimResponses);
 		const connectListener: ConnectListener = async () => listener.client;
 		const intervals = createIntervalFns();
 
 		const cron = new PipelineCron({
 			queryFn,
 			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnCalls.push(request as unknown as Record<string, unknown>);
+				return {
+					agentRunId: "run-5",
+					worktree: request.worktree,
+					exitCode: 0,
+					stdout: "ok",
+					stderr: "",
+					durationMs: 8,
+				};
+			},
 			logger: createLogger(),
 			defaultWorktree: "copilot-one",
 			setIntervalFn: intervals.setIntervalFn,
@@ -256,17 +391,14 @@ describe("PipelineCron", () => {
 		});
 
 		await cron.run();
-
-		// No transitions claimed yet
-		const initialDone = sqlCalls.filter((c) => c.text.includes("SET status = 'done'"));
-		assert.equal(initialDone.length, 0);
+		assert.equal(spawnCalls.length, 0);
 
 		listener.emit("transition_queued", JSON.stringify({ proposal_id: 77 }));
 		await cron.waitForIdle();
 
-		// After notification, the transition should have been claimed and dispatched
-		const afterDone = sqlCalls.filter((c) => c.text.includes("SET status = 'done'"));
-		assert.ok(afterDone.length >= 1);
+		assert.equal(spawnCalls.length, 1);
+		assert.equal(spawnCalls[0].proposalId, 77);
+		assert.equal(spawnCalls[0].stage, "Build");
 
 		await cron.stop();
 		intervals.dispose();
