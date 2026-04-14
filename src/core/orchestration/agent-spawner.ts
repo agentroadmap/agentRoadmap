@@ -71,35 +71,16 @@ export interface SpawnResult {
 // ─── Provider CLI builders ────────────────────────────────────────────────────
 
 /**
- * Build the argv + env for a Hermes agent invocation.
- * Uses the Hermes CLI with Nous provider (subscription auth via ~/.hermes/auth.json).
+ * Build the argv + env for an Anthropic Claude CLI invocation.
+ * Assumes `claude` is on PATH inside the spawn environment.
  */
-function buildHermesArgs(
-	req: SpawnRequest,
-	model: string,
-): { argv: string[]; env: Record<string, string> } {
-	const argv = [
-		"hermes",
-		"chat",
-		"-q", req.task,         // non-interactive single query
-		"-Q",                    // quiet mode: no banner/spinner
-		"--provider", "nous",    // use Nous subscription
-		"--yolo",                // bypass approval prompts (automated dispatch)
-	];
-	if (model && model !== "xiaomi/mimo-v2-pro") {
-		argv.push("-m", model);
-	}
-	return { argv, env: {} };
-}
-
-/** Legacy: kept for reference but all dispatch now goes through hermes. */
 function buildClaudeArgs(
 	req: SpawnRequest,
 	model: string,
 ): { argv: string[]; env: Record<string, string> } {
 	const argv = [
 		"claude",
-		"--print",
+		"--print", // non-interactive: print response and exit
 		"--model",
 		model,
 		req.task,
@@ -205,19 +186,32 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		proposalId,
 		stage,
 		model: modelHint,
-		timeoutMs = 600_000,
+		timeoutMs = 300_000,
 	} = req;
 
 	const provider = detectProvider(worktree);
 	const model = resolveModel(provider, modelHint);
 	const agentEnv = await loadEnvAgent(worktree);
 
-	// All dispatch uses Hermes CLI with Nous provider
+	// Build provider-specific argv and additional env
 	let argv: string[];
 	let extraEnv: Record<string, string>;
-	({ argv, env: extraEnv } = buildHermesArgs(req, model));
 
-	// Assemble process environment — Hermes reads auth from ~/.hermes/auth.json
+	switch (provider) {
+		case "claude":
+			({ argv, env: extraEnv } = buildClaudeArgs(req, model));
+			break;
+		case "gemini":
+			({ argv, env: extraEnv } = buildGeminiArgs(req, model));
+			break;
+		case "copilot":
+		case "openclaw":
+			({ argv, env: extraEnv } = buildOpenAICompatArgs(req, model));
+			break;
+	}
+
+	// Assemble process environment — host auth inheritance.
+	// Each CLI reads auth from its own config in HOME. The agent does NOT manage credentials.
 	const processEnv: Record<string, string> = {
 		PATH: "/home/andy/.local/bin:" + (process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"),
 		HOME: process.env.HOME ?? "/home/andy",
@@ -232,10 +226,9 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		...extraEnv,
 	};
 
-	// Insert agent_runs row (status = running) — use explicit schema to avoid
-	// routing through the roadmap.agent_runs view which caused sequence desyncs.
+	// Insert agent_runs row (status = running)
 	const { rows } = await query(
-		`INSERT INTO roadmap_workforce.agent_runs
+		`INSERT INTO agent_runs
        (proposal_id, display_id, agent_identity, stage, model_used, status, started_at)
      VALUES ($1, $2, $3, $4, $5, 'running', now())
      RETURNING id`,
@@ -257,7 +250,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	// Update agent_runs on completion
 	const status = exitCode === 0 ? "completed" : "failed";
 	await query(
-		`UPDATE roadmap_workforce.agent_runs
+		`UPDATE agent_runs
      SET status = $1, duration_ms = $2, output_summary = $3, completed_at = now()
      WHERE id = $4`,
 		[status, durationMs, stdout.slice(0, 500), agentRunId],
