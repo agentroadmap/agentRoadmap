@@ -214,6 +214,8 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const agentEnv = await loadEnvAgent(worktree);
 
 	// All dispatch uses Hermes CLI with Nous provider
+	let argv: string[];
+	let extraEnv: Record<string, string>;
 	({ argv, env: extraEnv } = buildHermesArgs(req, model));
 
 	// Assemble process environment — Hermes reads auth from ~/.hermes/auth.json
