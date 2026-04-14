@@ -84,7 +84,6 @@ function buildHermesArgs(
 		"-q", req.task,         // non-interactive single query
 		"-Q",                    // quiet mode: no banner/spinner
 		"--provider", "nous",    // use Nous subscription
-		"--worktree",            // isolated git worktree for parallel agents
 		"--yolo",                // bypass approval prompts (automated dispatch)
 	];
 	if (model && model !== "xiaomi/mimo-v2-pro") {
