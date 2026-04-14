@@ -339,26 +339,46 @@ function runProcess(
 
 		let stdout = "";
 		let stderr = "";
+		let lastActivityMs = Date.now();
+
+		// Rolling liveness: reset on any output. Kill if silent for 2 minutes.
+		const SILENCE_KILL_MS = 120_000; // no output for 2 min = dead
+		const ABSOLUTE_MAX_MS = timeoutMs; // hard cap from config
+
+		const livenessCheck = setInterval(() => {
+			const silentMs = Date.now() - lastActivityMs;
+			if (silentMs > SILENCE_KILL_MS) {
+				child.kill("SIGTERM");
+				stderr += `\n[agent-spawner] Killed — no output for ${Math.round(silentMs / 1000)}s`;
+				clearInterval(livenessCheck);
+			}
+		}, 15_000); // check every 15s
+
+		// Absolute safety timeout
+		const absoluteTimer = setTimeout(() => {
+			child.kill("SIGTERM");
+			stderr += "\n[agent-spawner] Killed after absolute timeout";
+			clearInterval(livenessCheck);
+		}, ABSOLUTE_MAX_MS);
 
 		child.stdout?.on("data", (d: Buffer) => {
 			stdout += d.toString();
+			lastActivityMs = Date.now(); // agent is alive
 		});
 		child.stderr?.on("data", (d: Buffer) => {
 			stderr += d.toString();
+			lastActivityMs = Date.now(); // agent is alive
 		});
 
-		const timer = setTimeout(() => {
-			child.kill("SIGTERM");
-			stderr += "\n[agent-spawner] Killed after timeout";
-		}, timeoutMs);
-
 		child.on("close", (code) => {
-			clearTimeout(timer);
+			clearInterval(livenessCheck);
+			clearTimeout(absoluteTimer);
 			resolve({ stdout, stderr, exitCode: code });
 		});
 
 		child.on("error", (err) => {
-			clearTimeout(timer);
+			clearInterval(livenessCheck);
+			clearTimeout(absoluteTimer);
 			resolve({
 				stdout,
 				stderr: `${stderr}\n[agent-spawner] spawn error: ${err.message}`,
