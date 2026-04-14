@@ -35,6 +35,71 @@ interface SkepticVerdict {
   alternatives: string[];
 }
 
+interface ACVerification {
+  passed: number;
+  failed: number;
+  blocked: number;
+  total: number;
+}
+
+interface DependencyCheck {
+  resolved: boolean;
+  blockers: string[];
+}
+
+// Verify acceptance criteria status for a proposal
+async function verifyAcceptanceCriteria(proposalId: string): Promise<ACVerification> {
+  try {
+    const result = await query(
+      `SELECT COUNT(*) FILTER (WHERE status = 'pass') as passed,
+              COUNT(*) FILTER (WHERE status = 'fail') as failed,
+              COUNT(*) FILTER (WHERE status = 'blocked') as blocked,
+              COUNT(*) as total
+       FROM roadmap.acceptance_criteria
+       WHERE proposal_id = $1`,
+      [proposalId]
+    );
+
+    if (result.rows.length === 0) {
+      return { passed: 0, failed: 0, blocked: 0, total: 0 };
+    }
+
+    const row = result.rows[0];
+    return {
+      passed: parseInt(row.passed || '0', 10),
+      failed: parseInt(row.failed || '0', 10),
+      blocked: parseInt(row.blocked || '0', 10),
+      total: parseInt(row.total || '0', 10)
+    };
+  } catch (e) {
+    logger.warn(`Failed to verify ACs for ${proposalId}:`, e);
+    return { passed: 0, failed: 0, blocked: 0, total: 0 };
+  }
+}
+
+// Check dependency resolution status
+async function checkDependencies(proposalId: string): Promise<DependencyCheck> {
+  try {
+    const result = await query(
+      `SELECT array_agg(DISTINCT p.display_id) FILTER (WHERE d.resolved = false) as blockers
+       FROM roadmap.proposal_dependency d
+       JOIN roadmap.proposal p ON d.to_proposal_id = p.id
+       WHERE d.from_proposal_id = $1
+       GROUP BY d.from_proposal_id`,
+      [proposalId]
+    );
+
+    const blockers = result.rows.length > 0 ? (result.rows[0].blockers || []) : [];
+    return {
+      resolved: blockers.length === 0,
+      blockers: blockers as string[]
+    };
+  } catch (e) {
+    logger.warn(`Failed to check dependencies for ${proposalId}:`, e);
+    return { resolved: true, blockers: [] };
+  }
+}
+
 // Run skeptic review on a proposal
 async function skepticReview(proposalId: string, fromState: string, toState: string): Promise<SkepticVerdict> {
   const client = new Client({ name: "skeptic-gate", version: "1.0.0" });
@@ -133,22 +198,60 @@ async function canAdvance(proposalId: string, fromState: string, toState: string
   if (!GATED_TRANSITIONS.has(transitionKey)) {
     return true; // Not gated, allow
   }
-  
-  // Run skeptic review
+
+  // Run skeptic review and collect gate decision data
   const verdict = await skepticReview(proposalId, fromState, toState);
-  
+  const acVerification = await verifyAcceptanceCriteria(proposalId);
+  const depCheck = await checkDependencies(proposalId);
+
+  // Map transition to gate level
+  const gateMap: Record<string, string> = {
+    "DRAFT→REVIEW": "D1",
+    "REVIEW→DEVELOP": "D2",
+    "DEVELOP→MERGE": "D3",
+    "MERGE→COMPLETE": "D4"
+  };
+  const gateLevel = gateMap[transitionKey] ?? null;
+
+  // Build rationale string summarizing gate decision
+  const rationale = buildRationale(fromState, toState, acVerification, depCheck, verdict);
+
   if (!verdict.approved) {
     logger.warn(`🚨 SKEPTIC BLOCKED: ${proposalId} cannot advance from ${fromState} to ${toState}`);
     logger.warn(`   Reasons: ${verdict.blockers.join("; ")}`);
-    
-    // Log blocker to audit_log with complete gate decision rationale
+
+    // Log to gate_decision_log with complete structured rationale
+    try {
+      await query(
+        `INSERT INTO roadmap.gate_decision_log (proposal_id, from_state, to_state, gate_level, decision, decided_by, ac_verification, dependency_check, rationale, challenges, blockers)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          Number(proposalId),
+          fromState,
+          toState,
+          gateLevel,
+          "reject",
+          "skeptic",
+          JSON.stringify(acVerification),
+          JSON.stringify(depCheck),
+          rationale,
+          verdict.challenges,
+          verdict.blockers
+        ]
+      );
+    } catch (e) {
+      logger.warn(`Failed to record gate decision to gate_decision_log:`, e);
+    }
+
+    // Also log to audit_log for historical record
     const blockerDecision = {
       verdict: "REJECT",
       from: fromState,
       to: toState,
       blockers: verdict.blockers,
       challenges: verdict.challenges,
-      alternatives: verdict.alternatives,
+      acVerification,
+      dependencies: depCheck,
       timestamp: new Date().toISOString()
     };
 
@@ -167,14 +270,37 @@ async function canAdvance(proposalId: string, fromState: string, toState: string
     return false;
   }
 
-  // Log approved decision to audit_log with complete gate decision rationale
+  // Log approved decision to gate_decision_log with complete structured rationale
+  try {
+    await query(
+      `INSERT INTO roadmap.gate_decision_log (proposal_id, from_state, to_state, gate_level, decision, decided_by, ac_verification, dependency_check, rationale, challenges)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        Number(proposalId),
+        fromState,
+        toState,
+        gateLevel,
+        "approve",
+        "skeptic",
+        JSON.stringify(acVerification),
+        JSON.stringify(depCheck),
+        rationale,
+        verdict.challenges
+      ]
+    );
+  } catch (e) {
+    logger.warn(`Failed to record gate decision to gate_decision_log:`, e);
+  }
+
+  // Log approved decision to audit_log
   const approvalDecision = {
     verdict: "APPROVE",
     from: fromState,
     to: toState,
     challenges: verdict.challenges,
     alternatives: verdict.alternatives,
-    approved: true,
+    acVerification,
+    dependencies: depCheck,
     timestamp: new Date().toISOString()
   };
 
@@ -191,6 +317,43 @@ async function canAdvance(proposalId: string, fromState: string, toState: string
   );
 
   return true;
+}
+
+function buildRationale(fromState: string, toState: string, acVerification: ACVerification, depCheck: DependencyCheck, verdict: SkepticVerdict): string {
+  const lines: string[] = [];
+
+  lines.push(`Gate decision: ${verdict.approved ? 'APPROVE' : 'REJECT'}`);
+  lines.push(`Transition: ${fromState} → ${toState}`);
+
+  if (acVerification.total > 0) {
+    lines.push(`Acceptance Criteria: ${acVerification.passed}/${acVerification.total} passed`);
+    if (acVerification.failed > 0) {
+      lines.push(`  - ${acVerification.failed} failed`);
+    }
+    if (acVerification.blocked > 0) {
+      lines.push(`  - ${acVerification.blocked} blocked`);
+    }
+  } else {
+    lines.push(`Acceptance Criteria: None defined`);
+  }
+
+  if (depCheck.blockers.length > 0) {
+    lines.push(`Dependencies: ${depCheck.blockers.length} unresolved (${depCheck.blockers.join(', ')})`);
+  } else {
+    lines.push(`Dependencies: All resolved`);
+  }
+
+  if (verdict.blockers.length > 0) {
+    lines.push(`Blockers:`);
+    verdict.blockers.forEach(b => lines.push(`  - ${b}`));
+  }
+
+  if (verdict.challenges.length > 0) {
+    lines.push(`Questions for review (${verdict.challenges.length}):`);
+    verdict.challenges.forEach(c => lines.push(`  - ${c}`));
+  }
+
+  return lines.join('\n');
 }
 
 // Main orchestrator loop
