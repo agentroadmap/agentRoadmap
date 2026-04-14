@@ -71,16 +71,36 @@ export interface SpawnResult {
 // ─── Provider CLI builders ────────────────────────────────────────────────────
 
 /**
- * Build the argv + env for an Anthropic Claude CLI invocation.
- * Assumes `claude` is on PATH inside the spawn environment.
+ * Build the argv + env for a Hermes agent invocation.
+ * Uses the Hermes CLI with Nous provider (subscription auth via ~/.hermes/auth.json).
  */
+function buildHermesArgs(
+	req: SpawnRequest,
+	model: string,
+): { argv: string[]; env: Record<string, string> } {
+	const argv = [
+		"hermes",
+		"chat",
+		"-q", req.task,         // non-interactive single query
+		"-Q",                    // quiet mode: no banner/spinner
+		"--provider", "nous",    // use Nous subscription
+		"--worktree",            // isolated git worktree for parallel agents
+		"--yolo",                // bypass approval prompts (automated dispatch)
+	];
+	if (model && model !== "xiaomi/mimo-v2-pro") {
+		argv.push("-m", model);
+	}
+	return { argv, env: {} };
+}
+
+/** Legacy: kept for reference but all dispatch now goes through hermes. */
 function buildClaudeArgs(
 	req: SpawnRequest,
 	model: string,
 ): { argv: string[]; env: Record<string, string> } {
 	const argv = [
 		"claude",
-		"--print", // non-interactive: print response and exit
+		"--print",
 		"--model",
 		model,
 		req.task,
@@ -193,27 +213,11 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const model = resolveModel(provider, modelHint);
 	const agentEnv = await loadEnvAgent(worktree);
 
-	// Build provider-specific argv and additional env
-	let argv: string[];
-	let extraEnv: Record<string, string>;
+	// All dispatch uses Hermes CLI with Nous provider
+	({ argv, env: extraEnv } = buildHermesArgs(req, model));
 
-	switch (provider) {
-		case "claude":
-			({ argv, env: extraEnv } = buildClaudeArgs(req, model));
-			break;
-		case "gemini":
-			({ argv, env: extraEnv } = buildGeminiArgs(req, model));
-			break;
-		case "copilot":
-		case "openclaw":
-			({ argv, env: extraEnv } = buildOpenAICompatArgs(req, model));
-			break;
-	}
-
-	// Assemble process environment — subscription model (no API keys).
-	// The claude CLI reads auth from ~/.claude/ so HOME must be correct.
+	// Assemble process environment — Hermes reads auth from ~/.hermes/auth.json
 	const processEnv: Record<string, string> = {
-		// Essential PATH and HOME (HOME must match the user who ran `claude auth login`)
 		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
 		HOME: process.env.HOME ?? "/home/andy",
 		// Agent-specific overrides from .env.agent
