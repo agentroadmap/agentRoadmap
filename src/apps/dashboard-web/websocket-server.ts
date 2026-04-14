@@ -8,9 +8,46 @@
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { Core } from "../../core/roadmap.ts";
+import type { Proposal as InternalProposal } from "../../shared/types/index.ts";
 
 let wss: WebSocketServer | null = null;
 const clients = new Set<WebSocket>();
+
+// ─── Wire-format mapper ────────────────────────────────────────────────────────
+// The dashboard Proposal interface uses legacy field names.  This mapper
+// converts the internal Proposal shape to the wire shape the browser expects.
+
+const MATURITY_LEVEL: Record<string, number> = {
+	new: 0,
+	active: 1,
+	mature: 2,
+	obsolete: 3,
+	skeleton: 0,
+	contracted: 1,
+	audited: 2,
+};
+
+function toWireProposal(p: InternalProposal): Record<string, unknown> {
+	return {
+		id: p.id,
+		displayId: p.id,
+		parentId: p.parentProposalId ?? null,
+		proposalType: p.proposalType ?? p.type ?? "",
+		category: p.category ?? "",
+		domainId: p.domainId ?? "",
+		title: p.title,
+		status: p.status,
+		priority: p.priority ?? "",
+		bodyMarkdown: p.description ?? null,
+		processLogic: p.implementationPlan ?? null,
+		maturityLevel: p.maturity != null ? (MATURITY_LEVEL[p.maturity] ?? null) : null,
+		repositoryPath: null,
+		budgetLimitUsd: p.budgetLimitUsd ?? 0,
+		tags: p.labels?.length ? p.labels.join(",") : null,
+		createdAt: p.createdDate,
+		updatedAt: p.updatedDate ?? p.createdDate,
+	};
+}
 
 type BoardMessage =
 	| { type: "proposals" | "proposal_snapshot"; data: unknown[] }
@@ -42,7 +79,7 @@ async function buildSnapshot(core: Core) {
 	]);
 
 	return {
-		proposals,
+		proposals: proposals.map(toWireProposal),
 		agents: agents.map((agent) => ({
 			identity: agent.identity ?? agent.name,
 			agentId: agent.name,
