@@ -16,6 +16,7 @@ import {
 } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
+import { debugLog } from "../apps/ui/debug-log.ts";
 import * as pgPool from "../postgres/pool.ts";
 import type {
 	ProposalAcceptanceCriterionRow,
@@ -1057,9 +1058,9 @@ export class Core {
 		const config = await this.fs.loadConfig();
 
 		if (await this.isPostgresProposalBackend(config)) {
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: Postgres path, about to ensurePgPool");
+			debugLog("queryProposals: Postgres path, about to ensurePgPool");
 			await this.ensurePgPool();
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: pool ready, about to listProposals");
+			debugLog("queryProposals: pool ready, about to listProposals");
 			const directiveResolverPromise = filters?.directive
 				? Promise.all([
 						this.fs.listDirectives(),
@@ -1080,13 +1081,13 @@ export class Core {
 						typeof limit === "number" ? Math.max(limit * 3, limit) : undefined,
 					)
 				: await pg.listProposals(pgFilters);
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: got " + rows.length + " rows");
+			debugLog("queryProposals: got " + rows.length + " rows");
 			const summaries = await pg.listProposalSummaries(pgFilters);
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: got " + summaries.length + " summaries");
+			debugLog("queryProposals: got " + summaries.length + " summaries");
 			const dependencyRows = await pg.listDependencies(
 				rows.map((row) => row.id),
 			);
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: got " + dependencyRows.length + " dependency rows");
+			debugLog("queryProposals: got " + dependencyRows.length + " dependency rows");
 			const summaryById = new Map(
 				summaries.map((summary) => [summary.id, summary]),
 			);
@@ -1101,10 +1102,10 @@ export class Core {
 							: undefined,
 				}),
 			);
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: batchMap done, " + proposals.length + " proposals");
+			debugLog("queryProposals: batchMap done, " + proposals.length + " proposals");
 
 			const queue = await pg.getProposalQueue();
-			if (process.env.DEBUG) console.error("[DEBUG] queryProposals: got queue, " + queue.length + " items");
+			debugLog("queryProposals: got queue, " + queue.length + " items");
 			const queuePositionById = new Map(
 				queue.map((item) => [item.display_id, item.queue_position]),
 			);

@@ -15,6 +15,7 @@ import {
 import { watchProposals } from "../../shared/utils/proposal-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import type { WorkforceAgent } from "./cockpit.ts";
+import { debugLog } from "./debug-log.ts";
 import { createLoadingScreen } from "./loading.ts";
 import {
 	buildProposalViewerDirectiveFilterModel,
@@ -180,16 +181,16 @@ export async function loadProposalsForUnifiedView(
 
 	const loadingScreenFactory =
 		options.loadingScreenFactory || createLoadingScreen;
-	if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: creating loading screen");
+	debugLog("loadProposalsForUnifiedView: creating loading screen");
 	const loadingScreen = await loadingScreenFactory("Loading proposals");
-	if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: loading screen created, calling loader");
+	debugLog("loadProposalsForUnifiedView: loading screen created, calling loader");
 
 	try {
 		const result = await loader((message) => {
-			if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: progress: " + message);
+			debugLog("loadProposalsForUnifiedView: progress: " + message);
 			loadingScreen?.update(message);
 		});
-		if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: loader returned " + result.proposals.length + " proposals");
+		debugLog("loadProposalsForUnifiedView: loader returned " + result.proposals.length + " proposals");
 
 		return {
 			proposals: result.proposals,

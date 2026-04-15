@@ -9,6 +9,8 @@ const outfile =
 const outdir = path.dirname(outfile);
 const bundleName = `${path.basename(outfile)}.js`;
 const bundlePath = path.join(outdir, bundleName);
+const bundleTmpPath = `${bundlePath}.tmp-${process.pid}`;
+const outfileTmpPath = `${outfile}.tmp-${process.pid}`;
 
 console.log(`Building ${outfile}...`);
 
@@ -48,9 +50,10 @@ try {
 
 try {
 	execSync(
-		`bun build src/apps/cli.ts --target=node --outfile="${bundlePath}"`,
+		`bun build src/apps/cli.ts --target=node --outfile=${bundleTmpPath}`,
 		{ stdio: "inherit" },
 	);
+	fs.renameSync(bundleTmpPath, bundlePath);
 	const wrapper = `#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
@@ -125,9 +128,14 @@ if (require.main === module) {
   });
 }
 `;
-	fs.writeFileSync(outfile, wrapper);
-	fs.chmodSync(outfile, 0o755);
+	fs.writeFileSync(outfileTmpPath, wrapper);
+	fs.chmodSync(outfileTmpPath, 0o755);
+	fs.renameSync(outfileTmpPath, outfile);
 } catch (e) {
+	try {
+		if (fs.existsSync(bundleTmpPath)) fs.unlinkSync(bundleTmpPath);
+		if (fs.existsSync(outfileTmpPath)) fs.unlinkSync(outfileTmpPath);
+	} catch {}
 	console.error("Build failed:", e.message);
 	process.exit(1);
 }

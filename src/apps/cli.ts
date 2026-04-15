@@ -4369,14 +4369,15 @@ async function handleBoardView(options: {
 			let directiveEntities: Directive[];
 
 			updateProgress("Loading roadmap data...");
-			if (process.env.DEBUG) console.error("[DEBUG] proposalsLoader: about to query proposals, source=" + source);
+			const { debugLog } = await import("./ui/debug-log.ts");
+			debugLog("proposalsLoader: about to query proposals, source=" + source);
 			proposals =
 				source === "postgres"
 					? await core.queryProposals({ includeCrossBranch: false })
 					: await core.loadProposals((msg) => {
 							updateProgress(msg);
 						});
-			if (process.env.DEBUG) console.error("[DEBUG] proposalsLoader: got " + proposals.length + " proposals");
+			debugLog("proposalsLoader: got " + proposals.length + " proposals");
 			directiveEntities = await core.filesystem.listDirectives();
 
 			const [archivedDirectives] = await Promise.all([
