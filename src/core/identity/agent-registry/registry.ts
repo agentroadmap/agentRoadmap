@@ -86,7 +86,7 @@ export async function registerAgent(
 	const skills = { agentId, capabilities, channel, lastSeen: now };
 
 	await query(
-		`INSERT INTO agent_registry (agent_identity, agent_type, role, skills, status)
+		`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, role, skills, status)
      VALUES ($1, $2, $3, $4::jsonb, 'online')
      ON CONFLICT ON CONSTRAINT agent_registry_agent_identity_key
      DO UPDATE SET

@@ -488,7 +488,7 @@ export async function transitionProposal(
 	// Ensure the author exists in agent_registry so the FK on
 	// proposal_state_transitions.transitioned_by doesn't reject the trigger insert.
 	await query(
-		`INSERT INTO agent_registry (agent_identity, agent_type, status)
+		`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, status)
      VALUES ($1, 'llm', 'active')
      ON CONFLICT (agent_identity) DO NOTHING`,
 		[transitionedBy],

@@ -254,7 +254,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const runId = randomUUID();
 
 	await query(
-		`INSERT INTO agent_registry (agent_identity, agent_type, status)
+		`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, status)
      VALUES ($1, 'llm', 'active')
      ON CONFLICT ON CONSTRAINT agent_registry_agent_identity_key DO UPDATE
      SET status = 'active'`,
