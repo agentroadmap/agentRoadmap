@@ -15,10 +15,16 @@
  * are captured and stored in agent_runs.
  */
 
+import { randomUUID, createHash } from "node:crypto";
 import { type ChildProcess, execSync, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { query } from "../../infra/postgres/pool.ts";
+import { buildProposalContextPackage } from "./context-builder.ts";
+import {
+	createDriftMonitor,
+	estimateTokenCount,
+} from "./token-efficiency.ts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -245,28 +251,50 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const provider = detectProvider(worktree);
 	const model = resolveModel(provider, modelHint);
 	const agentEnv = await loadEnvAgent(worktree);
+	const runId = randomUUID();
+
+	await query(
+		`INSERT INTO agent_registry (agent_identity, agent_type, status)
+     VALUES ($1, 'llm', 'active')
+     ON CONFLICT ON CONSTRAINT agent_registry_agent_identity_key DO UPDATE
+     SET status = 'active'`,
+		[worktree],
+	);
 
 	// Build provider-specific argv and additional env.
 	// Fall back to hermes if the preferred CLI isn't authenticated.
 	let argv: string[];
 	let extraEnv: Record<string, string>;
+	let assembledTask = task;
+	let contextPackage = "";
+	const spawnReq = () => ({ ...req, task: assembledTask });
 
 	const effectiveProvider = await resolveAvailableProvider(provider);
 	switch (effectiveProvider) {
 		case "claude":
-			({ argv, env: extraEnv } = buildClaudeArgs(req, model));
+			({ argv, env: extraEnv } = buildClaudeArgs(spawnReq(), model));
 			break;
 		case "gemini":
-			({ argv, env: extraEnv } = buildGeminiArgs(req, model));
+			({ argv, env: extraEnv } = buildGeminiArgs(spawnReq(), model));
 			break;
 		case "copilot":
 		case "openclaw":
-			({ argv, env: extraEnv } = buildOpenAICompatArgs(req, model));
+			({ argv, env: extraEnv } = buildOpenAICompatArgs(spawnReq(), model));
 			break;
 		default:
 			// hermes fallback — always available (Nous subscription)
-			({ argv, env: extraEnv } = buildHermesArgs(req, model));
+			({ argv, env: extraEnv } = buildHermesArgs(spawnReq(), model));
 			break;
+	}
+
+	if (proposalId !== undefined) {
+		contextPackage = await buildProposalContextPackage({
+			proposalId,
+			taskType: stage ?? "unknown",
+			agentIdentity: worktree,
+			maxTokens: 2000,
+		});
+		assembledTask = `${contextPackage}\n\n## Task\n${task}`;
 	}
 
 	// Assemble process environment — host auth inheritance.
@@ -285,13 +313,73 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		...extraEnv,
 	};
 
+	const estimatedInputTokens = estimateTokenCount(assembledTask);
+	const inputHash = createHash("sha256")
+		.update(assembledTask)
+		.digest("hex");
+
+	const { rows: modelRows } = await query<{ model_name: string }>(
+		`SELECT model_name FROM model_metadata WHERE model_name = $1 LIMIT 1`,
+		[model],
+	);
+	const modelNameForLogs = modelRows[0]?.model_name ?? null;
+
+	await query(
+		`INSERT INTO run_log
+       (run_id, agent_identity, proposal_id, model_name, pipeline_stage, input_summary, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'running')
+     ON CONFLICT (run_id) DO UPDATE
+     SET agent_identity = EXCLUDED.agent_identity,
+         proposal_id = EXCLUDED.proposal_id,
+         model_name = EXCLUDED.model_name,
+         pipeline_stage = EXCLUDED.pipeline_stage,
+         input_summary = EXCLUDED.input_summary,
+         status = 'running'`,
+		[
+			runId,
+			worktree,
+			proposalId ?? null,
+			modelNameForLogs,
+			stage ?? "unknown",
+			task.slice(0, 500),
+		],
+	);
+
+	if (modelNameForLogs) {
+		await query(
+			`INSERT INTO context_window_log
+         (agent_identity, proposal_id, model_name, input_tokens, output_tokens, context_limit, was_truncated, truncation_note, run_id)
+       VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8)`,
+			[
+				worktree,
+				proposalId ?? null,
+				modelNameForLogs,
+				estimatedInputTokens,
+				2000,
+				estimatedInputTokens > 2000,
+				estimatedInputTokens > 2000
+					? "Context trimmed to target budget by token-efficiency builder"
+					: null,
+				runId,
+			],
+		);
+	}
+
 	// Insert agent_runs row (status = running)
 	const { rows } = await query(
 		`INSERT INTO agent_runs
-       (proposal_id, display_id, agent_identity, stage, model_used, status, started_at)
-     VALUES ($1, $2, $3, $4, $5, 'running', now())
+       (proposal_id, display_id, agent_identity, stage, model_used, status, started_at, tokens_in, input_hash)
+     VALUES ($1, $2, $3, $4, $5, 'running', now(), $6, $7)
      RETURNING id`,
-		[proposalId ?? null, `wt:${worktree}`, worktree, stage ?? "unknown", model],
+		[
+			proposalId ?? null,
+			`wt:${worktree}`,
+			worktree,
+			stage ?? "unknown",
+			model,
+			estimatedInputTokens,
+			inputHash,
+		],
 	);
 	const agentRunId = String(rows[0].id);
 
@@ -303,16 +391,39 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		cwd,
 		processEnv,
 		timeoutMs,
+		createDriftMonitor(task, {}),
 	);
 	const durationMs = Date.now() - startMs;
 
 	// Update agent_runs on completion
-	const status = exitCode === 0 ? "completed" : "failed";
+	const driftKilled = stderr.includes("critical drift");
+	const status = driftKilled
+		? "cancelled"
+		: exitCode === 0
+			? "completed"
+			: "failed";
 	await query(
 		`UPDATE agent_runs
-     SET status = $1, duration_ms = $2, output_summary = $3, completed_at = now()
-     WHERE id = $4`,
-		[status, durationMs, stdout.slice(0, 500), agentRunId],
+     SET status = $1, duration_ms = $2, output_summary = $3, completed_at = now(),
+         tokens_out = $4, cost_usd = $5
+     WHERE id = $6`,
+		[
+			status,
+			durationMs,
+			stdout.slice(0, 500),
+			estimateTokenCount(stdout),
+			0,
+			agentRunId,
+		],
+	);
+	await query(
+		`UPDATE run_log
+       SET status = $1, finished_at = now()
+     WHERE run_id = $2`,
+		[
+			status === "completed" ? "success" : status === "cancelled" ? "cancelled" : "error",
+			runId,
+		],
 	);
 
 	return { agentRunId, worktree, exitCode, stdout, stderr, durationMs };
@@ -331,6 +442,7 @@ function runProcess(
 	cwd: string,
 	env: Record<string, string>,
 	timeoutMs: number,
+	driftMonitor?: ReturnType<typeof createDriftMonitor>,
 ): Promise<ProcessResult> {
 	return new Promise((resolve) => {
 		const [cmd, ...args] = argv;
@@ -365,8 +477,14 @@ function runProcess(
 		}, ABSOLUTE_MAX_MS);
 
 		child.stdout?.on("data", (d: Buffer) => {
-			stdout += d.toString();
+			const chunk = d.toString();
+			stdout += chunk;
 			lastActivityMs = Date.now(); // agent is alive
+			const drift = driftMonitor?.record(chunk);
+			if (drift?.level === "critical") {
+				child.kill("SIGTERM");
+				stderr += `\n[agent-spawner] Killed for critical drift (${drift.score.toFixed(2)})`;
+			}
 		});
 		child.stderr?.on("data", (d: Buffer) => {
 			stderr += d.toString();

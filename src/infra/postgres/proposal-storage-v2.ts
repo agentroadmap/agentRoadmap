@@ -4,12 +4,52 @@
  * Targets the active schema selected by the connection pool search_path.
  */
 import { getPool, query } from "./pool.ts";
+import { makeCacheKey } from "../../core/orchestration/token-efficiency.ts";
 
 const PROPOSAL_COLUMNS = `
   id, display_id, parent_id, type, status, maturity, title,
   summary, motivation, design, drawbacks, alternatives,
   dependency, priority, tags, audit, created_at, modified_at
 `;
+
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+type CacheEntry<T> = {
+	value: T;
+	expiresAt: number;
+};
+
+const proposalCache = new Map<string, CacheEntry<ProposalRow | null>>();
+const acceptanceCriteriaCache = new Map<
+	string,
+	CacheEntry<ProposalAcceptanceCriterionRow[]>
+>();
+
+function readCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+	const entry = cache.get(key);
+	if (!entry) return null;
+	if (entry.expiresAt <= Date.now()) {
+		cache.delete(key);
+		return null;
+	}
+	return entry.value;
+}
+
+function writeCache<T>(
+	cache: Map<string, CacheEntry<T>>,
+	key: string,
+	value: T,
+): void {
+	cache.set(key, {
+		value,
+		expiresAt: Date.now() + CACHE_TTL_MS,
+	});
+}
+
+function invalidateProposalCaches(): void {
+	proposalCache.clear();
+	acceptanceCriteriaCache.clear();
+}
 
 export type ProposalRow = {
 	id: number;
@@ -147,6 +187,10 @@ export async function listProposals(filters?: {
 export async function getProposal(
 	identifier: string | number,
 ): Promise<ProposalRow | null> {
+	const cacheKey = makeCacheKey("proposal", identifier);
+	const cached = readCache(proposalCache, cacheKey);
+	if (cached !== null) return cached;
+
 	const numId =
 		typeof identifier === "number" ? identifier : parseInt(identifier, 10);
 	if (!Number.isNaN(numId) && numId > 0) {
@@ -155,14 +199,33 @@ export async function getProposal(
        FROM proposal WHERE id = $1 LIMIT 1`,
 			[numId],
 		);
-		if (rows[0]) return rows[0];
+		if (rows[0]) {
+			writeCache(proposalCache, cacheKey, rows[0]);
+			writeCache(proposalCache, makeCacheKey("proposal", rows[0].id), rows[0]);
+			writeCache(
+				proposalCache,
+				makeCacheKey("proposal", rows[0].display_id),
+				rows[0],
+			);
+			return rows[0];
+		}
 	}
 	const { rows } = await query<ProposalRow>(
 		`SELECT ${PROPOSAL_COLUMNS}
      FROM proposal WHERE display_id = $1 LIMIT 1`,
 		[String(identifier)],
 	);
-	return rows[0] ?? null;
+	const proposal = rows[0] ?? null;
+	writeCache(proposalCache, cacheKey, proposal);
+	if (proposal) {
+		writeCache(proposalCache, makeCacheKey("proposal", proposal.id), proposal);
+		writeCache(
+			proposalCache,
+			makeCacheKey("proposal", proposal.display_id),
+			proposal,
+		);
+	}
+	return proposal;
 }
 
 export async function resolveProposalId(
@@ -298,6 +361,7 @@ export async function createProposal(
 			]),
 		],
 	);
+	invalidateProposalCaches();
 	return rows[0];
 }
 
@@ -346,6 +410,7 @@ export async function updateProposal(
      RETURNING ${PROPOSAL_COLUMNS}`,
 		params,
 	);
+	invalidateProposalCaches();
 	return rows[0] ?? null;
 }
 
@@ -468,6 +533,7 @@ export async function transitionProposal(
      )`,
 		[reason ?? "submit", transitionedBy, notes ?? null, proposalId, toState],
 	);
+	invalidateProposalCaches();
 
 	return rows[0];
 }
@@ -582,6 +648,7 @@ export async function claimLease(
        VALUES ($1, $2, $3)`,
 			[proposalId, agentIdentity, expiresAt ?? null],
 		);
+		invalidateProposalCaches();
 		return true;
 	} catch {
 		return false; // Already leased
@@ -604,6 +671,7 @@ export async function releaseLease(
        AND released_at IS NULL`,
 		[reason ?? "completed", proposalId, agentIdentity],
 	);
+	if ((rowCount ?? 0) > 0) invalidateProposalCaches();
 	return (rowCount ?? 0) > 0;
 }
 
@@ -620,6 +688,7 @@ export async function renewLease(
        AND released_at IS NULL`,
 		[expiresAt ?? null, proposalId, agentIdentity],
 	);
+	if ((rowCount ?? 0) > 0) invalidateProposalCaches();
 	return (rowCount ?? 0) > 0;
 }
 
@@ -726,6 +795,10 @@ export async function replaceDependencies(
 export async function listAcceptanceCriteria(
 	proposalId: number,
 ): Promise<ProposalAcceptanceCriterionRow[]> {
+	const cacheKey = makeCacheKey("acceptance-criteria", proposalId);
+	const cached = readCache(acceptanceCriteriaCache, cacheKey);
+	if (cached !== null) return cached;
+
 	const { rows } = await query<ProposalAcceptanceCriterionRow>(
 		`SELECT item_number, criterion_text, status, verified_by, verification_notes, verified_at
      FROM roadmap_proposal.proposal_acceptance_criteria
@@ -733,6 +806,7 @@ export async function listAcceptanceCriteria(
      ORDER BY item_number ASC`,
 		[proposalId],
 	);
+	writeCache(acceptanceCriteriaCache, cacheKey, rows);
 	return rows;
 }
 
@@ -764,8 +838,9 @@ export async function replaceAcceptanceCriteria(
 					criterion.criterion_text,
 					criterion.status ?? "pending",
 				],
-			);
-		}
+	);
+	invalidateProposalCaches();
+}
 
 		await client.query("COMMIT");
 	} catch (error) {
