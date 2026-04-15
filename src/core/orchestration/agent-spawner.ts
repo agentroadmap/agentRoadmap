@@ -78,9 +78,12 @@ function buildClaudeArgs(
 	req: SpawnRequest,
 	model: string,
 ): { argv: string[]; env: Record<string, string> } {
+	const mcpConfigPath = join(WORKTREE_ROOT, req.worktree, ".mcp.json");
 	const argv = [
 		"claude",
 		"--print", // non-interactive: print response and exit
+		"--mcp-config", mcpConfigPath,
+		"--allowedTools", "mcp__agenthive__*,mcp__roadmap__*,Read,Write,Edit,Bash,Glob,Grep",
 		"--model",
 		model,
 		req.task,

@@ -378,10 +378,11 @@ export class PipelineCron {
 		const task = (spawnMeta ? readString(spawnMeta, "task") : null) ?? buildDefaultTask(transition);
 			const agentName =
 				readString(transition.metadata, "agent") ??
+				readString(spawnMeta, "worktree") ??        // fn_enqueue_mature_proposals sets spawn.worktree
 				(looksLikeWorktreeName(transition.triggered_by)
 					? transition.triggered_by
 					: null) ??
-				"architect";
+				"claude-one"; // default: primary orchestrator worktree
 
 			// 1. Create cubic for this proposal
 			const cubicResult = await mcpClient.callTool({
@@ -415,12 +416,41 @@ export class PipelineCron {
 			},
 		});
 
-		// Cubic dispatch is fire-and-forget: mark the queue row done so it isn't retried.
-		// The agent running inside the cubic is responsible for advancing the proposal state.
+		// Cubic dispatch: mark the queue row done, then send a real A2A message
+		// so the A2A dispatcher actually spawns the agent subprocess.
 		await this.markTransitionDone(transition.id);
-		this.logger.log(
-			`[PipelineCron] Cubic dispatched for proposal=${proposalId} gate=${readString(transition.metadata, "gate") ?? "?"} cubic=${cubicId}`,
+
+		// Resolve agent identity (slash-form) for message_ledger routing.
+		// Worktree names use dashes ("claude-one"); identities use slashes ("claude/one").
+		const agentIdentity = agentName.includes("/")
+			? agentName
+			: agentName.replace("-", "/");
+
+		// Only dispatch to known worktree agents — virtual agents (e.g. "architect") are skipped.
+		const isWorktreeAgent = WORKTREE_PREFIXES.some((p) =>
+			agentName.startsWith(p + "-") || agentName.startsWith(p + "/"),
 		);
+		if (isWorktreeAgent) {
+			try {
+				// Insert triggers fn_notify_new_message() automatically — no explicit pg_notify needed.
+				await this.queryFn(
+					`INSERT INTO roadmap.message_ledger
+					 (from_agent, to_agent, channel, message_content, message_type, proposal_id)
+					 VALUES ('system', $1, 'direct', $2, 'task', $3)`,
+					[agentIdentity, task, Number(proposalId)],
+				);
+				this.logger.log(
+					`[PipelineCron] A2A dispatched: system → ${agentIdentity} proposal=${proposalId} gate=${readString(transition.metadata, "gate") ?? "?"} cubic=${cubicId}`,
+				);
+			} catch (dispatchErr) {
+				const dispatchMsg = dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+				this.logger.warn(`[PipelineCron] A2A dispatch failed for ${agentIdentity}: ${dispatchMsg}`);
+			}
+		} else {
+			this.logger.log(
+				`[PipelineCron] Cubic reserved for virtual agent "${agentName}" proposal=${proposalId} — no A2A spawn (no worktree)`,
+			);
+		}
 } catch (error) {
 	const message =
 		error instanceof Error ? error.message : String(error);
