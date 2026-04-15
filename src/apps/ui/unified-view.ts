@@ -180,12 +180,16 @@ export async function loadProposalsForUnifiedView(
 
 	const loadingScreenFactory =
 		options.loadingScreenFactory || createLoadingScreen;
+	if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: creating loading screen");
 	const loadingScreen = await loadingScreenFactory("Loading proposals");
+	if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: loading screen created, calling loader");
 
 	try {
 		const result = await loader((message) => {
+			if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: progress: " + message);
 			loadingScreen?.update(message);
 		});
+		if (process.env.DEBUG) console.error("[DEBUG] loadProposalsForUnifiedView: loader returned " + result.proposals.length + " proposals");
 
 		return {
 			proposals: result.proposals,
