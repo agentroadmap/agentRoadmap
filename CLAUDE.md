@@ -49,7 +49,6 @@ All work is driven by **Proposals** managed via the **AgentHive MCP**. Agents mo
 * **The RFC Standard:** For a proposal to advance, it must be **Coherent**, **Economically/Architecturally optimized**, and have **Structurally defined Acceptance Criteria (AC)** with clear functions/tests.
 * **Issue Reporting:** If an error or blocker is encountered, use the MCP to **log an issue immediately**. Do not attempt to bypass fundamental architectural constraints without a formal issue log.
 * **The "Cubic" Context:** When spawning agents in a "Cubic" environment, ensure they are passed the relevant MCP context for their specific task.
-* **Worktree Ownership:** Keep modifications in the current worktree and branch; let the Git specialist handle merges to `main` when that is part of the workflow.
 
 ### 4. Completed Capabilities (as of 2026-04-11)
 
@@ -67,8 +66,8 @@ All work is driven by **Proposals** managed via the **AgentHive MCP**. Agents mo
 | **P148** | Auto-merge Worktrees | Automated merge from agent worktrees to main with back-sync to other agents |
 
 ### 5. Technical Environment
-* **Project Root:** `/data/code/AgentHive`
-* **Hermes Worktree:** `/data/code/worktree/hermes-andy`
+* **Project Root:** current repository root from the active CWD
+* **Hermes Worktree:** sibling worktree resolved from the active CWD, not a hardcoded absolute path
 * **MCP Server:** `http://127.0.0.1:6421/sse` (SSE transport)
 * **Systemd Services:** `hermes-gate-pipeline`, `hermes-orchestrator`, `hermes-gateway`
 * **SCM Policy:** Always commit work with specific file references immediately upon completion of a task. Avoid massive "mega-commits."
