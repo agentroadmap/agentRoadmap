@@ -72,6 +72,16 @@ export function getMaturityIcon(maturity?: string): string {
 }
 
 /**
+ * Get a single theme color for a proposal, preferring maturity over status.
+ */
+export function getProposalAccentColor(
+	status: string,
+	maturity?: string,
+): string {
+	return maturity ? getMaturityColor(maturity) : getStatusColor(status);
+}
+
+/**
  * Get just the color for a status (for backward compatibility)
  * @param status - The proposal status
  * @returns The color for the status

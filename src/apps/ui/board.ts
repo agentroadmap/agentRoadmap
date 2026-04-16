@@ -38,8 +38,8 @@ import {
 	shouldMoveFromListBoundaryToSearch,
 } from "./proposal-viewer-with-search.ts";
 import {
-	getMaturityColor,
 	getMaturityIcon,
+	getProposalAccentColor,
 	getStatusIcon,
 	getStatusStyle,
 } from "./status-icon.ts";
@@ -67,6 +67,117 @@ type ColumnView = {
 	list: ListInterface;
 	box: BoxInterface;
 };
+
+export type WorkflowViewKey = "rfc" | "quick-fix" | "hotfix";
+
+export interface WorkflowViewDefinition {
+	key: WorkflowViewKey;
+	label: string;
+	description: string;
+	proposalTypes: string[];
+	statuses: string[];
+}
+
+const WORKFLOW_VIEWS: WorkflowViewDefinition[] = [
+	{
+		key: "rfc",
+		label: "RFC",
+		description: "Standard RFC workflow",
+		proposalTypes: ["product", "component", "feature"],
+		statuses: ["Draft", "Review", "Develop", "Merge", "Complete"],
+	},
+	{
+		key: "quick-fix",
+		label: "Quick Fix",
+		description: "Rapid fix workflow",
+		proposalTypes: ["issue"],
+		statuses: ["TRIAGE", "FIXING", "DONE", "FIX", "DEPLOYED"],
+	},
+	{
+		key: "hotfix",
+		label: "Hotfix",
+		description: "Urgent operational workflow",
+		proposalTypes: ["hotfix"],
+		statuses: ["TRIAGE", "FIXING", "DONE"],
+	},
+];
+
+const WORKFLOW_BY_KEY = new Map(
+	WORKFLOW_VIEWS.map((workflow) => [workflow.key, workflow]),
+);
+const RFC_TYPES = new Set(["product", "component", "feature"]);
+const QUICK_FIX_TYPES = new Set(["issue"]);
+const HOTFIX_TYPES = new Set(["hotfix"]);
+const RFC_STATUSES = new Set(["draft", "review", "develop", "merge", "complete"]);
+const QUICK_FIX_STATUSES = new Set([
+	"triage",
+	"fixing",
+	"done",
+	"fix",
+	"deployed",
+]);
+const HOTFIX_STATUSES = new Set(["triage", "fixing", "done"]);
+
+export function getWorkflowViewDefinition(
+	key: WorkflowViewKey,
+): WorkflowViewDefinition {
+	return WORKFLOW_BY_KEY.get(key) ?? WORKFLOW_VIEWS[0];
+}
+
+export function getWorkflowViewForProposal(
+	proposal: Proposal,
+): WorkflowViewDefinition {
+	const proposalType = proposal.proposalType?.trim().toLowerCase();
+	if (proposalType && RFC_TYPES.has(proposalType)) {
+		return getWorkflowViewDefinition("rfc");
+	}
+	if (proposalType && QUICK_FIX_TYPES.has(proposalType)) {
+		return getWorkflowViewDefinition("quick-fix");
+	}
+	if (proposalType && HOTFIX_TYPES.has(proposalType)) {
+		return getWorkflowViewDefinition("hotfix");
+	}
+
+	const status = proposal.status.trim().toLowerCase();
+	if (RFC_STATUSES.has(status)) {
+		return getWorkflowViewDefinition("rfc");
+	}
+	if (QUICK_FIX_STATUSES.has(status)) {
+		return getWorkflowViewDefinition("quick-fix");
+	}
+	if (HOTFIX_STATUSES.has(status)) {
+		return getWorkflowViewDefinition("hotfix");
+	}
+
+	return getWorkflowViewDefinition("rfc");
+}
+
+export function filterProposalsForWorkflow(
+	proposals: Proposal[],
+	workflowKey: WorkflowViewKey,
+): Proposal[] {
+	return proposals.filter(
+		(proposal) => getWorkflowViewForProposal(proposal).key === workflowKey,
+	);
+}
+
+export function resolveWorkflowStatuses(
+	proposals: Proposal[],
+	workflowKey: WorkflowViewKey,
+): string[] {
+	const workflow = getWorkflowViewDefinition(workflowKey);
+	const statuses = new Set<string>(workflow.statuses);
+	for (const proposal of proposals) {
+		if (getWorkflowViewForProposal(proposal).key !== workflowKey) {
+			continue;
+		}
+		const status = proposal.status.trim();
+		if (status) {
+			statuses.add(status);
+		}
+	}
+	return Array.from(statuses);
+}
 
 function isCompleteStatus(status: string): boolean {
 	const normalized = status.trim().toLowerCase();
@@ -192,14 +303,11 @@ export function formatProposalListItem(
 	const statusStyle = getStatusStyle(status);
 	const statusColor = `{${statusStyle.color}-fg}`;
 
-	// Maturity-based color coding (overrides status color for the ID part)
+	// Maturity-based color coding keeps the ID and title on the same theme.
 	const maturity = (proposal as Proposal & { maturity?: string }).maturity;
-	const maturityColorName = getMaturityColor(maturity);
+	const maturityColorName = getProposalAccentColor(status, maturity);
 	const maturityColor = `{${maturityColorName}-fg}`;
 	const maturityIcon = getMaturityIcon(maturity);
-
-	// Use status color as base if no maturity color
-	const baseColor = maturityColor || statusColor;
 
 	// Merge status suffix for Complete proposals
 	const isComplete = isCompleteStatus(status);
@@ -216,7 +324,7 @@ export function formatProposalListItem(
 
 	// Cross-branch proposals are dimmed to indicate read-only status
 	const displayId = proposal.id.replace(/^STATE-/, "STEP-");
-	const content = `${baseColor}${maturityIcon}{bold}${displayId}{/bold}${baseColor ? "{/}" : ""} - ${statusColor}${proposal.title}{/}${assignee}${labels}${branch}${mergeSuffix}`;
+	const content = `${statusColor}${statusStyle.icon}{/} ${maturityColor}${maturityIcon}{bold}${displayId} - ${proposal.title}{/bold}{/}${assignee}${labels}${branch}${mergeSuffix}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -231,7 +339,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[W]{/} Workflow | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -340,18 +448,30 @@ export async function renderBoardTui(
 		"Replaced",
 	];
 
-	let initialColumns = prepareBoardColumns(initialProposals, statuses);
+	let currentWorkflowViewIndex = 0;
+	const getCurrentWorkflowView = () =>
+		WORKFLOW_VIEWS[currentWorkflowViewIndex] ?? WORKFLOW_VIEWS[0];
+	const initialWorkflowView = getCurrentWorkflowView();
+	const initialVisibleProposals = filterProposalsForWorkflow(
+		initialProposals,
+		initialWorkflowView.key,
+	);
+	let currentStatuses = resolveWorkflowStatuses(
+		initialVisibleProposals,
+		initialWorkflowView.key,
+	);
+	let initialColumns = prepareBoardColumns(
+		initialVisibleProposals,
+		currentStatuses,
+	);
 	initialColumns = filterBoardColumns(initialColumns, {
 		hiddenStatuses: hiddenStatusesFromConfig,
 	});
 
-	if (initialColumns.length === 0) {
-		console.log("No active proposals available for the Kanban board.");
-		return;
-	}
-
 	await new Promise<void>((resolve) => {
-		const screen = createScreen({ title: `Roadmap Board - ${versionLabel}` });
+		const screen = createScreen({
+			title: `Roadmap Board - ${initialWorkflowView.label} - ${versionLabel}`,
+		});
 		const container = box({
 			parent: screen,
 			width: "100%",
@@ -398,7 +518,6 @@ export async function renderBoardTui(
 		let currentProposals = initialProposals;
 		let columns: ColumnView[] = [];
 		let currentColumnsData = initialColumns;
-		let currentStatuses = currentColumnsData.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -489,6 +608,13 @@ export async function renderBoardTui(
 					resolveDirectiveLabel,
 				},
 				searchIndex,
+			);
+		};
+
+		const getVisibleWorkflowProposals = (): Proposal[] => {
+			return filterProposalsForWorkflow(
+				getFilteredProposals(),
+				getCurrentWorkflowView().key,
 			);
 		};
 
@@ -987,24 +1113,25 @@ export async function renderBoardTui(
 				syncBoardAreaLayout();
 				return;
 			}
+			const workflowView = getCurrentWorkflowView();
 			if (currentFocus === "filters") {
 				const filterFocus = filterHeader?.getCurrentFocus();
 				if (filterFocus === "search") {
 					setFooterContent(
-						" {cyan-fg}[←/→]{/} Cursor (edge=Prev/Next) | {cyan-fg}[↑/↓]{/} Back to Board | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}",
+						` {magenta-fg}${workflowView.label}{/} | {cyan-fg}[←/→]{/} Cursor (edge=Prev/Next) | {cyan-fg}[↑/↓]{/} Back to Board | {cyan-fg}[Esc]{/} Cancel | {gray-fg}(Live search){/}`,
 					);
 					syncBoardAreaLayout();
 					return;
 				}
 				setFooterContent(
-					" {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back",
+					` {magenta-fg}${workflowView.label}{/} | {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back`,
 				);
 				syncBoardAreaLayout();
 				return;
 			}
 			if (moveOp) {
 				setFooterContent(
-					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
+					` {magenta-fg}${workflowView.label}{/} | {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel`,
 				);
 			} else {
 				const base = DEFAULT_FOOTER_CONTENT;
@@ -1015,7 +1142,11 @@ export async function renderBoardTui(
 				if (hideEmptyColumns) filterIndicators.push("{yellow-fg}~Empty{/}");
 				if (hiddenStatuses.length > 0)
 					filterIndicators.push(`{yellow-fg}~${hiddenStatuses.join(",")}{/}`);
-				const indicators = [posIndicator, ...filterIndicators].filter(Boolean);
+				const indicators = [
+					`{magenta-fg}${workflowView.label}{/}`,
+					posIndicator,
+					...filterIndicators,
+				].filter(Boolean);
 				setFooterContent(
 					indicators.length > 0 ? `${indicators.join(" | ")} ${base}` : base,
 				);
@@ -1037,7 +1168,14 @@ export async function renderBoardTui(
 		};
 
 		const renderView = () => {
-			let projectedData = getProjectedColumns(getFilteredProposals(), moveOp);
+			const workflowView = getCurrentWorkflowView();
+			const visibleWorkflowProposals = getVisibleWorkflowProposals();
+			currentStatuses = resolveWorkflowStatuses(
+				visibleWorkflowProposals,
+				workflowView.key,
+			);
+
+			let projectedData = getProjectedColumns(visibleWorkflowProposals, moveOp);
 
 			// Apply column visibility filters
 			projectedData = filterBoardColumns(projectedData, {
@@ -1057,6 +1195,7 @@ export async function renderBoardTui(
 				applyColumnData(projectedData, selectedId);
 			}
 
+			screen.title = `Roadmap Board - ${workflowView.label} - ${versionLabel}`;
 			updateFooter();
 			screen.render();
 		};
@@ -1124,6 +1263,16 @@ export async function renderBoardTui(
 			updateFooter();
 		});
 
+		screen.key(["w", "W"], () => {
+			if (popupOpen || filterPopupOpen || moveOp) return;
+			currentWorkflowViewIndex =
+				(currentWorkflowViewIndex + 1) % WORKFLOW_VIEWS.length;
+			showTransientFooter(
+				` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
+			);
+			renderView();
+		});
+
 		screen.key(["p", "P"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
 			void openFilterPicker("priority");
@@ -1164,7 +1313,7 @@ export async function renderBoardTui(
 		let previousVisibility: string[] | null = null; // For restoring previous proposal
 
 		const applyColumnVisibility = () => {
-			const filteredStatuses = statuses.filter((s) => !hiddenColumns.has(s));
+			const filteredStatuses = currentStatuses.filter((s) => !hiddenColumns.has(s));
 			currentStatuses = filteredStatuses;
 			rebuildColumns(currentColumnsData);
 			renderView();
@@ -1189,7 +1338,7 @@ export async function renderBoardTui(
 			if (vPressCount === 1 && previousVisibility) {
 				// Restore previous proposal
 				hiddenColumns.clear();
-				statuses.forEach((s) => {
+				currentStatuses.forEach((s) => {
 					if (!previousVisibility?.includes(s)) hiddenColumns.add(s);
 				});
 				applyColumnVisibility();
@@ -1205,13 +1354,15 @@ export async function renderBoardTui(
 			// Current column is the one we're on
 			const focusedCol = columns[currentCol]?.status;
 			if (!focusedCol) return;
-			previousVisibility = statuses.filter((s) => !hiddenColumns.has(s));
+			previousVisibility = currentStatuses.filter((s) => !hiddenColumns.has(s));
 			hiddenColumns.add(focusedCol);
 			// Ensure current column index is valid after hiding
-			if (currentCol >= statuses.filter((s) => !hiddenColumns.has(s)).length) {
+			if (
+				currentCol >= currentStatuses.filter((s) => !hiddenColumns.has(s)).length
+			) {
 				currentCol = Math.max(
 					0,
-					statuses.filter((s) => !hiddenColumns.has(s)).length - 1,
+					currentStatuses.filter((s) => !hiddenColumns.has(s)).length - 1,
 				);
 			}
 			applyColumnVisibility();
@@ -1225,9 +1376,9 @@ export async function renderBoardTui(
 			if (popupOpen || filterPopupOpen || moveOp) return;
 			const focusedCol = columns[currentCol]?.status;
 			if (!focusedCol) return;
-			previousVisibility = statuses.filter((s) => !hiddenColumns.has(s));
+			previousVisibility = currentStatuses.filter((s) => !hiddenColumns.has(s));
 			hiddenColumns.clear();
-			statuses.forEach((s) => {
+			currentStatuses.forEach((s) => {
 				if (s !== focusedCol) hiddenColumns.add(s);
 			});
 			applyColumnVisibility();
@@ -1242,8 +1393,8 @@ export async function renderBoardTui(
 				if (popupOpen || filterPopupOpen || moveOp) return;
 				// Only intercept if V was pressed (column mode)
 				const statusIdx = i - 1;
-				if (statusIdx >= statuses.length) return;
-				const status = statuses[statusIdx];
+				if (statusIdx >= currentStatuses.length) return;
+				const status = currentStatuses[statusIdx];
 				if (!status) return;
 				if (hiddenColumns.has(status)) {
 					hiddenColumns.delete(status);
