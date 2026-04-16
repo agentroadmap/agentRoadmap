@@ -162,13 +162,14 @@ function detectProvider(worktreeName: string): AgentProvider {
 
 /**
  * Maps AgentProvider enum to DB provider string(s) in model_metadata.
- * openclaw covers both openai-compatible and nous (Hermes/xiaomi mimo models).
+ * openclaw (Hermes/xiaomi worktrees) is restricted to nous models only
+ * (xiaomi/mimo-v2-pro, xiaomi/mimo-v2-omni). copilot handles openai models.
  */
 const PROVIDER_DB_KEYS: Record<AgentProvider, string[]> = {
 	claude: ["anthropic"],
 	gemini: ["google"],
 	copilot: ["openai"],
-	openclaw: ["openai", "nous"],
+	openclaw: ["nous"],
 };
 
 /** Hard-coded platform defaults used when hint validation fails. */
@@ -176,7 +177,7 @@ const PROVIDER_DEFAULTS: Record<AgentProvider, string> = {
 	claude: "claude-sonnet-4-6",
 	gemini: "gemini-2.0-flash",
 	copilot: "gpt-4o",
-	openclaw: "openclaw-v1",
+	openclaw: "xiaomi/mimo-v2-pro",
 };
 
 /**
