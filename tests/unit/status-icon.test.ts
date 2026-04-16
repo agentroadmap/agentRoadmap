@@ -2,6 +2,7 @@ import assert from "node:assert";
 import { describe, test } from "node:test";
 import {
 	formatStatusWithIcon,
+	getProposalAccentColor,
 	getStatusColor,
 	getStatusIcon,
 	getStatusStyle,
@@ -113,6 +114,11 @@ describe("Status Icon Component", () => {
 			expect(getMaturityIcon("active")).toBe("▶ ");
 			expect(getMaturityIcon("mature")).toBe("✓ ");
 			expect(getMaturityIcon("obsolete")).toBe("✖ ");
+		});
+
+		test("returns a shared proposal accent color", () => {
+			expect(getProposalAccentColor("Review", "mature")).toBe("green");
+			expect(getProposalAccentColor("Develop", undefined)).toBe("yellow");
 		});
 	});
 });

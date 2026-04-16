@@ -48,12 +48,12 @@ import {
 	type GenericList,
 } from "./components/generic-list.ts";
 import { formatFooterContent } from "./footer-content.ts";
-import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import {
 	formatStatusWithIcon,
 	getMaturityColor,
 	getMaturityIcon,
+	getProposalAccentColor,
 	getStatusColor,
 } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
@@ -69,6 +69,10 @@ function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 		default:
 			return "";
 	}
+}
+
+function formatSectionHeading(title: string, color: string): string {
+	return `{bold}{${color}-fg}▍ ${title}{/${color}-fg}{/bold}`;
 }
 
 function createDirectiveLabelResolver(
@@ -1329,7 +1333,7 @@ export async function viewProposalEnhanced(
 	});
 }
 
-function generateDetailContent(
+export function generateDetailContent(
 	proposal: Proposal,
 	resolveDirectiveLabel?: (directive: string) => string,
 ): { headerContent: string[]; bodyContent: string[] } {
@@ -1337,9 +1341,13 @@ function generateDetailContent(
 	const statusColor = getStatusColor(proposal.status);
 	const maturityColor = getMaturityColor((proposal as any).maturity);
 	const maturityIcon = getMaturityIcon((proposal as any).maturity);
+	const accentColor = getProposalAccentColor(
+		proposal.status,
+		(proposal as any).maturity,
+	);
 
 	const headerContent = [
-		` {${maturityColor}-fg}${maturityIcon}{/}${statusColor ? `{${statusColor}-fg}` : ""}${formatStatusWithIcon(proposal.status)}{/} {bold}{blue-fg}${dvId}{/blue-fg}{/bold} - ${proposal.title}`,
+		` {${statusColor}-fg}${formatStatusWithIcon(proposal.status)}{/} {${accentColor}-fg}${maturityIcon}{bold}${dvId} - ${proposal.title}{/bold}{/}`,
 	];
 
 	// Add cross-branch indicator if proposal is from another branch
@@ -1354,7 +1362,7 @@ function generateDetailContent(
 	}
 
 	const bodyContent: string[] = [];
-	bodyContent.push(formatHeading("Details", 2));
+	bodyContent.push(formatSectionHeading("Details", "cyan"));
 
 	const metadata: string[] = [];
 	metadata.push(
@@ -1422,7 +1430,7 @@ function generateDetailContent(
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
 
-	bodyContent.push(formatHeading("Description", 2));
+	bodyContent.push(formatSectionHeading("Description", "green"));
 	const descriptionText = proposal.description?.trim();
 	const descriptionContent = descriptionText
 		? transformCodePaths(descriptionText)
@@ -1431,7 +1439,7 @@ function generateDetailContent(
 	bodyContent.push("");
 
 	if (proposal.references?.length) {
-		bodyContent.push(formatHeading("References", 2));
+		bodyContent.push(formatSectionHeading("References", "magenta"));
 		const formattedRefs = proposal.references.map((ref) => {
 			// Color URLs differently from file paths
 			if (ref.startsWith("http://") || ref.startsWith("https://")) {
@@ -1444,7 +1452,7 @@ function generateDetailContent(
 	}
 
 	if (proposal.documentation?.length) {
-		bodyContent.push(formatHeading("Documentation", 2));
+		bodyContent.push(formatSectionHeading("Documentation", "blue"));
 		const formattedDocs = proposal.documentation.map((doc) => {
 			if (doc.startsWith("http://") || doc.startsWith("https://")) {
 				return `  {cyan-fg}${doc}{/}`;
@@ -1455,7 +1463,7 @@ function generateDetailContent(
 		bodyContent.push("");
 	}
 
-	bodyContent.push(formatHeading("Acceptance Criteria", 2));
+	bodyContent.push(formatSectionHeading("Acceptance Criteria", "yellow"));
 	const checklistItems = buildAcceptanceCriteriaItems(proposal);
 	if (checklistItems.length > 0) {
 		const formattedCriteria = checklistItems.map((item) =>
@@ -1479,21 +1487,21 @@ function generateDetailContent(
 
 	const implementationPlan = proposal.implementationPlan?.trim();
 	if (implementationPlan) {
-		bodyContent.push(formatHeading("Implementation Plan", 2));
+		bodyContent.push(formatSectionHeading("Implementation Plan", "cyan"));
 		bodyContent.push(transformCodePaths(implementationPlan));
 		bodyContent.push("");
 	}
 
 	const implementationNotes = proposal.implementationNotes?.trim();
 	if (implementationNotes) {
-		bodyContent.push(formatHeading("Implementation Notes", 2));
+		bodyContent.push(formatSectionHeading("Implementation Notes", "magenta"));
 		bodyContent.push(transformCodePaths(implementationNotes));
 		bodyContent.push("");
 	}
 
 	const finalSummary = proposal.finalSummary?.trim();
 	if (finalSummary) {
-		bodyContent.push(formatHeading("Final Summary", 2));
+		bodyContent.push(formatSectionHeading("Final Summary", "green"));
 		bodyContent.push(transformCodePaths(finalSummary));
 		bodyContent.push("");
 	}
@@ -1604,6 +1612,20 @@ export async function createProposalPopup(
 		content: bodyContent.join("\n"),
 	});
 
+	const popupScrollable = contentArea as unknown as {
+		scroll?: (offset: number) => void;
+		setScroll?: (offset: number) => void;
+		setScrollPerc?: (perc: number) => void;
+		getScroll?: () => number;
+	};
+	const popupPageAmount = () => {
+		const height =
+			typeof contentArea.height === "number"
+				? contentArea.height
+				: parseInt(String(contentArea.height), 10) || 0;
+		return height > 0 ? Math.max(1, height - 3) : 20;
+	};
+
 	const closePopup = () => {
 		popup.destroy();
 		background.destroy();
@@ -1629,6 +1651,32 @@ export async function createProposalPopup(
 
 	contentArea.key(["escape"], () => {
 		closePopup();
+		return false;
+	});
+	contentArea.key(["pageup", "pgup", "b"], () => {
+		const delta = popupPageAmount();
+		if (delta > 0) {
+			popupScrollable.scroll?.(-delta);
+			screen.render();
+		}
+		return false;
+	});
+	contentArea.key(["pagedown", "pgdn", "space"], () => {
+		const delta = popupPageAmount();
+		if (delta > 0) {
+			popupScrollable.scroll?.(delta);
+			screen.render();
+		}
+		return false;
+	});
+	contentArea.key(["home", "g"], () => {
+		popupScrollable.setScroll?.(0);
+		screen.render();
+		return false;
+	});
+	contentArea.key(["end", "G"], () => {
+		popupScrollable.setScrollPerc?.(100);
+		screen.render();
 		return false;
 	});
 
