@@ -52,6 +52,7 @@ Thumbs.db
 /config.yaml
 /config.example.yaml
 /config.yml
+/.roadmap/federation/ca.json
 /.env.agent
 /.git-identity
 /scripts/mcp/
