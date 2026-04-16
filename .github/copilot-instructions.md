@@ -32,6 +32,7 @@ Schema artifacts are split between `/database/ddl/`, `/database/dml/`, and canon
 - MCP server: port 6421 (`agenthive-mcp.service`)
 - WS bridge: port 3001
 - Environment: `.env` file at repo root
+- Keep modifications in the current worktree and branch; let the Git specialist handle merges to `main` when that is part of the workflow.
 
 ## Key Files to Rewrite
 - `src/infra/postgres/proposal-storage-v2.ts` — Postgres storage adapter
