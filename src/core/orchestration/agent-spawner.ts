@@ -160,19 +160,7 @@ function detectProvider(worktreeName: string): AgentProvider {
 
 // ─── P235: Platform-Aware Model Constraints ──────────────────────────────────
 
-/**
- * Maps AgentProvider enum to DB provider string(s) in model_metadata.
- * openclaw (Hermes/xiaomi worktrees) is restricted to nous models only
- * (xiaomi/mimo-v2-pro, xiaomi/mimo-v2-omni). copilot handles openai models.
- */
-const PROVIDER_DB_KEYS: Record<AgentProvider, string[]> = {
-	claude: ["anthropic"],
-	gemini: ["google"],
-	copilot: ["openai"],
-	openclaw: ["nous"],
-};
-
-/** Hard-coded platform defaults used when hint validation fails. */
+/** Hard-coded platform defaults used when route lookup fails. */
 const PROVIDER_DEFAULTS: Record<AgentProvider, string> = {
 	claude: "claude-sonnet-4-6",
 	gemini: "gemini-2.0-flash",
@@ -183,11 +171,12 @@ const PROVIDER_DEFAULTS: Record<AgentProvider, string> = {
 /**
  * P235: Resolve and validate model hint against platform constraints.
  *
- * If a hint is provided, queries model_metadata to confirm the model's
- * provider is allowed for this AgentProvider platform. If it is not found
- * or belongs to a different platform, logs a warning and falls back to the
- * platform default — preventing cross-platform model leakage (e.g., a claude
- * model hint reaching a gemini or openclaw worktree).
+ * Queries model_routes to confirm there is an enabled route for this
+ * (model_name, agent_provider) combination. Prevents cross-platform model
+ * leakage (e.g., a claude-sonnet hint passed to an openclaw/Hermes worktree).
+ *
+ * If no hint is given, returns the lowest-priority enabled route for this
+ * agent_provider (i.e., the token-plan route first, then api_key fallback).
  */
 async function resolveModel(
 	provider: AgentProvider,
@@ -195,35 +184,43 @@ async function resolveModel(
 ): Promise<string> {
 	const defaultModel = PROVIDER_DEFAULTS[provider];
 
-	if (!hint) return defaultModel;
-
-	// Validate hint against model_metadata
-	const { rows } = await query<{ provider: string }>(
-		`SELECT provider FROM roadmap.model_metadata WHERE model_name = $1 AND is_active = true LIMIT 1`,
-		[hint],
-	);
-
-	if (rows.length === 0) {
-		// Model not in registry — allow it (custom/local models) but log
-		console.warn(
-			`[P235] Model "${hint}" not found in model_metadata — using as-is for provider "${provider}"`,
+	if (hint) {
+		// Validate: check model_routes for an enabled route matching (hint, provider)
+		const { rows } = await query<{ model_name: string; plan_type: string | null }>(
+			`SELECT model_name, plan_type
+       FROM roadmap.model_routes
+       WHERE model_name = $1 AND agent_provider = $2 AND is_enabled = true
+       ORDER BY priority ASC
+       LIMIT 1`,
+			[hint, provider],
 		);
+
+		if (rows.length === 0) {
+			// No enabled route for this (model, agent_provider) — cross-platform or disabled
+			console.warn(
+				`[P235] No enabled route for model "${hint}" with agent_provider "${provider}". ` +
+					`Falling back to "${defaultModel}".`,
+			);
+			return defaultModel;
+		}
+		// Route exists — use hint as-is (route may be token_plan or api_key)
 		return hint;
 	}
 
-	const dbProvider = rows[0].provider;
-	const allowedKeys = PROVIDER_DB_KEYS[provider];
+	// No hint: pick lowest-priority (cheapest) enabled model for this provider
+	const { rows } = await query<{ model_name: string }>(
+		`SELECT model_name
+     FROM roadmap.model_routes
+     WHERE agent_provider = $1 AND is_enabled = true
+     ORDER BY priority ASC, cost_per_1k_input ASC
+     LIMIT 1`,
+		[provider],
+	);
 
-	if (!allowedKeys.includes(dbProvider)) {
-		// Cross-platform leak detected — fall back to default
-		console.warn(
-			`[P235] Model hint "${hint}" (provider=${dbProvider}) is not allowed for agent provider "${provider}" ` +
-				`(allowed: ${allowedKeys.join(", ")}). Falling back to "${defaultModel}".`,
-		);
-		return defaultModel;
-	}
+	if (rows.length > 0) return rows[0].model_name;
 
-	return hint;
+	// No routes in DB at all — use hard-coded default
+	return defaultModel;
 }
 
 async function buildProposalContextPackage(input: {
@@ -451,16 +448,15 @@ export async function escalateOrNotify(
 	proposalId?: number,
 ): Promise<SpawnResult | null> {
 	const provider = detectProvider(req.worktree);
-	const allowedKeys = PROVIDER_DB_KEYS[provider];
 
-	// P235: build ladder from model_metadata, filtered to this provider's platform
+	// P235: build ladder from model_routes, filtered to this agent_provider
 	// Ordered by cost_per_1k_input ASC (cheap → expensive = escalation order)
 	const { rows: ladderRows } = await query<{ model_name: string }>(
-		`SELECT model_name
-     FROM roadmap.model_metadata
-     WHERE provider = ANY($1::text[]) AND is_active = true
-     ORDER BY cost_per_1k_input ASC`,
-		[allowedKeys],
+		`SELECT DISTINCT ON (model_name) model_name, cost_per_1k_input
+     FROM roadmap.model_routes
+     WHERE agent_provider = $1 AND is_enabled = true
+     ORDER BY model_name, priority ASC, cost_per_1k_input ASC`,
+		[provider],
 	);
 
 	const ladder = ladderRows.map((r) => r.model_name);
