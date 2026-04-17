@@ -43,6 +43,7 @@ This repository is an agent-native product development platform. Work is proposa
 ### Working Rules
 - Check the current proposal, state, and dependencies before changing shared behavior.
 - Use the MCP and proposal workflow when the task affects shared project state, release flow, or agent coordination.
+- Create and update tracked proposals through MCP/Postgres first; treat markdown files as synced projections, not the lifecycle source of truth.
 - Claim or lease work when the workflow requires ownership before implementation.
 - If the type, state, or owner is unclear, inspect the proposal and ask before changing shared state.
 - If a task is blocked by workflow, dependency, or missing context, stop and report that instead of guessing.
@@ -50,6 +51,12 @@ This repository is an agent-native product development platform. Work is proposa
 - Keep changes surgical. Avoid unrelated refactors, formatting churn, or broad cleanup.
 - If you make a change that creates unused imports, functions, or variables, clean up only what your change made unused.
 - Prefer tests that reproduce the bug or validate the behavior you changed.
+
+### Coding Principles
+- Think before coding: state assumptions, surface tradeoffs, and ask when uncertain.
+- Simplicity first: make the smallest change that solves the request.
+- Surgical changes: touch only what you must, and do not refactor unrelated code.
+- Goal-driven execution: define a clear success criterion and verify it before handing work back.
 
 ### Coding Preferences
 - Make the smallest change that solves the request.
@@ -65,8 +72,8 @@ This repository is an agent-native product development platform. Work is proposa
 - Keep modifications in the current worktree and branch; let the Git specialist handle merges to `main` when that is part of the workflow.
 
 ### Repo Context
-- Current worktree root: `/data/code/worktree/codex`
-- Main project root: `/data/code/AgentHive`
+- Current worktree root: CWD
+- Main project root: repository root
 - MCP server: `http://127.0.0.1:6421/sse`
 
 ### Notes

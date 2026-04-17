@@ -29,6 +29,7 @@ Schema artifacts are split between `/database/ddl/`, `/database/dml/`, and canon
 
 ## Architecture
 - Config: `provider: Postgres`, `schema: roadmap` at `/roadmap.yaml`
+- Current worktree root: CWD
 - MCP server: port 6421 (`agenthive-mcp.service`)
 - WS bridge: port 3001
 - Environment: `.env` file at repo root

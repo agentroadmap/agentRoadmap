@@ -66,10 +66,9 @@ All work is driven by **Proposals** managed via the **AgentHive MCP**. Agents mo
 | **P148** | Auto-merge Worktrees | Automated merge from agent worktrees to main with back-sync to other agents |
 
 ### 5. Technical Environment
-* **Project Root:** current repository root from the active CWD
-* **Hermes Worktree:** sibling worktree resolved from the active CWD, not a hardcoded absolute path
+* **Project Root:** CWD
+* **Hermes Worktree:** sibling worktree resolved from the CWD, not a hardcoded absolute path
 * **MCP Server:** `http://127.0.0.1:6421/sse` (SSE transport)
 * **Systemd Services:** `hermes-gate-pipeline`, `hermes-orchestrator`, `hermes-gateway`
 * **SCM Policy:** Always commit work with specific file references immediately upon completion of a task. Avoid massive "mega-commits."
-
 
