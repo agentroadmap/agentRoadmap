@@ -4,10 +4,7 @@ import {
 	generateDirectiveGroupedBoard,
 	generateKanbanBoardWithMetadata,
 } from "../../board.ts";
-import {
-	getRecentEvents,
-	type StreamEvent,
-} from "../../core/messaging/event-stream.ts";
+import type { StreamEvent } from "../../core/messaging/event-stream.ts";
 import { Core } from "../../core/roadmap.ts";
 import type { Directive, Proposal } from "../../shared/types/index.ts";
 import { collectAvailableLabels } from "../../shared/utils/label-filter.ts";
@@ -32,6 +29,7 @@ import {
 	openSingleSelectFilterPopup,
 } from "./components/filter-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
+import { getBoardLiveFeed } from "./live-feed.ts";
 import {
 	createProposalPopup,
 	resolveSearchExitTargetIndex,
@@ -108,7 +106,13 @@ const WORKFLOW_BY_KEY = new Map(
 const RFC_TYPES = new Set(["product", "component", "feature"]);
 const QUICK_FIX_TYPES = new Set(["issue"]);
 const HOTFIX_TYPES = new Set(["hotfix"]);
-const RFC_STATUSES = new Set(["draft", "review", "develop", "merge", "complete"]);
+const RFC_STATUSES = new Set([
+	"draft",
+	"review",
+	"develop",
+	"merge",
+	"complete",
+]);
 const RFC_STATUS_ALIASES = new Map<string, string>([
 	["todo", "Draft"],
 	["new", "Draft"],
@@ -172,7 +176,10 @@ const HOTFIX_STATUS_ALIASES = new Map<string, string>([
 	["deployed", "DONE"],
 	["closed", "DONE"],
 ]);
-const STATUS_ALIASES_BY_WORKFLOW: Record<WorkflowViewKey, Map<string, string>> = {
+const STATUS_ALIASES_BY_WORKFLOW: Record<
+	WorkflowViewKey,
+	Map<string, string>
+> = {
 	rfc: RFC_STATUS_ALIASES,
 	"quick-fix": QUICK_FIX_STATUS_ALIASES,
 	hotfix: HOTFIX_STATUS_ALIASES,
@@ -204,7 +211,10 @@ function normalizeWorkflowStatus(
 		(candidate) => candidate.toLowerCase() === trimmed.toLowerCase(),
 	);
 	if (canonical) return canonical;
-	return STATUS_ALIASES_BY_WORKFLOW[workflowKey].get(trimmed.toLowerCase()) ?? trimmed;
+	return (
+		STATUS_ALIASES_BY_WORKFLOW[workflowKey].get(trimmed.toLowerCase()) ??
+		trimmed
+	);
 }
 
 export function getWorkflowViewForProposal(
@@ -260,7 +270,10 @@ export function resolveWorkflowStatuses(
 			extraStatuses.add(status);
 		}
 	}
-	return [...canonicalStatuses, ...Array.from(extraStatuses).sort((a, b) => a.localeCompare(b))];
+	return [
+		...canonicalStatuses,
+		...Array.from(extraStatuses).sort((a, b) => a.localeCompare(b)),
+	];
 }
 
 function normalizeProposalsForWorkflow(
@@ -584,12 +597,20 @@ export async function renderBoardTui(
 			zIndex: 100,
 		});
 
-		const boardArea = box({
+		const boardPane = box({
 			parent: container,
 			top: 0,
 			left: 0,
 			width: "75%",
 			height: "100%-1",
+		});
+
+		const boardArea = box({
+			parent: boardPane,
+			top: 0,
+			left: 0,
+			width: "100%",
+			height: "100%",
 		});
 
 		// Live event stream sidebar (right panel)
@@ -1156,7 +1177,7 @@ export async function renderBoardTui(
 		};
 
 		filterHeader = createFilterHeader({
-			parent: container,
+			parent: boardPane,
 			statuses: [],
 			availableLabels: configuredLabels,
 			availableDirectives,
@@ -1208,7 +1229,8 @@ export async function renderBoardTui(
 		const syncBoardAreaLayout = () => {
 			const headerHeight = filterHeader?.getHeight() ?? 0;
 			boardArea.top = headerHeight;
-			boardArea.height = `100%-${headerHeight + getFooterHeight()}`;
+			boardArea.height = `100%-${headerHeight}`;
+			boardPane.height = `100%-${getFooterHeight()}`;
 		};
 		syncBoardAreaLayout();
 
@@ -1428,7 +1450,9 @@ export async function renderBoardTui(
 		let previousVisibility: string[] | null = null; // For restoring previous proposal
 
 		const applyColumnVisibility = () => {
-			const filteredStatuses = currentStatuses.filter((s) => !hiddenColumns.has(s));
+			const filteredStatuses = currentStatuses.filter(
+				(s) => !hiddenColumns.has(s),
+			);
 			currentStatuses = filteredStatuses;
 			rebuildColumns(currentColumnsData);
 			renderView();
@@ -1473,7 +1497,8 @@ export async function renderBoardTui(
 			hiddenColumns.add(focusedCol);
 			// Ensure current column index is valid after hiding
 			if (
-				currentCol >= currentStatuses.filter((s) => !hiddenColumns.has(s)).length
+				currentCol >=
+				currentStatuses.filter((s) => !hiddenColumns.has(s)).length
 			) {
 				currentCol = Math.max(
 					0,
@@ -2082,8 +2107,8 @@ export async function renderBoardTui(
 
 		// Poll for new events and update event panel
 		let _currentEvents: StreamEvent[] = [];
-		const updateEventPanel = () => {
-			const events = getRecentEvents(30);
+		const updateEventPanel = async () => {
+			const events = await getBoardLiveFeed(30);
 			if (events.length > 0) {
 				_currentEvents = events;
 				const lines = events.map((e) => {
@@ -2094,32 +2119,34 @@ export async function renderBoardTui(
 					});
 					const icon =
 						{
-							proposal_accepted: "📋",
-							proposal_claimed: "✋",
-							proposal_coding: "💻",
-							review_requested: "👀",
-							proposal_reviewing: "🔍",
-							review_passed: "✅",
-							review_failed: "❌",
-							proposal_complete: "🎉",
-							proposal_merged: "🔀",
-							proposal_pushed: "🚀",
-							agent_online: "🟢",
-							agent_offline: "🔴",
-							handoff: "🤝",
-							heartbeat: "💓",
-							cubic_phase_change: "🔄",
-							custom: "📌",
-							message: "💬",
-						}[e.type] || "📌";
+							proposal_accepted: "+",
+							proposal_claimed: "C",
+							proposal_coding: ">",
+							review_requested: "?",
+							proposal_reviewing: "R",
+							review_passed: "✓",
+							review_failed: "!",
+							proposal_complete: "*",
+							proposal_merged: "M",
+							proposal_pushed: "P",
+							agent_online: "+",
+							agent_offline: "-",
+							handoff: "S",
+							heartbeat: "$",
+							cubic_phase_change: "~",
+							custom: ".",
+							message: "@",
+						}[e.type] || ".";
 					return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
 				});
 				eventPanel.setContent(lines.join("\n"));
 			}
 			screen.render();
 		};
-		updateEventPanel();
-		const eventPanelTimer = setInterval(updateEventPanel, 3000);
+		void updateEventPanel();
+		const eventPanelTimer = setInterval(() => {
+			void updateEventPanel();
+		}, 3000);
 
 		screen.on("destroy", () => {
 			clearInterval(eventPanelTimer);

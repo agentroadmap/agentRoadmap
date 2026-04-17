@@ -16,7 +16,7 @@ export function getStatusStyle(status: string): StatusStyle {
 		Review: { icon: "◆", color: "blue" },
 		Develop: { icon: "◒", color: "yellow" },
 		Merge: { icon: "▣", color: "cyan" },
-		Complete: { icon: "✅", color: "green" },
+		Complete: { icon: "✓", color: "green" },
 		Rejected: { icon: "✖", color: "red" },
 		Discard: { icon: "●", color: "red" },
 		Replaced: { icon: "⇄", color: "magenta" },
