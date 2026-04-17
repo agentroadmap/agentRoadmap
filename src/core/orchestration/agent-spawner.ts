@@ -17,6 +17,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { query } from "../../infra/postgres/pool.ts";
 
@@ -24,6 +25,11 @@ import { query } from "../../infra/postgres/pool.ts";
 
 const WORKTREE_ROOT = "/data/code/worktree";
 const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
+
+// P245: host identity used for host-level spawn policy lookup.
+// Resolved once at module load; systemd units set AGENTHIVE_HOST explicitly
+// (e.g. hermes-orchestrator → AGENTHIVE_HOST=hermes).
+const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? hostname();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -207,6 +213,64 @@ function assertPlatformAwareRoute(
 			`[P235] Hermes routes must use the Nous provider; got "${route.routeProvider}" for model "${route.modelName}".`,
 		);
 	}
+}
+
+// ─── P245: Host-level spawn policy ────────────────────────────────────────────
+
+export class SpawnPolicyViolation extends Error {
+	constructor(
+		readonly host: string,
+		readonly routeProvider: string,
+		readonly modelName: string,
+	) {
+		super(
+			`[P245] Spawn policy violation: host "${host}" is not permitted to run route_provider "${routeProvider}" (model "${modelName}").`,
+		);
+		this.name = "SpawnPolicyViolation";
+	}
+}
+
+/**
+ * Enforce host-level spawn policy. Called after resolveModelRoute but before
+ * the CLI subprocess is launched. Violations are recorded to
+ * roadmap.escalation_log with severity=high and the spawn is aborted.
+ *
+ * Unknown hosts are permitted (legacy fallback) — see fn_check_spawn_policy.
+ */
+async function assertSpawnAllowed(
+	host: string,
+	route: ModelRoute,
+	proposalId?: number,
+	worktree?: string,
+): Promise<void> {
+	const { rows } = await query<{ allowed: boolean }>(
+		`SELECT roadmap.fn_check_spawn_policy($1, $2) AS allowed`,
+		[host, route.routeProvider],
+	);
+	const allowed = rows[0]?.allowed ?? true;
+	if (allowed) return;
+
+	// Record the violation before throwing so the signal survives the crash.
+	try {
+		await query(
+			`INSERT INTO roadmap.escalation_log
+                (obstacle_type, proposal_id, agent_identity, escalated_to, severity, resolution_note)
+             VALUES ('SPAWN_POLICY_VIOLATION', $1, $2, 'orchestrator', 'high', $3)`,
+			[
+				proposalId !== undefined ? String(proposalId) : null,
+				worktree ?? null,
+				`host=${host} route_provider=${route.routeProvider} model=${route.modelName}`,
+			],
+		);
+	} catch (err) {
+		// Logging failure must not mask the original violation.
+		console.error(
+			`[P245] Failed to write escalation_log for spawn violation:`,
+			err,
+		);
+	}
+
+	throw new SpawnPolicyViolation(host, route.routeProvider, route.modelName);
 }
 
 export function assertHermesRouteAllowed(
@@ -541,6 +605,8 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const provider = detectProvider(worktree);
 	// P235/M026: resolve full route (model + api_spec + base_url) from model_routes
 	const route = await resolveModelRoute(provider, modelHint);
+	// P245: enforce host-level spawn policy before launching any CLI subprocess.
+	await assertSpawnAllowed(AGENTHIVE_HOST, route, proposalId, worktree);
 	const agentEnv = await loadEnvAgent(worktree);
 	let assembledTask = task;
 

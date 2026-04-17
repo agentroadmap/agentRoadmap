@@ -17,6 +17,10 @@ SyslogIdentifier=hermes-orchestrator
 # Environment file for database credentials
 EnvironmentFile=-%h/.agenthive.env
 
+# P245: declare host identity so the spawner can look up host_model_policy
+# and refuse forbidden routes (e.g. anthropic on hermes).
+Environment=AGENTHIVE_HOST=hermes
+
 # Resource limits
 MemoryMax=512M
 CPUQuota=50%
