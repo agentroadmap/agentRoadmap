@@ -874,3 +874,29 @@ sal-001 - Test: Team Memory Sprint
 [2026-04-17 15:29:36] System: **[proposal created]** PROPOSAL-2 - Medium Priority
 [2026-04-17 15:29:36] System: **[proposal created]** PROPOSAL-1 - Test Proposal
 [2026-04-17 15:29:36] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gTmV3IFByb2plY3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-17 15:29:37] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-17 15:29:38] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-17 15:29:38] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-17 15:29:38] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
+[2026-04-17 15:29:40] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:41] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-17 15:29:42] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-17 15:29:43] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-17 15:29:45] System: **[proposal created]** PROPOSAL-1 - Dead End
+[2026-04-17 15:29:45] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-17 15:29:47] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-17 15:29:48] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-17 15:29:49] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-17 15:29:50] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-17 15:29:51] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:51] System: **[proposal created]** PROPOSAL-1 - Test 1
+[2026-04-17 15:29:52] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:52] System: **[proposal created]** PROPOSAL-2 - Test 2
+[2026-04-17 15:29:53] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:53] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-17 15:29:54] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-17 15:29:54] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:55] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-17 15:29:55] System: **[proposal created]** PROPOSAL-1 - Symlink root proposal
+[2026-04-17 15:29:56] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-17 15:29:57] System: **[proposal created]** PROPOSAL-1 - Symlink root auto-commit
