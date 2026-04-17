@@ -63,6 +63,7 @@
 		"lint": "biome lint --write .",
 		"check": "biome check .",
 		"check:types": "node node_modules/typescript/bin/tsc --noEmit",
+		"check:publish": "node scripts/check-publish-hygiene.mjs",
 		"build:css": "node ./node_modules/@tailwindcss/cli/dist/index.mjs -i src/apps/dashboard-web/styles/source.css -o src/apps/dashboard-web/styles/style.css --minify",
 		"build": "npm run build:css && node scripts/build-dist.cjs",
 		"cli": "npm run build:css && node --import jiti/register src/apps/cli.ts",

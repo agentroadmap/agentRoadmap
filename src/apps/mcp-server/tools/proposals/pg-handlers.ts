@@ -583,7 +583,9 @@ export class PgProposalHandlers {
 				[args.agent, "llm", "developer"],
 			);
 
-			const activeLeases = await pg.getActiveLeases(id);
+			const activeLeases = (await pg.getActiveLeases(id)).filter(
+				(lease) => lease.lease_status === "active" || lease.lease_status === "open",
+			);
 			if (activeLeases.length > 0 && !args.force) {
 				const lease = activeLeases[0];
 				return {

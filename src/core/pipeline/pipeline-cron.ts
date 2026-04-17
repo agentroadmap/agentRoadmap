@@ -1,14 +1,20 @@
 /**
- * Autonomous transition worker for the pipeline queue.
+ * Compatibility worker for legacy transition_queue rows.
  *
- * Listens for Postgres NOTIFY events and falls back to polling so queued
- * transitions are still processed if notifications are missed.
+ * P240 makes proposal maturity the implicit gate queue. This worker no longer
+ * creates transition_queue rows from mature proposals; it only drains legacy
+ * rows that already exist while the orchestrator handles proposal_gate_ready.
  */
 
 import { basename } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { getPool, query } from "../../infra/postgres/pool.ts";
+import {
+	type AgentProfile,
+	scoreProposal,
+	type ScorableProposal,
+} from "../orchestration/pickup-scorer.ts";
 
 const MCP_URL = process.env.MCP_URL || "http://127.0.0.1:6421/sse";
 
@@ -38,6 +44,14 @@ type SpawnAgentResult = {
 	stderr: string;
 	durationMs: number;
 };
+type McpClientLike = {
+	callTool(args: {
+		name: string;
+		arguments: Record<string, unknown>;
+	}): Promise<unknown>;
+	close(): Promise<void>;
+};
+type McpClientFactory = (url: string) => McpClientLike;
 
 export interface NotificationMessage {
 	channel: string;
@@ -71,6 +85,7 @@ export interface PipelineCronDeps {
 	queryFn?: typeof query;
 	connectListener?: () => Promise<ListenerClient>;
 	spawnAgentFn?: (request: SpawnAgentRequest) => Promise<SpawnAgentResult>;
+	mcpClientFactory?: McpClientFactory;
 	mcpUrl?: string;
 	logger?: Logger;
 	defaultWorktree?: string;
@@ -108,6 +123,229 @@ function normalizeMetadata(value: unknown): JsonRecord | null {
 	}
 
 	return null;
+}
+
+type DispatchMode = "prep" | "gate" | "noop";
+
+type DispatchRoleSet = {
+	prep: string[];
+	gate: string[];
+};
+
+type ProposalDispatchContext = {
+	id: number;
+	displayId: string;
+	status: string;
+	maturity: string;
+	title: string;
+	priority: string | null;
+	summary: string | null;
+	design: string | null;
+	alternatives: string | null;
+	drawbacks: string | null;
+	dependency: string | null;
+	unresolvedDependencies: number;
+	totalAcceptanceCriteria: number;
+	blockingAcceptanceCriteria: number;
+	passedAcceptanceCriteria: number;
+	latestDecision: string | null;
+};
+
+type ProposalDispatchRow = {
+	id: number;
+	display_id: string;
+	status: string;
+	maturity: string;
+	title: string;
+	priority: string | null;
+	summary: string | null;
+	design: string | null;
+	alternatives: string | null;
+	drawbacks: string | null;
+	dependency: string | null;
+	unresolved_dependencies: number;
+	total_acceptance_criteria: number;
+	blocking_acceptance_criteria: number;
+	passed_acceptance_criteria: number;
+	latest_decision: string | null;
+};
+
+type AgentDispatchCandidate = {
+	agent_identity: string;
+	agent_type: string;
+	role: string | null;
+	preferred_model: string | null;
+	active_model: string | null;
+	status: string | null;
+	active_leases: number;
+	context_load: number;
+	cpu_percent: number | null;
+	memory_mb: number | null;
+	daily_limit_usd: number | null;
+	daily_spend_usd: number | null;
+	is_frozen: boolean;
+	capabilities: string[];
+	cost_per_1k_input: number | null;
+};
+
+type DispatchPlan = {
+	mode: DispatchMode;
+	phase: string;
+	agentIdentity: string | null;
+	modelHint: string | null;
+	timeoutMs: number;
+	task: string;
+	reasons: string[];
+	roles: string[];
+};
+
+const STAGE_DISPATCH_ROLES: Record<string, DispatchRoleSet> = {
+	DRAFT: {
+		prep: ["researcher", "architect"],
+		gate: ["architect", "reviewer"],
+	},
+	REVIEW: {
+		prep: ["architect", "skeptic"],
+		gate: ["skeptic", "reviewer", "architect"],
+	},
+	DEVELOP: {
+		prep: ["developer", "engineer"],
+		gate: ["developer", "qa", "integration"],
+	},
+	MERGE: {
+		prep: ["qa", "integration"],
+		gate: ["qa", "maintainer", "gate-agent"],
+	},
+	COMPLETE: {
+		prep: [],
+		gate: [],
+	},
+};
+
+function normalizeStage(value: string | null | undefined): string {
+	return (value ?? "").trim().toUpperCase();
+}
+
+function parsePriority(value: string | null | undefined): "high" | "medium" | "low" {
+	const normalized = (value ?? "").trim().toLowerCase();
+	if (normalized === "high" || normalized === "urgent" || normalized === "critical") {
+		return "high";
+	}
+	if (normalized === "low") return "low";
+	return "medium";
+}
+
+function deriveCostClass(costPer1kInput: number | null): "low" | "medium" | "high" {
+	if (costPer1kInput === null || !Number.isFinite(costPer1kInput)) {
+		return "medium";
+	}
+	if (costPer1kInput <= 0.002) return "low";
+	if (costPer1kInput <= 0.02) return "medium";
+	return "high";
+}
+
+function buildScorableProposal(context: ProposalDispatchContext): ScorableProposal {
+	return {
+		id: context.displayId,
+		title: context.title,
+		priority: parsePriority(context.priority),
+		labels: [normalizeStage(context.status), context.maturity],
+		needs_capabilities: [],
+		acceptanceCriteriaCount: context.totalAcceptanceCriteria,
+		dependencyDepth: context.unresolvedDependencies,
+		downstreamCount: context.blockingAcceptanceCriteria,
+	};
+}
+
+function gateTaskForStage(
+	context: ProposalDispatchContext,
+	stage: string,
+	gate: string,
+	reasons: string[],
+): string {
+	const nextStage = normalizeStage(stage);
+	const readinessSummary =
+		reasons.length > 0 ? `Blocking items: ${reasons.join(", ")}.` : "Ready to gate.";
+
+	return [
+		`You are the ${gate} gate agent for ${context.displayId} (${context.title}).`,
+		`Current state: ${normalizeStage(context.status)}.`,
+		`Target next state: ${nextStage}.`,
+		readinessSummary,
+		"",
+		"Decide whether the proposal is ready to advance. If not, return concrete missing work.",
+	].join("\n");
+}
+
+function prepTaskForStage(
+	context: ProposalDispatchContext,
+	stage: string,
+	reasons: string[],
+): string {
+	return [
+		`You are the preparation agent for ${context.displayId} (${context.title}).`,
+		`Current state: ${normalizeStage(context.status)}.`,
+		`Target next state: ${normalizeStage(stage)}.`,
+		reasons.length > 0
+			? `Prepare the proposal by addressing: ${reasons.join(", ")}.`
+			: "Enhance the proposal until it is ready for the next gate.",
+		"",
+		"Focus on research, clarity, acceptance criteria, and any missing evidence.",
+	].join("\n");
+}
+
+function assessReadiness(context: ProposalDispatchContext): {
+	mode: DispatchMode;
+	reasons: string[];
+} {
+	const stage = normalizeStage(context.status);
+	const missing: string[] = [];
+
+	if (stage === "COMPLETE") {
+		return { mode: "noop", reasons: ["terminal state"] };
+	}
+
+	if (!context.summary?.trim()) missing.push("summary");
+	if (!context.design?.trim()) missing.push("design");
+	if (!context.totalAcceptanceCriteria) missing.push("acceptance criteria");
+	if (context.unresolvedDependencies > 0) missing.push("blocking dependencies");
+
+	const acPending = context.blockingAcceptanceCriteria > 0;
+	if (acPending) missing.push("open acceptance criteria");
+
+	if (stage === "DRAFT") {
+		return missing.length > 0
+			? { mode: "prep", reasons: missing }
+			: { mode: "gate", reasons: [] };
+	}
+
+	if (stage === "REVIEW") {
+		return missing.length > 0
+			? { mode: "prep", reasons: missing }
+			: { mode: "gate", reasons: [] };
+	}
+
+	if (stage === "DEVELOP") {
+		return missing.length > 0
+			? { mode: "prep", reasons: missing }
+			: { mode: "gate", reasons: [] };
+	}
+
+	if (stage === "MERGE") {
+		return missing.length > 0 || context.latestDecision !== "approved"
+			? {
+					mode: "prep",
+					reasons: [
+						...missing,
+						context.latestDecision !== "approved"
+							? "merge approval evidence"
+							: "",
+					].filter(Boolean),
+				}
+			: { mode: "gate", reasons: [] };
+	}
+
+	return { mode: "noop", reasons: ["unsupported stage"] };
 }
 
 function readString(
@@ -186,6 +424,240 @@ function buildDefaultTask(transition: TransitionQueueRow): string {
 	return lines.join("\n");
 }
 
+async function loadProposalDispatchContext(
+	queryFn: typeof query,
+	proposalId: number,
+): Promise<ProposalDispatchContext | null> {
+	const { rows } = await queryFn<ProposalDispatchRow>(
+		`SELECT
+		    p.id AS id,
+		    p.display_id AS display_id,
+		    p.status AS status,
+		    p.maturity AS maturity,
+		    p.title AS title,
+		    p.priority AS priority,
+		    p.summary AS summary,
+		    p.design AS design,
+		    p.alternatives AS alternatives,
+		    p.drawbacks AS drawbacks,
+		    p.dependency AS dependency,
+		    COALESCE(dep.unresolved_dependencies, 0) AS unresolved_dependencies,
+		    COALESCE(ac.total_acceptance_criteria, 0) AS total_acceptance_criteria,
+		    COALESCE(ac.blocking_acceptance_criteria, 0) AS blocking_acceptance_criteria,
+		    COALESCE(ac.passed_acceptance_criteria, 0) AS passed_acceptance_criteria,
+		    dec.latest_decision AS latest_decision
+		 FROM roadmap_proposal.proposal p
+		 LEFT JOIN LATERAL (
+		    SELECT COUNT(*) FILTER (WHERE dependency_type = 'blocks' AND resolved = false) AS unresolved_dependencies
+		    FROM roadmap_proposal.proposal_dependencies
+		    WHERE from_proposal_id = p.id
+		 ) dep ON true
+		 LEFT JOIN LATERAL (
+		    SELECT
+		      COUNT(*) AS total_acceptance_criteria,
+		      COUNT(*) FILTER (WHERE status IN ('pending', 'fail')) AS blocking_acceptance_criteria,
+		      COUNT(*) FILTER (WHERE status = 'pass') AS passed_acceptance_criteria
+		    FROM roadmap_proposal.proposal_acceptance_criteria
+		    WHERE proposal_id = p.id
+		 ) ac ON true
+		 LEFT JOIN LATERAL (
+		    SELECT decision AS latest_decision
+		    FROM roadmap_proposal.proposal_decision
+		    WHERE proposal_id = p.id
+		    ORDER BY decided_at DESC
+		    LIMIT 1
+		 ) dec ON true
+		 WHERE p.id = $1
+		 LIMIT 1`,
+		[proposalId],
+	);
+
+	if (!rows[0]) {
+		return null;
+	}
+
+	const row = rows[0];
+	return {
+		id: row.id,
+		displayId: row.display_id,
+		status: row.status,
+		maturity: row.maturity,
+		title: row.title,
+		priority: row.priority ?? null,
+		summary: row.summary ?? null,
+		design: row.design ?? null,
+		alternatives: row.alternatives ?? null,
+		drawbacks: row.drawbacks ?? null,
+		dependency: row.dependency ?? null,
+		unresolvedDependencies: row.unresolved_dependencies ?? 0,
+		totalAcceptanceCriteria: row.total_acceptance_criteria ?? 0,
+		blockingAcceptanceCriteria: row.blocking_acceptance_criteria ?? 0,
+		passedAcceptanceCriteria: row.passed_acceptance_criteria ?? 0,
+		latestDecision: row.latest_decision ?? null,
+	};
+}
+
+async function loadDispatchCandidates(
+	queryFn: typeof query,
+	roles: string[],
+): Promise<AgentDispatchCandidate[]> {
+	if (!roles.length) return [];
+
+	const normalizedRoles = roles.map((role) => role.toLowerCase());
+	const { rows } = await queryFn<AgentDispatchCandidate & {
+		capability: string;
+	}>(`
+		SELECT
+		  v.agent_identity,
+		  ar.agent_type,
+		  ar.role,
+		  ar.preferred_model,
+		  ah.active_model,
+		  ah.status,
+		  COALESCE(v.active_leases, 0) AS active_leases,
+		  COALESCE(v.context_load, 0) AS context_load,
+		  ah.cpu_percent,
+		  ah.memory_mb,
+		  sc.daily_limit_usd,
+		  ds.total_usd AS daily_spend_usd,
+		  COALESCE(sc.is_frozen, false) AS is_frozen,
+		  mm.cost_per_1k_input,
+		  v.capability
+		FROM roadmap.v_capable_agents v
+		JOIN roadmap_workforce.agent_registry ar ON ar.id = v.id
+		LEFT JOIN roadmap_workforce.agent_health ah ON ah.agent_identity = v.agent_identity
+		LEFT JOIN roadmap_efficiency.spending_caps sc ON sc.agent_identity = v.agent_identity
+		LEFT JOIN roadmap.v_daily_spend ds
+		  ON ds.agent_identity = v.agent_identity AND ds.spend_date = CURRENT_DATE
+		LEFT JOIN roadmap.model_metadata mm
+		  ON mm.model_name = COALESCE(ah.active_model, ar.preferred_model)
+		WHERE LOWER(v.capability) = ANY($1)
+		   OR LOWER(COALESCE(ar.role, '')) = ANY($1)
+		ORDER BY v.active_leases ASC, v.context_load ASC, COALESCE(ah.cpu_percent, 0) ASC
+	`, [normalizedRoles]);
+
+	const grouped = new Map<string, AgentDispatchCandidate>();
+
+	for (const row of rows) {
+		const existing = grouped.get(row.agent_identity);
+		const capabilities = new Set(existing?.capabilities ?? []);
+		capabilities.add(row.capability);
+
+		grouped.set(row.agent_identity, {
+			agent_identity: row.agent_identity,
+			agent_type: row.agent_type,
+			role: row.role ?? null,
+			preferred_model: row.preferred_model ?? null,
+			active_model: row.active_model ?? null,
+			status: row.status ?? null,
+			active_leases: row.active_leases ?? 0,
+			context_load: row.context_load ?? 0,
+			cpu_percent: row.cpu_percent ?? null,
+			memory_mb: row.memory_mb ?? null,
+			daily_limit_usd: row.daily_limit_usd ?? null,
+			daily_spend_usd: row.daily_spend_usd ?? null,
+			is_frozen: Boolean(row.is_frozen),
+			capabilities: Array.from(capabilities),
+			cost_per_1k_input:
+				typeof row.cost_per_1k_input === "number"
+					? row.cost_per_1k_input
+					: row.cost_per_1k_input
+						? Number(row.cost_per_1k_input)
+						: null,
+		});
+	}
+
+	return Array.from(grouped.values());
+}
+
+function scoreDispatchAgent(
+	context: ProposalDispatchContext,
+	candidate: AgentDispatchCandidate,
+	roles: string[],
+): number {
+	const proposal: ScorableProposal = {
+		...buildScorableProposal(context),
+		needs_capabilities: roles,
+	};
+
+	const agent: AgentProfile = {
+		name: candidate.agent_identity,
+		capabilities: candidate.capabilities,
+		costClass: deriveCostClass(candidate.cost_per_1k_input),
+		availability:
+			candidate.is_frozen || candidate.status === "offline"
+				? "offline"
+				: candidate.status === "active" || candidate.status === "healthy"
+					? "active"
+					: "idle",
+		currentLoad:
+			Math.max(0, candidate.active_leases) +
+			Math.max(0, Math.round(candidate.context_load)) +
+			Math.max(0, Math.round((candidate.cpu_percent ?? 0) / 40)) +
+			Math.max(
+				0,
+				Math.round(
+					(candidate.daily_limit_usd && candidate.daily_spend_usd
+						? Math.min(4, candidate.daily_spend_usd / candidate.daily_limit_usd)
+						: 0) * 2,
+				),
+			),
+		completionHistory: undefined,
+	};
+
+	return scoreProposal(agent, proposal).total;
+}
+
+async function chooseDispatchAgent(
+	queryFn: typeof query,
+	context: ProposalDispatchContext,
+	roles: string[],
+): Promise<AgentDispatchCandidate | null> {
+	const candidates = await loadDispatchCandidates(queryFn, roles);
+	if (!candidates.length) return null;
+
+	let bestCandidate: AgentDispatchCandidate | null = null;
+	let bestScore = Number.NEGATIVE_INFINITY;
+	for (const candidate of candidates) {
+		const score = scoreDispatchAgent(context, candidate, roles);
+		if (score > bestScore) {
+			bestScore = score;
+			bestCandidate = candidate;
+		}
+	}
+
+	return bestCandidate;
+}
+
+function buildDispatchPlan(
+	context: ProposalDispatchContext,
+	targetStage: string,
+	mode: DispatchMode,
+	agent: AgentDispatchCandidate | null,
+	reasons: string[],
+): DispatchPlan {
+	const normalizedTarget = normalizeStage(targetStage);
+	const stageRoles = STAGE_DISPATCH_ROLES[normalizeStage(context.status)] ?? {
+		prep: ["architect"],
+		gate: ["reviewer"],
+	};
+	const roles = mode === "prep" ? stageRoles.prep : stageRoles.gate;
+
+	return {
+		mode,
+		phase: normalizedTarget.toLowerCase(),
+		agentIdentity: agent?.agent_identity ?? null,
+		modelHint: agent?.preferred_model ?? agent?.active_model ?? null,
+		timeoutMs: mode === "gate" ? 300_000 : 180_000,
+		task:
+			mode === "gate"
+				? gateTaskForStage(context, normalizedTarget, roles[0] ?? "reviewer", reasons)
+				: prepTaskForStage(context, normalizedTarget, reasons),
+		reasons,
+		roles,
+	};
+}
+
 export class PipelineCron {
 	private readonly queryFn: typeof query;
 	private readonly connectListener: () => Promise<ListenerClient>;
@@ -197,6 +669,7 @@ export class PipelineCron {
 	private readonly setIntervalFn: typeof setInterval;
 	private readonly clearIntervalFn: typeof clearInterval;
 	private readonly spawnAgentFn?: (request: SpawnAgentRequest) => Promise<SpawnAgentResult>;
+	private readonly mcpClientFactory: McpClientFactory;
 
 	private listenerClient: ListenerClient | null = null;
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -235,6 +708,25 @@ export class PipelineCron {
 		this.setIntervalFn = deps.setIntervalFn ?? setInterval;
 		this.clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
 		this.spawnAgentFn = deps.spawnAgentFn;
+		this.mcpClientFactory =
+			deps.mcpClientFactory ??
+			((url) => {
+				const client = new Client({ name: "gate-pipeline", version: "1.0.0" });
+				const transport = new SSEClientTransport(new URL(url));
+				let connected = false;
+				return {
+					async callTool(args) {
+						if (!connected) {
+							await client.connect(transport);
+							connected = true;
+						}
+						return client.callTool(args);
+					},
+					async close() {
+						await client.close();
+					},
+				};
+			});
 	}
 
 	async run(): Promise<void> {
@@ -250,7 +742,7 @@ export class PipelineCron {
 		}, this.pollIntervalMs);
 
 		this.logger.log(
-			`[PipelineCron] Listening on ${MATURITY_CHANGED_CHANNEL} and ${TRANSITION_QUEUED_CHANNEL}; polling every ${this.pollIntervalMs}ms`,
+			`[PipelineCron] Listening on ${MATURITY_CHANGED_CHANNEL}, ${GATE_READY_CHANNEL}, and ${TRANSITION_QUEUED_CHANNEL}; legacy queue polling every ${this.pollIntervalMs}ms`,
 		);
 
 		await this.scheduleDrain("startup");
@@ -331,21 +823,6 @@ export class PipelineCron {
 	}
 
 	private async drainReadyTransitions(reason: string): Promise<void> {
-		// Pull scan: enqueue any mature proposals not yet in transition_queue.
-		// This is the fallback for push-missed events (crash, pre-migration backlog).
-		try {
-			await this.queryFn(
-				`SELECT roadmap.fn_enqueue_mature_proposals()`,
-				[],
-			);
-		} catch (err) {
-			// fn_enqueue_mature_proposals may not exist in older deployments — non-fatal
-			const msg = err instanceof Error ? err.message : String(err);
-			if (!msg.includes("does not exist")) {
-				this.logger.warn(`[PipelineCron] fn_enqueue_mature_proposals: ${msg}`);
-			}
-		}
-
 		while (true) {
 			const transitions = await this.claimPendingTransitions();
 			if (transitions.length === 0) {
@@ -405,36 +882,76 @@ export class PipelineCron {
 	private async processTransition(
 		transition: TransitionQueueRow,
 	): Promise<void> {
+		const spawnMetadata = isRecord(transition.metadata?.spawn)
+			? transition.metadata.spawn
+			: null;
+		const proposalId =
+			typeof transition.proposal_id === "number"
+				? transition.proposal_id
+				: Number.isFinite(Number(transition.proposal_id))
+					? Number(transition.proposal_id)
+					: null;
+
+		const proposalContext =
+			proposalId !== null
+				? await loadProposalDispatchContext(this.queryFn, proposalId)
+				: null;
+		const readiness = proposalContext ? assessReadiness(proposalContext) : null;
+		const stageRoles =
+			STAGE_DISPATCH_ROLES[normalizeStage(transition.from_stage)] ?? {
+				prep: ["architect"],
+				gate: ["reviewer"],
+			};
+		const dispatchRoles =
+			readiness?.mode === "prep" ? stageRoles.prep : stageRoles.gate;
+		const selectedAgent =
+			proposalContext && dispatchRoles.length > 0
+				? await chooseDispatchAgent(this.queryFn, proposalContext, dispatchRoles)
+				: null;
+		const plan = proposalContext
+			? buildDispatchPlan(
+					proposalContext,
+					transition.to_stage,
+					readiness?.mode ?? "gate",
+					selectedAgent,
+					readiness?.reasons ?? [],
+				)
+			: null;
+
 		if (this.spawnAgentFn) {
-			await this.processTransitionWithSpawnAgent(transition);
+			await this.processTransitionWithSpawnAgent(transition, plan);
 			return;
 		}
 
-		const client = new Client({ name: "gate-pipeline", version: "1.0.0" });
-		const transport = new SSEClientTransport(new URL(this.mcpUrl));
+		const client = this.mcpClientFactory(this.mcpUrl);
 
 		try {
-			await client.connect(transport);
-
-			const proposalId = String(transition.proposal_id);
-			const task = buildDefaultTask(transition);
+			const proposalDisplayId =
+				proposalContext?.displayId ?? String(transition.proposal_id);
 			const agentName =
+				plan?.agentIdentity ??
 				readString(transition.metadata, "agent") ??
 				(looksLikeWorktreeName(transition.triggered_by)
 					? transition.triggered_by
 					: null) ??
+				plan?.roles[0] ??
 				"architect";
+			const task =
+				plan?.task ??
+				readString(spawnMetadata, "task") ??
+				readString(transition.metadata, "task") ??
+				buildDefaultTask(transition);
 
 			// 1. Create cubic for this proposal
 			const cubicResult = await client.callTool({
 				name: "cubic_create",
 				arguments: {
-					name: `gate-${proposalId}-${transition.to_stage}`,
-					agents: [agentName],
-					proposals: [proposalId],
+					name: `gate-${proposalDisplayId}-${transition.to_stage}`,
+					agents: Array.from(new Set([agentName, ...(plan?.roles ?? [])])),
+					proposals: [proposalDisplayId],
 				},
 			});
-				const cubicData = JSON.parse(mcpResultText(cubicResult) || "{}");
+			const cubicData = JSON.parse(mcpResultText(cubicResult) || "{}");
 
 			if (!cubicData.success || !cubicData.cubic?.id) {
 				throw new Error(
@@ -451,14 +968,15 @@ export class PipelineCron {
 					cubicId,
 					agent: agentName,
 					task,
-					phase: transition.to_stage?.toLowerCase() ?? "build",
+					phase: plan?.phase ?? transition.to_stage?.toLowerCase() ?? "build",
 				},
 			});
 
-			// 3. Mark transition dispatched — agent will complete asynchronously
+			// 3. Keep the row in processing. It is not complete until the proposal
+			// state itself changes to the queued target stage.
 			await this.markTransitionDispatched(transition.id);
 			this.logger.log(
-				`[PipelineCron] Dispatched transition ${transition.id} for proposal ${proposalId} via MCP cubic ${cubicId}`,
+				`[PipelineCron] Dispatched transition ${transition.id} for proposal ${proposalDisplayId} via MCP cubic ${cubicId}`,
 			);
 		} catch (error) {
 			const message =
@@ -471,6 +989,7 @@ export class PipelineCron {
 
 	private async processTransitionWithSpawnAgent(
 		transition: TransitionQueueRow,
+		plan?: DispatchPlan,
 	): Promise<void> {
 		if (!this.spawnAgentFn) return;
 		const spawnMetadata = isRecord(transition.metadata?.spawn)
@@ -486,16 +1005,25 @@ export class PipelineCron {
 		const request: SpawnAgentRequest = {
 			worktree:
 				readString(spawnMetadata, "worktree") ??
+				plan?.agentIdentity ??
 				readString(transition.metadata, "worktree") ??
 				this.defaultWorktree,
-			task: readString(spawnMetadata, "task") ?? buildDefaultTask(transition),
+			task:
+				plan?.task ??
+				readString(spawnMetadata, "task") ??
+				readString(transition.metadata, "task") ??
+				buildDefaultTask(transition),
 			proposalId,
-			stage: transition.to_stage,
+			stage: plan?.phase ?? transition.to_stage,
 		};
-		const model = readString(spawnMetadata, "model");
+		const model =
+			plan?.modelHint ?? readString(spawnMetadata, "model") ?? undefined;
 		if (model) request.model = model;
-		const timeoutMs = readNumber(spawnMetadata, "timeoutMs", "timeout_ms");
-		if (timeoutMs !== null) request.timeoutMs = timeoutMs;
+		const timeoutMs =
+			plan?.timeoutMs ??
+			readNumber(spawnMetadata, "timeoutMs", "timeout_ms") ??
+			undefined;
+		if (timeoutMs !== undefined) request.timeoutMs = timeoutMs;
 
 		const result = await this.spawnAgentFn(request);
 		if (result.exitCode !== 0) {
@@ -506,7 +1034,7 @@ export class PipelineCron {
 			);
 			return;
 		}
-		await this.markTransitionDone(transition.id);
+		await this.completeTransitionIfApplied(transition);
 	}
 
 	private async markTransitionDispatched(
@@ -522,15 +1050,29 @@ export class PipelineCron {
 		);
 	}
 
-	private async markTransitionDone(id: TransitionQueueId): Promise<void> {
-		await this.queryFn(
-			`UPDATE roadmap.transition_queue
+	private async completeTransitionIfApplied(
+		transition: TransitionQueueRow,
+	): Promise<void> {
+		const result = await this.queryFn(
+			`UPDATE roadmap.transition_queue tq
        SET status = 'done',
            completed_at = now(),
            last_error = NULL
-       WHERE id = $1`,
-			[id],
+       WHERE tq.id = $1
+         AND EXISTS (
+           SELECT 1
+           FROM roadmap_proposal.proposal p
+           WHERE p.id = tq.proposal_id
+             AND LOWER(p.status) = LOWER(tq.to_stage)
+         )`,
+			[transition.id],
 		);
+		if ((result.rowCount ?? 0) === 0) {
+			await this.handleTransitionFailure(
+				transition,
+				`transition target not applied: proposal did not reach ${transition.to_stage}`,
+			);
+		}
 	}
 
 	private async handleTransitionFailure(
@@ -540,6 +1082,12 @@ export class PipelineCron {
 		const exhausted = transition.attempt_count >= transition.max_attempts;
 
 		if (exhausted) {
+			const proposalId =
+				typeof transition.proposal_id === "number"
+					? transition.proposal_id
+					: Number.isFinite(Number(transition.proposal_id))
+						? Number(transition.proposal_id)
+						: transition.proposal_id;
 			await this.queryFn(
 				`UPDATE roadmap.transition_queue
          SET status = 'failed',
@@ -547,6 +1095,31 @@ export class PipelineCron {
              last_error = $2
          WHERE id = $1`,
 				[transition.id, errorMessage],
+			);
+			await this.queryFn(
+				`INSERT INTO roadmap.notification_queue
+         (proposal_id, severity, channel, title, body, metadata)
+       VALUES (
+         $1,
+         'CRITICAL',
+         'ops',
+         'Gate transition failed permanently',
+         $2,
+         jsonb_build_object(
+           'transition_queue_id', $3::text,
+           'from_stage', $4,
+           'to_stage', $5,
+           'error', $6
+         )
+       )`,
+				[
+					proposalId,
+					`Transition ${transition.from_stage} -> ${transition.to_stage} failed permanently: ${errorMessage}`,
+					transition.id,
+					transition.from_stage,
+					transition.to_stage,
+					errorMessage,
+				],
 			);
 
 			this.logger.error(

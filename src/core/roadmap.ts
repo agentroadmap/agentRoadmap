@@ -2379,9 +2379,6 @@ export class Core {
 				(currentSummary?.lease_expires === null ||
 					currentSummary?.lease_expires === undefined ||
 					new Date(currentSummary.lease_expires) > new Date());
-			if (!currentLeaseActive && currentSummary?.leased_by) {
-				await pg.releaseLease(proposalId, currentSummary.leased_by, "expired");
-			}
 			const currentLeaseAgent = currentLeaseActive
 				? (currentSummary?.leased_by ?? null)
 				: null;

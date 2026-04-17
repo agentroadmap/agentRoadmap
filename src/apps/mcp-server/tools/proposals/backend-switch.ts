@@ -330,7 +330,7 @@ export function registerProposalTools(
 		},
 		handler: (args: any) => handlers.deleteProposal(args),
 	});
-	console.log("[MCP] Using Postgres proposal handlers (AgentHive)");
+	console.error("[MCP] Using Postgres proposal handlers (AgentHive)");
 	server.addTool({
 		name: "prop_get_projection",
 		description:

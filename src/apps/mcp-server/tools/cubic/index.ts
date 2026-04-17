@@ -261,7 +261,7 @@ export function registerCubicTools(
 		),
 	);
 
-	console.log(
+	console.error(
 		"[Cubic] Registered 5 tools: cubic_create, cubic_list, cubic_focus, cubic_transition, cubic_recycle",
 	);
 }

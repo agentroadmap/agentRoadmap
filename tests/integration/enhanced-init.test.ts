@@ -1,8 +1,9 @@
 import assert from "node:assert";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { initializeProject } from "../../src/core/infrastructure/init.ts";
+import { DEFAULT_STATUSES } from "../../src/constants/index.ts";
 import { Core } from "../../src/core/roadmap.ts";
 import type { RoadmapConfig } from "../../src/types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "../support/test-utils.ts";
@@ -75,13 +76,7 @@ describe("Enhanced init command", () => {
 		assert.ok(config);
 		assert.strictEqual(config?.projectName, "New Project");
 		assert.strictEqual(config?.autoCommit, false); // Default value
-		assert.deepStrictEqual(config?.statuses, [
-			"Potential",
-			"Active",
-			"Accepted",
-			"Complete",
-			"Abandoned",
-		]);
+		assert.deepStrictEqual(config?.statuses, [...DEFAULT_STATUSES]);
 		assert.strictEqual(config?.dateFormat, "yyyy-mm-dd");
 	});
 
@@ -216,6 +211,54 @@ describe("Enhanced init command", () => {
 		assert.strictEqual(reloaded?.mcp?.http?.host, "127.0.0.1");
 		assert.strictEqual(reloaded?.mcp?.http?.port, 7777);
 	});
+
+	test(
+		"should rebuild federation CA and postgres config during init",
+		{
+			skip: !(process.env.PG_PASSWORD || process.env.DATABASE_URL),
+		},
+		async () => {
+			const core = new Core(tmpDir);
+
+			await initializeProject(core, {
+				projectName: "Runtime Assets Project",
+				integrationMode: "none",
+			});
+
+			const loadedConfig = await core.filesystem.loadConfig();
+			assert.ok(loadedConfig?.database);
+			assert.strictEqual(loadedConfig?.database?.provider, "Postgres");
+			assert.strictEqual(
+				loadedConfig?.database?.host,
+				process.env.PG_HOST ?? "127.0.0.1",
+			);
+			assert.strictEqual(
+				loadedConfig?.database?.port,
+				Number(process.env.PG_PORT ?? 5432),
+			);
+			assert.strictEqual(
+				loadedConfig?.database?.user,
+				process.env.PG_USER ?? "admin",
+			);
+			assert.strictEqual(
+				loadedConfig?.database?.name,
+				process.env.PG_DATABASE ?? "agenthive",
+			);
+			assert.strictEqual(
+				loadedConfig?.database?.schema,
+				process.env.PG_SCHEMA ?? "roadmap",
+			);
+			assert.strictEqual(loadedConfig?.database?.password, undefined);
+
+			const caPath = join(tmpDir, ".roadmap", "federation", "ca.json");
+			const caRaw = await readFile(caPath, "utf8");
+			const ca = JSON.parse(caRaw) as {
+				keyPair?: { publicKey?: string; privateKey?: string };
+			};
+			assert.ok(ca.keyPair?.publicKey?.includes("BEGIN PUBLIC KEY"));
+			assert.ok(ca.keyPair?.privateKey?.includes("BEGIN PRIVATE KEY"));
+		},
+	);
 
 	test("should handle zero-padding configuration in init flow", async () => {
 		const core = new Core(tmpDir);

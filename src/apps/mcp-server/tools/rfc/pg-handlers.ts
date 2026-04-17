@@ -1288,7 +1288,7 @@ export class RfcWorkflowHandlers {
 		});
 
 		// eslint-disable-next-line no-console
-		console.log(
+		console.error(
 			"[MCP] Registered 12 RFC workflow tools (state machine, AC, deps, reviews, discussions)",
 		);
 	}

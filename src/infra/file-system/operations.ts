@@ -1675,6 +1675,12 @@ ${description || `Directive: ${title}`}`,
 					config.database = cfg.database;
 				}
 
+				if (cfg.prefixes?.proposal) {
+					config.prefixes = { proposal: cfg.prefixes.proposal };
+				} else if (cfg.proposal) {
+					config.prefixes = { proposal: cfg.proposal };
+				}
+
 				if (cfg.mcp) {
 					config.mcp = {
 						url: cfg.mcp.url,
@@ -2154,6 +2160,14 @@ ${description || `Directive: ${title}`}`,
 				}
 				if (config.paths) cfg.paths = config.paths;
 				if (config.components) cfg.components = config.components;
+				if (config.database) cfg.database = config.database;
+				if (config.prefixes?.proposal) {
+					if (cfg.prefixes) {
+						cfg.prefixes.proposal = config.prefixes.proposal;
+					} else {
+						cfg.proposal = config.prefixes.proposal;
+					}
+				}
 
 				return yaml.dump(cfg, { indent: 2, lineWidth: -1 });
 			}
@@ -2211,8 +2225,7 @@ ${description || `Directive: ${title}`}`,
 			if (config.components) cleanObj.components = config.components;
 			if (config.onStatusChange)
 				cleanObj.on_status_change = config.onStatusChange;
-			if (config.prefixes?.proposal)
-				cleanObj.proposal = config.prefixes.proposal;
+			if (config.prefixes?.proposal) cleanObj.proposal = config.prefixes.proposal;
 
 			return yaml.dump(cleanObj, { indent: 2, lineWidth: -1 });
 		} catch (_e) {

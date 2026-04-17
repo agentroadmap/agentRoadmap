@@ -8,9 +8,11 @@ import {
 	installClaudeAgent,
 } from "../../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
-import type { RoadmapConfig } from "../../types/index.ts";
+import type { DatabaseConfig, RoadmapConfig } from "../../types/index.ts";
+import { initPoolFromConfig, query as pgQuery } from "../../infra/postgres/pool.ts";
 import type { Core } from "../roadmap.ts";
 import { BLUEPRINTS, type BlueprintType } from "./blueprints.ts";
+import { initializeFederation } from "./federation.ts";
 
 export const MCP_SERVER_NAME = "roadmap";
 export const MCP_GUIDE_URL =
@@ -29,6 +31,29 @@ function mcpClientToFile(client: McpClient): AgentInstructionFile {
 		guide: "AGENTS.md",
 	};
 	return map[client];
+}
+
+function resolveDatabaseConfig(
+	existingDatabase?: DatabaseConfig,
+): DatabaseConfig {
+	return {
+		provider: "Postgres",
+		host: existingDatabase?.host ?? process.env.PG_HOST ?? "127.0.0.1",
+		port:
+			existingDatabase?.port ?? (Number(process.env.PG_PORT) || 5432),
+		user: existingDatabase?.user ?? process.env.PG_USER ?? "admin",
+		name: existingDatabase?.name ?? process.env.PG_DATABASE ?? "agenthive",
+		schema: existingDatabase?.schema ?? process.env.PG_SCHEMA ?? "roadmap",
+		...(existingDatabase?.password ? { password: existingDatabase.password } : {}),
+		...(existingDatabase?.uri ? { uri: existingDatabase.uri } : {}),
+	};
+}
+
+async function bootstrapRuntime(core: Core, database: DatabaseConfig): Promise<void> {
+	const federationDir = join(core.filesystem.rootDir, ".roadmap", "federation");
+	await initializeFederation(federationDir);
+	initPoolFromConfig(database);
+	await pgQuery("SELECT 1");
 }
 
 export interface InitializeProjectOptions {
@@ -197,6 +222,7 @@ export async function initializeProject(
 	) {
 		config.zeroPaddedIds = advancedConfig.zeroPaddedIds;
 	}
+	config.database = resolveDatabaseConfig(existingConfig?.database);
 
 	// Preserve all non-init-managed fields, but allow init-managed optional fields to be explicitly cleared.
 	if (hasDefaultEditorOverride && !advancedConfig.defaultEditor) {
@@ -243,6 +269,8 @@ ${description || "A new project managed with Roadmap.md."}
 		const agentsPath = await core.getAgentsFilePath();
 		await writeFile(agentsPath, JSON.stringify([], null, 2));
 	}
+
+	await bootstrapRuntime(core, config.database);
 
 	const initialProposals: { id: string; title: string }[] = [];
 

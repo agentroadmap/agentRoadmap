@@ -83,7 +83,10 @@ async function trustGate(
 const WORKTREE_ROOT = "/data/code/worktree";
 
 /** Known worktrees (provider prefix recognized by agent-spawner). */
-const KNOWN_PROVIDERS = new Set(["claude", "gemini", "copilot", "openclaw"]);
+const KNOWN_PROVIDERS = new Set(["claude", "gemini", "copilot", "openclaw", "codex"]);
+
+const TERMINAL_TRANSITION_STATUSES = new Set(["done", "failed", "cancelled"]);
+const ACTIONABLE_VIRTUAL_MESSAGE_TYPES = new Set(["task", "command", "gate"]);
 
 /** Map agent_identity to worktree name, or null if no valid worktree. */
 function identityToWorktree(identity: string): string | null {
@@ -107,6 +110,49 @@ function worktreeExists(worktree: string): boolean {
 		existsSync(`${WORKTREE_ROOT}/${worktree}`) &&
 		existsSync(`${WORKTREE_ROOT}/${worktree}/.env.agent`)
 	);
+}
+
+function parseLegacyTransitionTask(content: string): number | null {
+	const match = content.match(/Transition queue row:\s*(\d+)/i);
+	if (!match) return null;
+	const queueId = Number(match[1]);
+	return Number.isInteger(queueId) && queueId > 0 ? queueId : null;
+}
+
+async function shouldSkipLegacyTransitionTask(
+	msg: PendingMessage,
+	recipient: string,
+): Promise<boolean> {
+	if (msg.message_type !== "task") return false;
+	const queueId = parseLegacyTransitionTask(msg.message_content);
+	if (!queueId) return false;
+
+	const { rows } = await query<{ status: string; proposal_id: number }>(
+		`SELECT status, proposal_id
+		   FROM roadmap.transition_queue
+		  WHERE id = $1
+		  LIMIT 1`,
+		[queueId],
+	);
+	const row = rows[0];
+	if (!row) {
+		logger.warn(
+			`[msg:${msg.id}] legacy transition task references missing queue row ${queueId}; marking consumed`,
+		);
+		return true;
+	}
+
+	if (TERMINAL_TRANSITION_STATUSES.has(row.status.toLowerCase())) {
+		logger.log(
+			`[msg:${msg.id}] skipped stale transition task for ${recipient}; queue ${queueId} is ${row.status}`,
+		);
+		return true;
+	}
+
+	logger.log(
+		`[msg:${msg.id}] legacy transition task for queue ${queueId} is ${row.status}; leaving transition processing to gate pipeline`,
+	);
+	return true;
 }
 
 /** Get all agent subscribers for a channel. */
@@ -147,6 +193,10 @@ async function deliverToAgent(
 	const allowed = await trustGate(recipient, msg.from_agent, msg.message_type);
 	if (!allowed) return;
 
+	if (await shouldSkipLegacyTransitionTask(msg, recipient)) {
+		return;
+	}
+
 	const worktree = identityToWorktree(recipient);
 
 	if (worktree && worktreeExists(worktree)) {
@@ -170,6 +220,13 @@ async function deliverToAgent(
 		}
 	} else {
 		// Virtual agent — queue to transition_queue for next orchestrator cycle
+		if (!ACTIONABLE_VIRTUAL_MESSAGE_TYPES.has(msg.message_type)) {
+			logger.log(
+				`[deliver] virtual agent ${recipient} — ${msg.message_type} message logged only`,
+			);
+			return;
+		}
+
 		if (msg.proposal_id) {
 			try {
 				await query(

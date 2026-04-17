@@ -38,10 +38,82 @@ function errorResult(msg: string, err: unknown): CallToolResult {
 	};
 }
 
+let perMillionModelPricingPromise: Promise<boolean> | undefined;
+
+async function supportsPerMillionModelPricing(): Promise<boolean> {
+	if (!perMillionModelPricingPromise) {
+		perMillionModelPricingPromise = query<{ column_name: string }>(
+			`SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'roadmap'
+         AND table_name = 'model_metadata'
+         AND column_name = ANY($1::text[])`,
+			[
+				[
+					"cost_per_million_input",
+					"cost_per_million_output",
+					"cost_per_million_cache_write",
+					"cost_per_million_cache_hit",
+				],
+			],
+		).then(({ rows }) => rows.length > 0);
+	}
+	return perMillionModelPricingPromise;
+}
+
+function parseOptionalNumber(value?: string): number | null {
+	if (value === undefined || value.trim() === "") {
+		return null;
+	}
+	const parsed = Number(value);
+	if (Number.isNaN(parsed)) {
+		throw new Error(`Invalid numeric value "${value}"`);
+	}
+	return parsed;
+}
+
+function perMillionFromPer1k(
+	value: string | number | null | undefined,
+): number | null {
+	if (value === null || value === undefined) return null;
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isNaN(numeric) ? null : numeric * 1000;
+}
+
+function per1kFromPerMillion(
+	value: string | number | null | undefined,
+): number | null {
+	if (value === null || value === undefined) return null;
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isNaN(numeric) ? null : numeric / 1000;
+}
+
+function formatMillionCost(value: number | null | undefined): string {
+	return value === null || value === undefined
+		? "?"
+		: `$${value.toFixed(6)}/1M`;
+}
+
+type ModelMetadataRow = {
+	model_name: string;
+	provider: string;
+	cost_per_1k_input: string | null;
+	cost_per_1k_output: string | null;
+	cost_per_million_input?: string | null;
+	cost_per_million_output?: string | null;
+	cost_per_million_cache_write?: string | null;
+	cost_per_million_cache_hit?: string | null;
+	max_tokens: number | null;
+	context_window: number | null;
+	capabilities: Record<string, boolean> | null;
+	rating: number | null;
+	is_active: boolean;
+};
+
 export class PgSpendingHandlers {
 	constructor(
-		private readonly core: McpServer,
-		private readonly projectRoot: string,
+		readonly _core: McpServer,
+		readonly _projectRoot: string,
 	) {}
 
 	async setSpendingCap(args: {
@@ -213,12 +285,12 @@ export class PgSpendingHandlers {
 			if (snapshot.is_frozen) {
 				return {
 					content: [
-					{
-						type: "text",
-						text: `⚠️ Spending cap exceeded! ${args.agent_identity} frozen at $${snapshot.total_spent_today_usd}/$${snapshot.daily_limit_usd ?? "∞"} today.${efficiencyNote}`,
-					},
-				],
-			};
+						{
+							type: "text",
+							text: `⚠️ Spending cap exceeded! ${args.agent_identity} frozen at $${snapshot.total_spent_today_usd}/$${snapshot.daily_limit_usd ?? "∞"} today.${efficiencyNote}`,
+						},
+					],
+				};
 			}
 			return {
 				content: [
@@ -296,7 +368,11 @@ export class PgSpendingHandlers {
 					[agentFilter, modelFilter],
 				);
 				if (!rows.length) {
-					return { content: [{ type: "text", text: "No daily token efficiency data found." }] };
+					return {
+						content: [
+							{ type: "text", text: "No daily token efficiency data found." },
+						],
+					};
 				}
 				const lines = rows.map(
 					(row) =>
@@ -338,9 +414,7 @@ export class PgSpendingHandlers {
 			);
 			if (!rows.length) {
 				return {
-					content: [
-						{ type: "text", text: "No token efficiency data found." },
-					],
+					content: [{ type: "text", text: "No token efficiency data found." }],
 				};
 			}
 			const lines = rows.map(
@@ -482,62 +556,103 @@ export class PgSpendingHandlers {
 
 export class PgModelHandlers {
 	constructor(
-		private readonly core: McpServer,
-		private readonly projectRoot: string,
+		readonly _core: McpServer,
+		readonly _projectRoot: string,
 	) {}
 
 	// P059: Enhanced model listing with capability filtering and is_active support
 	async listModels(args: {
 		capability?: string;
+		max_cost_per_million_input?: string;
 		max_cost_per_1k_input?: string;
 		active_only?: boolean;
 	}): Promise<CallToolResult> {
 		try {
-			const conditions: string[] = [];
-			const params: unknown[] = [];
-			let paramIdx = 1;
-
+			const perMillionPricing = await supportsPerMillionModelPricing();
+			const maxCostPerMillion =
+				parseOptionalNumber(args.max_cost_per_million_input) ??
+				perMillionFromPer1k(args.max_cost_per_1k_input);
 			// Filter by active status (default: active only)
-			if (args.active_only !== false) {
-				conditions.push(`COALESCE(is_active, true) = true`);
+			let rows: ModelMetadataRow[] = [];
+			if (perMillionPricing) {
+				({ rows } = await query<ModelMetadataRow>(
+					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
+					        cost_per_million_input, cost_per_million_output,
+					        cost_per_million_cache_write, cost_per_million_cache_hit,
+					        max_tokens, context_window, capabilities, rating, is_active
+					 FROM model_metadata
+					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
+					 ORDER BY rating DESC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC`,
+					[args.active_only !== false],
+				));
+			} else {
+				({ rows } = await query<ModelMetadataRow>(
+					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
+					        max_tokens, context_window, capabilities, rating, is_active
+					 FROM model_metadata
+					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
+					 ORDER BY rating DESC, cost_per_1k_input ASC`,
+					[args.active_only !== false],
+				));
 			}
 
-			// Filter by capability (e.g. "tool_use=true")
-			if (args.capability) {
-				const [key, value] = args.capability.split("=");
-				if (key) {
-					conditions.push(`capabilities->>$${paramIdx} = $${paramIdx + 1}`);
-					params.push(key.trim(), value?.trim() ?? "true");
-					paramIdx += 2;
+			const filteredRows = rows.filter((row) => {
+				if (args.capability) {
+					const [key, value] = args.capability.split("=");
+					if (key) {
+						const expected = value?.trim() ?? "true";
+						if (row.capabilities?.[key.trim()] !== (expected === "true")) {
+							return false;
+						}
+					}
 				}
-			}
+				if (maxCostPerMillion === null) {
+					return true;
+				}
+				const costPerMillion = perMillionPricing
+					? (parseOptionalNumber(row.cost_per_million_input ?? null) ??
+						perMillionFromPer1k(row.cost_per_1k_input))
+					: perMillionFromPer1k(row.cost_per_1k_input);
+				return costPerMillion !== null && costPerMillion <= maxCostPerMillion;
+			});
 
-			// Filter by max input cost
-			if (args.max_cost_per_1k_input) {
-				conditions.push(`cost_per_1k_input <= $${paramIdx}`);
-				params.push(parseFloat(args.max_cost_per_1k_input));
-				paramIdx += 1;
+			if (!filteredRows.length) {
+				return {
+					content: [
+						{ type: "text", text: "No models found matching criteria." },
+					],
+				};
 			}
-
-			const whereClause =
-				conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-			const { rows } = await query(
-				`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
-				        max_tokens, context_window, capabilities, rating, is_active
-				 FROM model_metadata ${whereClause}
-				 ORDER BY rating DESC, cost_per_1k_input ASC`,
-				params,
-			);
-			if (!rows.length) {
-				return { content: [{ type: "text", text: "No models found matching criteria." }] };
-			}
-			const lines = rows.map(
-				(r: any) => {
-					const caps = r.capabilities ? Object.keys(r.capabilities).filter((k: string) => r.capabilities[k]).join(", ") : "none";
-					return `${r.model_name} (${r.provider}) — rating: ${r.rating}/5, input: $${r.cost_per_1k_input || "?"}/1k, output: $${r.cost_per_1k_output || "?"}/1k, ctx: ${r.context_window || "?"}, caps: [${caps}]${r.is_active === false ? " [INACTIVE]" : ""}`;
-				},
-			);
+			const lines = filteredRows.map((r) => {
+				const caps = r.capabilities
+					? Object.keys(r.capabilities)
+							.filter((k: string) => r.capabilities[k])
+							.join(", ")
+					: "none";
+				const inputCost = perMillionPricing
+					? (parseOptionalNumber(r.cost_per_million_input) ??
+						perMillionFromPer1k(r.cost_per_1k_input))
+					: perMillionFromPer1k(r.cost_per_1k_input);
+				const outputCost = perMillionPricing
+					? (parseOptionalNumber(r.cost_per_million_output) ??
+						perMillionFromPer1k(r.cost_per_1k_output))
+					: perMillionFromPer1k(r.cost_per_1k_output);
+				const cacheWriteCost = perMillionPricing
+					? parseOptionalNumber(r.cost_per_million_cache_write)
+					: null;
+				const cacheHitCost = perMillionPricing
+					? parseOptionalNumber(r.cost_per_million_cache_hit)
+					: null;
+				const pricing = [
+					`input: ${formatMillionCost(inputCost)}`,
+					`output: ${formatMillionCost(outputCost)}`,
+				];
+				if (cacheWriteCost !== null || cacheHitCost !== null) {
+					pricing.push(`cache_write: ${formatMillionCost(cacheWriteCost)}`);
+					pricing.push(`cache_hit: ${formatMillionCost(cacheHitCost)}`);
+				}
+				return `${r.model_name} (${r.provider}) — rating: ${r.rating}/5, ${pricing.join(", ")}, ctx: ${r.context_window || "?"}, caps: [${caps}]${r.is_active === false ? " [INACTIVE]" : ""}`;
+			});
 			return { content: [{ type: "text", text: lines.join("\n") }] };
 		} catch (err) {
 			return errorResult("Failed to list models", err);
@@ -548,6 +663,10 @@ export class PgModelHandlers {
 	async addModel(args: {
 		model_name: string;
 		provider?: string;
+		cost_per_million_input?: string;
+		cost_per_million_output?: string;
+		cost_per_million_cache_write?: string;
+		cost_per_million_cache_hit?: string;
 		cost_per_1k_input?: string;
 		cost_per_1k_output?: string;
 		max_tokens?: string;
@@ -557,9 +676,66 @@ export class PgModelHandlers {
 		is_active?: string;
 	}): Promise<CallToolResult> {
 		try {
-			const { rows } = await query(
-				`INSERT INTO model_metadata (model_name, provider, cost_per_1k_input, cost_per_1k_output,
-				                              max_tokens, context_window, capabilities, rating, is_active)
+			const perMillionPricing = await supportsPerMillionModelPricing();
+			const inputPerMillion =
+				parseOptionalNumber(args.cost_per_million_input) ??
+				perMillionFromPer1k(args.cost_per_1k_input);
+			const outputPerMillion =
+				parseOptionalNumber(args.cost_per_million_output) ??
+				perMillionFromPer1k(args.cost_per_1k_output);
+			const cacheWritePerMillion = parseOptionalNumber(
+				args.cost_per_million_cache_write,
+			);
+			const cacheHitPerMillion = parseOptionalNumber(
+				args.cost_per_million_cache_hit,
+			);
+			const inputPer1k = per1kFromPerMillion(inputPerMillion);
+			const outputPer1k = per1kFromPerMillion(outputPerMillion);
+
+			const { rows } = perMillionPricing
+				? await query(
+						`INSERT INTO model_metadata (
+							model_name, provider,
+							cost_per_1k_input, cost_per_1k_output,
+							cost_per_million_input, cost_per_million_output,
+							cost_per_million_cache_write, cost_per_million_cache_hit,
+							max_tokens, context_window, capabilities, rating, is_active
+						)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+          ON CONFLICT ON CONSTRAINT model_metadata_model_name_key
+          DO UPDATE SET
+            provider = EXCLUDED.provider,
+            cost_per_1k_input = COALESCE(EXCLUDED.cost_per_1k_input, model_metadata.cost_per_1k_input),
+            cost_per_1k_output = COALESCE(EXCLUDED.cost_per_1k_output, model_metadata.cost_per_1k_output),
+            cost_per_million_input = COALESCE(EXCLUDED.cost_per_million_input, model_metadata.cost_per_million_input),
+            cost_per_million_output = COALESCE(EXCLUDED.cost_per_million_output, model_metadata.cost_per_million_output),
+            cost_per_million_cache_write = COALESCE(EXCLUDED.cost_per_million_cache_write, model_metadata.cost_per_million_cache_write),
+            cost_per_million_cache_hit = COALESCE(EXCLUDED.cost_per_million_cache_hit, model_metadata.cost_per_million_cache_hit),
+            max_tokens = COALESCE(EXCLUDED.max_tokens, model_metadata.max_tokens),
+            context_window = COALESCE(EXCLUDED.context_window, model_metadata.context_window),
+            capabilities = COALESCE(EXCLUDED.capabilities, model_metadata.capabilities),
+            rating = COALESCE(EXCLUDED.rating, model_metadata.rating),
+            is_active = COALESCE(EXCLUDED.is_active, model_metadata.is_active)
+          RETURNING model_name, rating, COALESCE(is_active, true) AS is_active`,
+						[
+							args.model_name,
+							args.provider || null,
+							inputPer1k,
+							outputPer1k,
+							inputPerMillion,
+							outputPerMillion,
+							cacheWritePerMillion,
+							cacheHitPerMillion,
+							args.max_tokens ? parseInt(args.max_tokens, 10) : null,
+							args.context_window ? parseInt(args.context_window, 10) : null,
+							args.capabilities ? JSON.parse(args.capabilities) : null,
+							args.rating ? parseInt(args.rating, 10) : null,
+							args.is_active !== undefined ? args.is_active === "true" : null,
+						],
+					)
+				: await query(
+						`INSERT INTO model_metadata (model_name, provider, cost_per_1k_input, cost_per_1k_output,
+						                              max_tokens, context_window, capabilities, rating, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
          ON CONFLICT ON CONSTRAINT model_metadata_model_name_key
          DO UPDATE SET
@@ -572,18 +748,18 @@ export class PgModelHandlers {
            rating = COALESCE(EXCLUDED.rating, model_metadata.rating),
            is_active = COALESCE(EXCLUDED.is_active, model_metadata.is_active)
          RETURNING model_name, rating, COALESCE(is_active, true) AS is_active`,
-				[
-					args.model_name,
-					args.provider || null,
-					args.cost_per_1k_input ? parseFloat(args.cost_per_1k_input) : null,
-					args.cost_per_1k_output ? parseFloat(args.cost_per_1k_output) : null,
-					args.max_tokens ? parseInt(args.max_tokens, 10) : null,
-					args.context_window ? parseInt(args.context_window, 10) : null,
-					args.capabilities ? JSON.parse(args.capabilities) : null,
-					args.rating ? parseInt(args.rating, 10) : null,
-					args.is_active !== undefined ? args.is_active === "true" : null,
-				],
-			);
+						[
+							args.model_name,
+							args.provider || null,
+							inputPer1k,
+							outputPer1k,
+							args.max_tokens ? parseInt(args.max_tokens, 10) : null,
+							args.context_window ? parseInt(args.context_window, 10) : null,
+							args.capabilities ? JSON.parse(args.capabilities) : null,
+							args.rating ? parseInt(args.rating, 10) : null,
+							args.is_active !== undefined ? args.is_active === "true" : null,
+						],
+					);
 			const r = rows[0];
 			return {
 				content: [

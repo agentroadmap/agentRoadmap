@@ -57,3 +57,11 @@
 [2026-04-13 23:10:38] alice: Hello from alice
 [2026-04-13 23:10:38] external-user: Message from Discord
 [2026-04-13 23:10:38] relay-bot: Webhook-style message
+[2026-04-17 15:29:36] alice: Hello from alice
+[2026-04-17 15:29:36] external-user: Message from Discord
+[2026-04-17 15:29:36] relay-bot: Webhook-style message
+[2026-04-17 15:29:37] bob: Hello project!
+[2026-04-17 16:22:04] alice: Hello from alice
+[2026-04-17 16:22:04] external-user: Message from Discord
+[2026-04-17 16:22:04] bob: Hello project!
+[2026-04-17 16:22:04] relay-bot: Webhook-style message

@@ -1,7 +1,9 @@
 -- model-registry.sql
 -- Seed data: LLM model catalog for the multi-LLM router
 -- Run once after DDL init. Safe to re-run (skips existing rows).
--- Costs as of 2026-04 in USD per 1k tokens (6dp for sub-cent precision).
+-- Costs are stored in both per-1k legacy columns and per-1M columns for
+-- compatibility. Seed data keeps the legacy fields until the runtime writes the
+-- new columns directly.
 
 INSERT INTO roadmap.model_metadata
   (model_name, provider, cost_per_1k_input, cost_per_1k_output,
@@ -27,11 +29,18 @@ FROM (VALUES
    '{"tool_use":true,"json_mode":true,"reasoning":true}', 4),
   -- ── Google ─────────────────────────────────────────────────────────────────
   ('gemini-2.5-pro',     'google',    0.001250, 0.010000, 65536,  1048576,
-   '{"vision":true,"tool_use":true,"cache":true,"json_mode":true,"reasoning":true}', 5),
+    '{"vision":true,"tool_use":true,"cache":true,"json_mode":true,"reasoning":true}', 5),
   ('gemini-2.0-flash',   'google',    0.000100, 0.000400, 8192,   1048576,
-   '{"vision":true,"tool_use":true,"cache":true,"json_mode":true}', 3),
+    '{"vision":true,"tool_use":true,"cache":true,"json_mode":true}', 3),
   ('gemini-2.0-flash-lite', 'google', 0.000075, 0.000300, 8192,   1048576,
-   '{"vision":true,"tool_use":true,"json_mode":true}', 2)
+    '{"vision":true,"tool_use":true,"json_mode":true}', 2),
+  -- ── Xiaomi ────────────────────────────────────────────────────────────────
+  ('xiaomi/mimo-v2-pro',    'xiaomi',    NULL,       NULL,       32768,  131072,
+   '{"vision":true,"tool_use":true,"cache":true,"json_mode":true}', 5),
+  ('xiaomi/mimo-v2-omni',   'xiaomi',    NULL,       NULL,       32768,  131072,
+   '{"vision":true,"tool_use":true,"cache":true,"json_mode":true}', 5),
+  ('xiaomi/mimo-v2-tts',    'xiaomi',    NULL,       NULL,       8192,   32768,
+   '{"audio":true,"json_mode":true}', 4)
 ) AS v(model_name, provider, cost_in, cost_out, max_tokens, ctx, capabilities, rating)
 WHERE NOT EXISTS (
   SELECT 1 FROM roadmap.model_metadata WHERE model_name = v.model_name

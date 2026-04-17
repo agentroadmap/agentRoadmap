@@ -1177,7 +1177,7 @@ export async function createMcpServer(
 			},
 		});
 
-		console.log(
+		console.error(
 			"[MCP] Using Postgres backend (agenthive) for proposals, messaging, agents, spending, memory, RFC workflow, SMDL, cubics, pulse, federation, discord",
 		);
 	} else {
@@ -1185,7 +1185,7 @@ export async function createMcpServer(
 		registerMessageTools(server);
 		registerAgentTools(server);
 		await registerTeamTools(server);
-		console.log("[MCP] Using legacy filesystem proposal tools");
+		console.error("[MCP] Using legacy filesystem proposal tools");
 	}
 	registerTestingTools(server);
 	registerDependencyTools(server);

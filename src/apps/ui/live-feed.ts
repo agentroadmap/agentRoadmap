@@ -13,11 +13,32 @@ type FeedRow = {
 	message: string;
 };
 
-function timestampToMillis(value: FeedRow["timestamp_ms"]): number {
+export function dedupeBoardLiveFeed(events: StreamEvent[]): StreamEvent[] {
+	const seen = new Set<string>();
+	const deduped: StreamEvent[] = [];
+
+	for (const event of events) {
+		const key = [
+			event.type,
+			event.proposalId ?? "",
+			event.agentId ?? "",
+			event.message.trim(),
+		].join("|");
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(event);
+	}
+
+	return deduped;
+}
+
+export function timestampToMillis(value: FeedRow["timestamp_ms"]): number {
 	if (value instanceof Date) return value.getTime();
 	if (typeof value === "number") return value;
-	const parsed = new Date(value).getTime();
-	return Number.isFinite(parsed) ? parsed : Date.now();
+	const parsed = Number(value);
+	if (Number.isFinite(parsed)) return parsed;
+	const fallback = Date.parse(value);
+	return Number.isFinite(fallback) ? fallback : Date.now();
 }
 
 export async function getBoardLiveFeed(limit = 30): Promise<StreamEvent[]> {
@@ -58,6 +79,7 @@ export async function getBoardLiveFeed(limit = 30): Promise<StreamEvent[]> {
 					COALESCE(p.display_id || ' ', '') || pe.event_type AS message
 				FROM roadmap_proposal.proposal_event pe
 				LEFT JOIN roadmap_proposal.proposal p ON p.id = pe.proposal_id
+				WHERE pe.event_type NOT IN ('status_changed', 'maturity_changed')
 
 				UNION ALL
 
@@ -120,15 +142,17 @@ export async function getBoardLiveFeed(limit = 30): Promise<StreamEvent[]> {
 			[limit],
 		);
 
-		return rows.map((row) => ({
-			id: row.id,
-			type: row.type,
-			timestamp: timestampToMillis(row.timestamp_ms),
-			proposalId: row.proposal_id ?? undefined,
-			agentId: row.agent_id ?? undefined,
-			message: row.message,
-			metadata: {},
-		}));
+		return dedupeBoardLiveFeed(
+			rows.map((row) => ({
+				id: row.id,
+				type: row.type,
+				timestamp: timestampToMillis(row.timestamp_ms),
+				proposalId: row.proposal_id ?? undefined,
+				agentId: row.agent_id ?? undefined,
+				message: row.message,
+				metadata: {},
+			})),
+		);
 	} catch {
 		return getRecentEvents(limit);
 	}

@@ -658,7 +658,7 @@ export class SMDLWorkflowHandlers {
 		});
 
 		// eslint-disable-next-line no-console
-		console.log(
+		console.error(
 			"[MCP] Registered 3 SMDL workflow tools (load YAML, load builtins, list)",
 		);
 	}

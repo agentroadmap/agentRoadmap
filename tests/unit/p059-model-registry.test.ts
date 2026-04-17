@@ -4,8 +4,8 @@
  * Tests for enhanced model_list capability filtering and model_add is_active support.
  */
 
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
 describe("P059: Model Registry", () => {
 	describe("PgModelHandlers.listModels", () => {
@@ -17,10 +17,10 @@ describe("P059: Model Registry", () => {
 			assert.equal(value, "true");
 		});
 
-		it("should accept max_cost_per_1k_input as numeric string", () => {
-			const cost = "0.01";
+		it("should accept max_cost_per_million_input as numeric string", () => {
+			const cost = "10";
 			const parsed = parseFloat(cost);
-			assert.equal(parsed, 0.01);
+			assert.equal(parsed, 10);
 			assert.ok(parsed > 0);
 		});
 
@@ -69,7 +69,8 @@ describe("P059: Model Registry", () => {
 
 		it("should handle null is_active for default behavior", () => {
 			const args: { is_active?: string } = {};
-			const parsed = args.is_active !== undefined ? args.is_active === "true" : null;
+			const parsed =
+				args.is_active !== undefined ? args.is_active === "true" : null;
 			assert.equal(parsed, null);
 		});
 	});
@@ -78,8 +79,14 @@ describe("P059: Model Registry", () => {
 		it("should support 6 decimal places for sub-cent pricing", () => {
 			const haikuCost = 0.00025;
 			assert.ok(haikuCost < 0.001);
-			// Verify precision: $0.000250/1k tokens
+			// Verify precision: $0.000250/1k tokens (= $0.250000/1M)
 			assert.equal(haikuCost.toFixed(6), "0.000250");
+		});
+
+		it("should scale per-1k legacy pricing to per-million display values", () => {
+			const legacyCostPer1k = 0.003;
+			const perMillion = legacyCostPer1k * 1000;
+			assert.equal(perMillion, 3);
 		});
 
 		it("should rank models by rating then cost", () => {

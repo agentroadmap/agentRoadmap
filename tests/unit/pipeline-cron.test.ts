@@ -168,7 +168,7 @@ function createMcpClientFactory(
 				success: true,
 				cubic: { id: "cubic-test-1" },
 			};
-			return { content: [{ text: JSON.stringify(response) }] };
+			return { content: [{ type: "text", text: JSON.stringify(response) }] };
 		},
 		async close() {},
 	});
@@ -213,10 +213,21 @@ describe("PipelineCron", () => {
 		const focusCall = toolCalls.find((c) => c.name === "cubic_focus")!;
 		assert.match(String(focusCall.arguments.task), /Transition queue row: 1/);
 
-		// After cubic dispatch, transition should be marked done
+		// Cubic dispatch is not a completed state transition. The queue stays
+		// processing until the proposal status itself reaches the target stage.
 		assert.ok(
+			sqlCalls.some((call) => call.text.includes("SET status = 'processing'")),
+			"transition should stay processing after cubic dispatch",
+		);
+		assert.equal(
 			sqlCalls.some((call) => call.text.includes("SET status = 'done'")),
-			"transition should be marked done after cubic dispatch",
+			false,
+			"transition should not be marked done after dispatch alone",
+		);
+		assert.equal(
+			sqlCalls.some((call) => call.text.includes("fn_enqueue_mature_proposals")),
+			false,
+			"legacy cron must not create transition_queue rows from mature proposals",
 		);
 
 		await cron.stop();
@@ -263,6 +274,62 @@ describe("PipelineCron", () => {
 		assert.ok(focusCall, "cubic_focus should be called");
 		// Spawn metadata task takes precedence
 		assert.equal(focusCall.arguments.task, "Explicit task from spawn metadata.");
+
+		await cron.stop();
+		intervals.dispose();
+	});
+
+	it("uses gate task metadata when dispatching through spawn executor", async () => {
+		const listener = createListener();
+		const claimResponses = [
+			[
+				createTransition({
+					metadata: {
+						task: "D1 gate task from queue metadata.",
+						spawn: {
+							worktree: "claude-andy",
+							timeoutMs: 45_000,
+						},
+					},
+				}),
+			],
+			[],
+		];
+		const spawnRequests: unknown[] = [];
+
+		const queryFn = createQueryFn(claimResponses);
+		const connectListener: ConnectListener = async () => listener.client;
+		const intervals = createIntervalFns();
+
+		const cron = new PipelineCron({
+			queryFn,
+			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnRequests.push(request);
+				return {
+					agentRunId: "run-1",
+					worktree: String(request.worktree),
+					exitCode: 0,
+					stdout: "",
+					stderr: "",
+					durationMs: 1,
+				};
+			},
+			logger: createLogger(),
+			setIntervalFn: intervals.setIntervalFn,
+			clearIntervalFn: intervals.clearIntervalFn,
+		});
+
+		await cron.run();
+
+		assert.equal(spawnRequests.length, 1);
+		assert.deepEqual(spawnRequests[0], {
+			worktree: "claude-andy",
+			task: "D1 gate task from queue metadata.",
+			proposalId: 42,
+			stage: "Review",
+			timeoutMs: 45_000,
+		});
 
 		await cron.stop();
 		intervals.dispose();
@@ -351,7 +418,7 @@ describe("PipelineCron", () => {
 		assert.ok(notificationInsert, "AC-3: notification_queue should be inserted on exhausted failure");
 		assert.equal(notificationInsert.params?.[0], 42); // proposal_id
 		assert.match(String(notificationInsert.params?.[1]), /failed permanently/);
-		assert.match(String(notificationInsert.params?.[2]), /DEVELOP.*MERGE|still failing/);
+		assert.match(String(notificationInsert.params?.[5]), /still failing/);
 
 		await cron.stop();
 		intervals.dispose();
@@ -392,6 +459,262 @@ describe("PipelineCron", () => {
 		const focusCalls = toolCalls.filter((c) => c.name === "cubic_focus");
 		assert.equal(focusCalls.length, 1, "one cubic_focus after notification");
 		assert.match(String(focusCalls[0].arguments.phase), /build/);
+
+		await cron.stop();
+		intervals.dispose();
+	});
+
+	it("dispatches prep work when a proposal is not ready for the next state", async () => {
+		const listener = createListener();
+		const spawnRequests: Array<Record<string, unknown>> = [];
+		const claimResponses = [
+			[
+				createTransition({
+					id: 21,
+					proposal_id: "99",
+					from_stage: "DRAFT",
+					to_stage: "REVIEW",
+				}),
+			],
+			[],
+		];
+
+		const queryFn = (async (text: string) => {
+			if (text.includes("FROM roadmap.transition_queue tq")) {
+				const rows = claimResponses.shift() ?? [];
+				return {
+					rows,
+				} as unknown as QueryResultLike;
+			}
+
+			if (text.includes("FROM roadmap_proposal.proposal p")) {
+				return {
+					rows: [
+						{
+							id: 99,
+							display_id: "P099",
+							status: "DRAFT",
+							maturity: "mature",
+							title: "Needs more research",
+							priority: "high",
+							summary: null,
+							design: null,
+							alternatives: null,
+							drawbacks: null,
+							dependency: null,
+							unresolved_dependencies: 2,
+							total_acceptance_criteria: 0,
+							blocking_acceptance_criteria: 0,
+							passed_acceptance_criteria: 0,
+							latest_decision: null,
+						},
+					],
+				} as unknown as QueryResultLike;
+			}
+
+			if (text.includes("FROM roadmap.v_capable_agents")) {
+				return {
+					rows: [
+						{
+							agent_identity: "architect-alpha",
+							agent_type: "llm",
+							role: "architect",
+							preferred_model: "claude-sonnet-4-6",
+							active_model: "claude-sonnet-4-6",
+							status: "healthy",
+							active_leases: 0,
+							context_load: 0,
+							cpu_percent: 15,
+							memory_mb: 2048,
+							daily_limit_usd: 100,
+							daily_spend_usd: 10,
+							is_frozen: false,
+							cost_per_1k_input: 0.012,
+							capability: "architect",
+						},
+						{
+							agent_identity: "reviewer-beta",
+							agent_type: "llm",
+							role: "reviewer",
+							preferred_model: "gpt-4o",
+							active_model: "gpt-4o",
+							status: "healthy",
+							active_leases: 2,
+							context_load: 2,
+							cpu_percent: 55,
+							memory_mb: 4096,
+							daily_limit_usd: 100,
+							daily_spend_usd: 25,
+							is_frozen: false,
+							cost_per_1k_input: 0.018,
+							capability: "reviewer",
+						},
+					],
+				} as unknown as QueryResultLike;
+			}
+
+			return { rows: [], rowCount: 1 } as unknown as QueryResultLike;
+		}) as QueryFn;
+
+		const connectListener: ConnectListener = async () => listener.client;
+		const intervals = createIntervalFns();
+
+		const cron = new PipelineCron({
+			queryFn,
+			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnRequests.push(request as Record<string, unknown>);
+				return {
+					agentRunId: "run-prep",
+					worktree: String(request.worktree),
+					exitCode: 0,
+					stdout: "",
+					stderr: "",
+					durationMs: 1,
+				};
+			},
+			logger: createLogger(),
+			setIntervalFn: intervals.setIntervalFn,
+			clearIntervalFn: intervals.clearIntervalFn,
+		});
+
+		await cron.run();
+
+		assert.equal(spawnRequests.length, 1);
+		assert.match(
+			String(spawnRequests[0].task),
+			/preparation agent|enhance the proposal/i,
+		);
+		assert.equal(spawnRequests[0].worktree, "architect-alpha");
+		assert.equal(spawnRequests[0].stage, "review");
+
+		await cron.stop();
+		intervals.dispose();
+	});
+
+	it("dispatches gate review work when the proposal is ready for promotion", async () => {
+		const listener = createListener();
+		const spawnRequests: Array<Record<string, unknown>> = [];
+		const claimResponses = [
+			[
+				createTransition({
+					id: 22,
+					proposal_id: "100",
+					from_stage: "REVIEW",
+					to_stage: "DEVELOP",
+				}),
+			],
+			[],
+		];
+
+		const queryFn = (async (text: string) => {
+			if (text.includes("FROM roadmap.transition_queue tq")) {
+				const rows = claimResponses.shift() ?? [];
+				return {
+					rows,
+				} as unknown as QueryResultLike;
+			}
+
+			if (text.includes("FROM roadmap_proposal.proposal p")) {
+				return {
+					rows: [
+						{
+							id: 100,
+							display_id: "P100",
+							status: "REVIEW",
+							maturity: "mature",
+							title: "Ready to develop",
+							priority: "medium",
+							summary: "Research completed.",
+							design: "Design completed.",
+							alternatives: null,
+							drawbacks: null,
+							dependency: null,
+							unresolved_dependencies: 0,
+							total_acceptance_criteria: 3,
+							blocking_acceptance_criteria: 0,
+							passed_acceptance_criteria: 3,
+							latest_decision: "approved",
+						},
+					],
+				} as unknown as QueryResultLike;
+			}
+
+			if (text.includes("FROM roadmap.v_capable_agents")) {
+				return {
+					rows: [
+						{
+							agent_identity: "reviewer-beta",
+							agent_type: "llm",
+							role: "reviewer",
+							preferred_model: "gpt-4o",
+							active_model: "gpt-4o",
+							status: "healthy",
+							active_leases: 0,
+							context_load: 0,
+							cpu_percent: 10,
+							memory_mb: 2048,
+							daily_limit_usd: 100,
+							daily_spend_usd: 8,
+							is_frozen: false,
+							cost_per_1k_input: 0.018,
+							capability: "reviewer",
+						},
+						{
+							agent_identity: "architect-alpha",
+							agent_type: "llm",
+							role: "architect",
+							preferred_model: "claude-sonnet-4-6",
+							active_model: "claude-sonnet-4-6",
+							status: "healthy",
+							active_leases: 1,
+							context_load: 1,
+							cpu_percent: 35,
+							memory_mb: 4096,
+							daily_limit_usd: 100,
+							daily_spend_usd: 20,
+							is_frozen: false,
+							cost_per_1k_input: 0.012,
+							capability: "architect",
+						},
+					],
+				} as unknown as QueryResultLike;
+			}
+
+			return { rows: [], rowCount: 1 } as unknown as QueryResultLike;
+		}) as QueryFn;
+
+		const connectListener: ConnectListener = async () => listener.client;
+		const intervals = createIntervalFns();
+
+		const cron = new PipelineCron({
+			queryFn,
+			connectListener,
+			spawnAgentFn: async (request) => {
+				spawnRequests.push(request as Record<string, unknown>);
+				return {
+					agentRunId: "run-gate",
+					worktree: String(request.worktree),
+					exitCode: 0,
+					stdout: "",
+					stderr: "",
+					durationMs: 1,
+				};
+			},
+			logger: createLogger(),
+			setIntervalFn: intervals.setIntervalFn,
+			clearIntervalFn: intervals.clearIntervalFn,
+		});
+
+		await cron.run();
+
+		assert.equal(spawnRequests.length, 1);
+		assert.match(
+			String(spawnRequests[0].task),
+			/gate agent|ready to gate|decide whether the proposal is ready/i,
+		);
+		assert.equal(spawnRequests[0].worktree, "reviewer-beta");
+		assert.equal(spawnRequests[0].stage, "develop");
 
 		await cron.stop();
 		intervals.dispose();

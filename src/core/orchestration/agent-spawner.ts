@@ -27,7 +27,12 @@ const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type AgentProvider = "claude" | "gemini" | "copilot" | "openclaw" | "codex";
+export type AgentProvider =
+	| "claude"
+	| "gemini"
+	| "copilot"
+	| "openclaw"
+	| "codex";
 
 export interface WorktreeConfig {
 	/** Worktree directory name (e.g. "claude-andy") */
@@ -82,16 +87,21 @@ export interface ModelRoute {
 	baseUrl: string;
 	planType: string | null;
 	costPer1kInput: number;
+	costPerMillionInput: number;
+	costPerMillionOutput: number;
 }
 
 /**
  * Build argv + env for the Anthropic Claude CLI.
  * Used when api_spec = 'anthropic' (native claude CLI).
  */
-function buildClaudeArgs(
-	req: SpawnRequest,
-	route: ModelRoute,
-): { argv: string[]; env: Record<string, string> } {
+type CommandSpec = {
+	argv: string[];
+	env: Record<string, string>;
+	stdin?: string;
+};
+
+function buildClaudeArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	const argv = [
 		"claude",
 		"--print", // non-interactive: print response and exit
@@ -112,15 +122,13 @@ function buildClaudeArgs(
  * Used when agent_provider = 'codex' (openai spec, `codex` terminal tool).
  * https://github.com/openai/codex
  */
-function buildCodexArgs(
-	req: SpawnRequest,
-	route: ModelRoute,
-): { argv: string[]; env: Record<string, string> } {
+function buildCodexArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	const argv = [
 		"codex",
+		"exec",
+		"--dangerously-bypass-approvals-and-sandbox",
 		"--model",
 		route.modelName,
-		"--quiet", // non-interactive
 		req.task,
 	];
 	const env: Record<string, string> = {};
@@ -139,7 +147,7 @@ function buildCodexArgs(
 function buildOpenAICompatArgs(
 	req: SpawnRequest,
 	route: ModelRoute,
-): { argv: string[]; env: Record<string, string> } {
+): CommandSpec {
 	const argv = ["llm", "--model", route.modelName, req.task];
 	const env: Record<string, string> = {
 		OPENAI_BASE_URL: route.baseUrl,
@@ -151,19 +159,13 @@ function buildOpenAICompatArgs(
  * Build argv + env for Google Gemini CLI.
  * Used when api_spec = 'google'.
  */
-function buildGeminiArgs(
-	req: SpawnRequest,
-	route: ModelRoute,
-): { argv: string[]; env: Record<string, string> } {
+function buildGeminiArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	const argv = ["gemini", "--model", route.modelName, "--prompt", req.task];
 	return { argv, env: {} };
 }
 
 /** Dispatch to the correct builder based on route.apiSpec and agent_provider. */
-function buildArgsBySpec(
-	req: SpawnRequest,
-	route: ModelRoute,
-): { argv: string[]; env: Record<string, string> } {
+function buildArgsBySpec(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	// Codex CLI gets its own builder regardless of api_spec (always openai spec)
 	if (route.agentProvider === "codex") return buildCodexArgs(req, route);
 	switch (route.apiSpec) {
@@ -174,6 +176,76 @@ function buildArgsBySpec(
 		case "openai":
 			return buildOpenAICompatArgs(req, route);
 	}
+}
+
+function assertPlatformAwareRoute(
+	provider: AgentProvider,
+	route: ModelRoute,
+): void {
+	if (route.agentProvider !== provider) {
+		throw new Error(
+			`[P235] Route agent_provider "${route.agentProvider}" does not match worktree provider "${provider}" for model "${route.modelName}".`,
+		);
+	}
+	if (provider === "claude" && route.routeProvider !== "anthropic") {
+		throw new Error(
+			`[P235] Refusing to run route_provider "${route.routeProvider}" through Claude CLI for model "${route.modelName}". Use an openclaw/hermes route for Xiaomi/Nous models.`,
+		);
+	}
+	if (provider === "codex" && route.routeProvider !== "openai") {
+		throw new Error(
+			`[P235] Refusing to run route_provider "${route.routeProvider}" through Codex CLI for model "${route.modelName}".`,
+		);
+	}
+	if (provider === "openclaw" && !HERMES_SAFE_MODELS.has(route.modelName)) {
+		throw new Error(
+			`[P235] Hermes route "${route.modelName}" is not allowlisted. Use only ${[...HERMES_SAFE_MODELS].join(", ")}.`,
+		);
+	}
+	if (provider === "openclaw" && route.routeProvider !== "nous") {
+		throw new Error(
+			`[P235] Hermes routes must use the Nous provider; got "${route.routeProvider}" for model "${route.modelName}".`,
+		);
+	}
+}
+
+export function assertHermesRouteAllowed(
+	modelName: string,
+	routeProvider?: string,
+): void {
+	if (routeProvider !== undefined && routeProvider !== "nous") {
+		throw new Error(
+			`[P235] Hermes spawn is restricted to the Nous provider; got "${routeProvider}".`,
+		);
+	}
+	if (!HERMES_SAFE_MODELS.has(modelName)) {
+		throw new Error(
+			`[P235] Hermes spawn is restricted to ${[...HERMES_SAFE_MODELS].join(", ")}.`,
+		);
+	}
+}
+
+let modelRoutesMillionPricingPromise: Promise<boolean> | undefined;
+
+async function supportsPerMillionRoutePricing(): Promise<boolean> {
+	if (!modelRoutesMillionPricingPromise) {
+		modelRoutesMillionPricingPromise = query<{ column_name: string }>(
+			`SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'roadmap'
+         AND table_name = 'model_routes'
+         AND column_name = ANY($1::text[])`,
+			[
+				[
+					"cost_per_million_input",
+					"cost_per_million_output",
+					"cost_per_million_cache_write",
+					"cost_per_million_cache_hit",
+				],
+			],
+		).then(({ rows }) => rows.length > 0);
+	}
+	return modelRoutesMillionPricingPromise;
 }
 
 // ─── Worktree config loader ───────────────────────────────────────────────────
@@ -227,8 +299,13 @@ const PROVIDER_DEFAULTS: Record<AgentProvider, string> = {
 	gemini: "gemini-2.0-flash",
 	copilot: "gpt-4o",
 	openclaw: "xiaomi/mimo-v2-pro",
-	codex: "codex-mini-latest",
+	codex: "gpt-5.4",
 };
+
+const HERMES_SAFE_MODELS = new Set([
+	"xiaomi/mimo-v2-pro",
+	"xiaomi/mimo-v2-omni",
+]);
 
 /**
  * P235 + M026: Resolve model route for a spawn request.
@@ -254,19 +331,46 @@ async function resolveModelRoute(
 		api_spec: string;
 		base_url: string;
 		plan_type: string | null;
-		cost_per_1k_input: number;
+		cost_per_1k_input: number | null;
+		cost_per_million_input: number | null;
+		cost_per_million_output: number | null;
 	};
 
-	const fetchRoute = (modelName: string) =>
-		query<RouteRow>(
+	const perMillionPricing = await supportsPerMillionRoutePricing();
+	const hermesFilter = provider === "openclaw" ? [...HERMES_SAFE_MODELS] : null;
+
+	const fetchRoute = (modelName: string) => {
+		if (perMillionPricing) {
+			return query<RouteRow>(
+				`SELECT model_name, route_provider, agent_provider,
+               api_spec, base_url, plan_type,
+               cost_per_1k_input, cost_per_million_input, cost_per_million_output
+        FROM roadmap.model_routes
+        WHERE model_name = $1
+          AND agent_provider = $2
+          AND is_enabled = true
+          AND ($3::text[] IS NULL OR model_name = ANY($3::text[]))
+        ORDER BY priority ASC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC
+        LIMIT 1`,
+				[modelName, provider, hermesFilter],
+			);
+		}
+
+		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-              api_spec, base_url, plan_type, cost_per_1k_input
+              api_spec, base_url, plan_type,
+              cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+              NULL::numeric AS cost_per_million_output
        FROM roadmap.model_routes
-       WHERE model_name = $1 AND agent_provider = $2 AND is_enabled = true
-       ORDER BY priority ASC
+       WHERE model_name = $1
+         AND agent_provider = $2
+         AND is_enabled = true
+         AND ($3::text[] IS NULL OR model_name = ANY($3::text[]))
+       ORDER BY priority ASC, cost_per_1k_input ASC
        LIMIT 1`,
-			[modelName, provider],
+			[modelName, provider, hermesFilter],
 		);
+	};
 
 	const toModelRoute = (r: RouteRow): ModelRoute => ({
 		modelName: r.model_name,
@@ -275,12 +379,21 @@ async function resolveModelRoute(
 		apiSpec: r.api_spec as ModelRoute["apiSpec"],
 		baseUrl: r.base_url,
 		planType: r.plan_type,
-		costPer1kInput: Number(r.cost_per_1k_input),
+		costPer1kInput: Number(r.cost_per_1k_input ?? 0),
+		costPerMillionInput: Number(r.cost_per_million_input ?? 0),
+		costPerMillionOutput: Number(r.cost_per_million_output ?? 0),
 	});
 
 	if (hint) {
+		if (provider === "openclaw") {
+			assertHermesRouteAllowed(hint);
+		}
 		const { rows } = await fetchRoute(hint);
-		if (rows.length > 0) return toModelRoute(rows[0]);
+		if (rows.length > 0) {
+			const route = toModelRoute(rows[0]);
+			assertPlatformAwareRoute(provider, route);
+			return route;
+		}
 
 		console.warn(
 			`[P235] No enabled route for model "${hint}" with agent_provider "${provider}". ` +
@@ -290,38 +403,75 @@ async function resolveModelRoute(
 	}
 
 	// Default: cheapest enabled model for this provider
-	const { rows } = await query<RouteRow>(
-		`SELECT model_name, route_provider, agent_provider,
-            api_spec, base_url, plan_type, cost_per_1k_input
-     FROM roadmap.model_routes
-     WHERE agent_provider = $1 AND is_enabled = true
-     ORDER BY priority ASC, cost_per_1k_input ASC
-     LIMIT 1`,
-		[provider],
-	);
+	const { rows } = perMillionPricing
+		? await query<RouteRow>(
+				`SELECT model_name, route_provider, agent_provider,
+               api_spec, base_url, plan_type,
+               cost_per_1k_input, cost_per_million_input, cost_per_million_output
+        FROM roadmap.model_routes
+        WHERE agent_provider = $1
+          AND is_enabled = true
+          AND ($2::text[] IS NULL OR model_name = ANY($2::text[]))
+        ORDER BY priority ASC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC
+        LIMIT 1`,
+				[provider, hermesFilter],
+			)
+		: await query<RouteRow>(
+				`SELECT model_name, route_provider, agent_provider,
+               api_spec, base_url, plan_type,
+               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+               NULL::numeric AS cost_per_million_output
+        FROM roadmap.model_routes
+        WHERE agent_provider = $1
+          AND is_enabled = true
+          AND ($2::text[] IS NULL OR model_name = ANY($2::text[]))
+        ORDER BY priority ASC, cost_per_1k_input ASC
+        LIMIT 1`,
+				[provider, hermesFilter],
+			);
 
-	if (rows.length > 0) return toModelRoute(rows[0]);
+	if (rows.length > 0) {
+		const route = toModelRoute(rows[0]);
+		assertPlatformAwareRoute(provider, route);
+		return route;
+	}
 
 	// No DB routes at all — synthesize a hard-coded fallback
 	const fallbackModel = PROVIDER_DEFAULTS[provider];
-	console.warn(`[P235] No routes in DB for agent_provider "${provider}". Using hard-coded default "${fallbackModel}".`);
+	console.warn(
+		`[P235] No routes in DB for agent_provider "${provider}". Using hard-coded default "${fallbackModel}".`,
+	);
 	const fallbackApiSpec: ModelRoute["apiSpec"] =
-		provider === "gemini" ? "google" : provider === "claude" ? "anthropic" : "openai";
+		provider === "gemini"
+			? "google"
+			: provider === "claude"
+				? "anthropic"
+				: "openai";
 	const fallbackBaseUrl =
 		provider === "claude"
 			? "https://api.anthropic.com"
 			: provider === "gemini"
 				? "https://generativelanguage.googleapis.com/v1beta"
 				: "https://api.openai.com/v1";
-	return {
+	const fallbackRouteProvider =
+		provider === "claude"
+			? "anthropic"
+			: provider === "codex"
+				? "openai"
+				: provider;
+	const fallbackRoute = {
 		modelName: fallbackModel,
-		routeProvider: provider,
+		routeProvider: fallbackRouteProvider,
 		agentProvider: provider,
 		apiSpec: fallbackApiSpec,
 		baseUrl: fallbackBaseUrl,
 		planType: null,
 		costPer1kInput: 0,
+		costPerMillionInput: 0,
+		costPerMillionOutput: 0,
 	};
+	assertPlatformAwareRoute(provider, fallbackRoute);
+	return fallbackRoute;
 }
 
 async function buildProposalContextPackage(input: {
@@ -407,7 +557,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const spawnReq = { ...req, task: assembledTask };
 
 	// Build argv + env from route metadata (api_spec drives which CLI is used)
-	const { argv, env: extraEnv } = buildArgsBySpec(spawnReq, route);
+	const { argv, env: extraEnv, stdin } = buildArgsBySpec(spawnReq, route);
 
 	// Assemble process environment (agent-scoped, not inheriting secrets from host)
 	const processEnv: Record<string, string> = {
@@ -452,7 +602,13 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
        (proposal_id, display_id, agent_identity, stage, model_used, status, started_at)
      VALUES ($1, $2, $3, $4, $5, 'running', now())
      RETURNING id`,
-		[proposalId ?? null, `wt:${worktree}`, worktree, stage ?? "unknown", route.modelName],
+		[
+			proposalId ?? null,
+			`wt:${worktree}`,
+			worktree,
+			stage ?? "unknown",
+			route.modelName,
+		],
 	);
 	const agentRunId = String(rows[0].id);
 
@@ -464,16 +620,23 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		cwd,
 		processEnv,
 		timeoutMs,
+		stdin,
 	);
 	const durationMs = Date.now() - startMs;
 
 	// Update agent_runs on completion
 	const status = exitCode === 0 ? "completed" : "failed";
+	const outputSummary = stdout.slice(-1000);
+	const errorDetail = stderr.slice(-4000);
 	await query(
 		`UPDATE agent_runs
-     SET status = $1, duration_ms = $2, output_summary = $3, completed_at = now()
-     WHERE id = $4`,
-		[status, durationMs, stdout.slice(0, 500), agentRunId],
+     SET status = $1,
+         duration_ms = $2,
+         output_summary = $3,
+         error_detail = $4,
+         completed_at = now()
+     WHERE id = $5`,
+		[status, durationMs, outputSummary, errorDetail, agentRunId],
 	);
 
 	return { agentRunId, worktree, exitCode, stdout, stderr, durationMs };
@@ -492,13 +655,14 @@ function runProcess(
 	cwd: string,
 	env: Record<string, string>,
 	timeoutMs: number,
+	stdin?: string,
 ): Promise<ProcessResult> {
 	return new Promise((resolve) => {
 		const [cmd, ...args] = argv;
 		const child: ChildProcess = spawn(cmd, args, {
 			cwd,
 			env,
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
 
 		let stdout = "";
@@ -510,6 +674,10 @@ function runProcess(
 		child.stderr?.on("data", (d: Buffer) => {
 			stderr += d.toString();
 		});
+
+		if (stdin !== undefined) {
+			child.stdin?.end(stdin);
+		}
 
 		const timer = setTimeout(() => {
 			child.kill("SIGTERM");
@@ -550,7 +718,10 @@ export async function escalateOrNotify(
 
 	// P235/M026: build escalation ladder from model_routes for this agent_provider.
 	// Per model: pick best (lowest priority) route. Then sort models cheap → expensive.
-	const { rows: ladderRows } = await query<{ model_name: string; cost: number }>(
+	const { rows: ladderRows } = await query<{
+		model_name: string;
+		cost: number;
+	}>(
 		`SELECT model_name, min(cost_per_1k_input) AS cost
      FROM roadmap.model_routes
      WHERE agent_provider = $1 AND is_enabled = true

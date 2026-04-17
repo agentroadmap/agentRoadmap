@@ -446,7 +446,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[W]{/} Workflow | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[W]{/} Workflow | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[S]{/} Feed | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -621,7 +621,7 @@ export async function renderBoardTui(
 			width: "25%",
 			height: "100%-1",
 			border: { type: "line" },
-			label: " 📰 Headlines ",
+			label: " 📰 Feed ",
 			style: { border: { fg: "cyan" } },
 			tags: true,
 			scrollable: true,
@@ -638,6 +638,7 @@ export async function renderBoardTui(
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
+		let feedOnlyMode = false;
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
 			priorityFilter: options?.filters?.priorityFilter ?? "",
@@ -1231,6 +1232,16 @@ export async function renderBoardTui(
 			boardArea.top = headerHeight;
 			boardArea.height = `100%-${headerHeight}`;
 			boardPane.height = `100%-${getFooterHeight()}`;
+			boardPane.hidden = feedOnlyMode;
+			if (feedOnlyMode) {
+				eventPanel.left = 0;
+				eventPanel.right = undefined;
+				eventPanel.width = "100%";
+			} else {
+				eventPanel.left = undefined;
+				eventPanel.right = 0;
+				eventPanel.width = "25%";
+			}
 		};
 		syncBoardAreaLayout();
 
@@ -1262,6 +1273,13 @@ export async function renderBoardTui(
 				}
 				setFooterContent(
 					` {magenta-fg}${workflowView.label}{/} | {cyan-fg}[Enter/Space]{/} Open Picker | {cyan-fg}[←/→]{/} Prev/Next | {cyan-fg}[Esc]{/} Back`,
+				);
+				syncBoardAreaLayout();
+				return;
+			}
+			if (feedOnlyMode) {
+				setFooterContent(
+					` {magenta-fg}${workflowView.label}{/} | {cyan-fg}[PgUp/PgDn]{/} Scroll | {cyan-fg}[S]{/} Board | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[q/Esc]{/} Quit`,
 				);
 				syncBoardAreaLayout();
 				return;
@@ -1408,6 +1426,25 @@ export async function renderBoardTui(
 				` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
 			);
 			renderView();
+		});
+
+		screen.key(["s", "S"], () => {
+			if (popupOpen || filterPopupOpen || moveOp || currentFocus === "filters")
+				return;
+			feedOnlyMode = !feedOnlyMode;
+			if (feedOnlyMode) {
+				feedPinnedToLatest = true;
+				feedWindowStart = 0;
+				renderFeedPanel();
+			}
+			showTransientFooter(
+				feedOnlyMode
+					? " {cyan-fg}Feed view enabled{/}"
+					: " {cyan-fg}Board view enabled{/}",
+			);
+			syncBoardAreaLayout();
+			updateFooter();
+			screen.render();
 		});
 
 		screen.key(["p", "P"], () => {
@@ -1793,6 +1830,14 @@ export async function renderBoardTui(
 		screen.key(["pagedown"], () => {
 			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
 
+			if (feedOnlyMode) {
+				feedPinnedToLatest = false;
+				feedWindowStart = Math.max(feedWindowStart - FEED_PAGE_SIZE, 0);
+				renderFeedPanel();
+				screen.render();
+				return;
+			}
+
 			const column = columns[currentCol];
 			if (!column) return;
 			const listWidget = column.list;
@@ -1810,6 +1855,17 @@ export async function renderBoardTui(
 		// Page Up - scroll backward by one screen height
 		screen.key(["pageup"], () => {
 			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+
+			if (feedOnlyMode) {
+				feedPinnedToLatest = false;
+				feedWindowStart = Math.min(
+					feedWindowStart + FEED_PAGE_SIZE,
+					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
+				);
+				renderFeedPanel();
+				screen.render();
+				return;
+			}
 
 			const column = columns[currentCol];
 			if (!column) return;
@@ -2107,40 +2163,73 @@ export async function renderBoardTui(
 
 		// Poll for new events and update event panel
 		let _currentEvents: StreamEvent[] = [];
+		const seenFeedEventIds = new Set<string>();
+		let feedLines: string[] = [];
+		const FEED_PAGE_SIZE = 12;
+		const FEED_HISTORY_LIMIT = 200;
+		let feedWindowStart = 0;
+		let feedPinnedToLatest = true;
+		const renderFeedPanel = () => {
+			const visibleLines = feedLines.slice(
+				feedWindowStart,
+				feedWindowStart + FEED_PAGE_SIZE,
+			);
+			eventPanel.setContent(
+				visibleLines.length > 0
+					? visibleLines.join("\n")
+					: "{gray-fg}No recent feed items{/}",
+			);
+		};
 		const updateEventPanel = async () => {
 			const events = await getBoardLiveFeed(30);
-			if (events.length > 0) {
-				_currentEvents = events;
-				const lines = events.map((e) => {
-					const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
-						hour: "2-digit",
-						minute: "2-digit",
-						second: "2-digit",
-					});
-					const icon =
-						{
-							proposal_accepted: "+",
-							proposal_claimed: "C",
-							proposal_coding: ">",
-							review_requested: "?",
-							proposal_reviewing: "R",
-							review_passed: "✓",
-							review_failed: "!",
-							proposal_complete: "*",
-							proposal_merged: "M",
-							proposal_pushed: "P",
-							agent_online: "+",
-							agent_offline: "-",
-							handoff: "S",
-							heartbeat: "$",
-							cubic_phase_change: "~",
-							custom: ".",
-							message: "@",
-						}[e.type] || ".";
-					return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
-				});
-				eventPanel.setContent(lines.join("\n"));
+			_currentEvents = events;
+			const unseenEvents = events.filter((event) => !seenFeedEventIds.has(event.id));
+			if (unseenEvents.length === 0 && feedLines.length > 0) {
+				return;
 			}
+
+			for (const event of unseenEvents) {
+				seenFeedEventIds.add(event.id);
+			}
+
+			const formattedLines = unseenEvents.map((e) => {
+				const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+					hour: "2-digit",
+					minute: "2-digit",
+					second: "2-digit",
+				});
+				const icon =
+					{
+						proposal_accepted: "+",
+						proposal_claimed: "C",
+						proposal_coding: ">",
+						review_requested: "?",
+						proposal_reviewing: "R",
+						review_passed: "✓",
+						review_failed: "!",
+						proposal_complete: "*",
+						proposal_merged: "M",
+						proposal_pushed: "P",
+						agent_online: "+",
+						agent_offline: "-",
+						handoff: "S",
+						heartbeat: "$",
+						cubic_phase_change: "~",
+						custom: ".",
+						message: "@",
+					}[e.type] || ".";
+				return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
+			});
+			feedLines = [...formattedLines, ...feedLines].slice(0, FEED_HISTORY_LIMIT);
+			if (feedPinnedToLatest) {
+				feedWindowStart = 0;
+			} else {
+				feedWindowStart = Math.min(
+					feedWindowStart + formattedLines.length,
+					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
+				);
+			}
+			renderFeedPanel();
 			screen.render();
 		};
 		void updateEventPanel();

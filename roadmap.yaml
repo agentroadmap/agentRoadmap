@@ -41,3 +41,4 @@ git:
 remote:
   default_port: 6420
   operations: true
+proposal: proposal
