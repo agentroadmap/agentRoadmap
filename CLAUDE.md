@@ -69,6 +69,6 @@ All work is driven by **Proposals** managed via the **AgentHive MCP**. Agents mo
 * **Project Root:** CWD
 * **Hermes Worktree:** sibling worktree resolved from the CWD, not a hardcoded absolute path
 * **MCP Server:** `http://127.0.0.1:6421/sse` (SSE transport)
-* **Systemd Services:** `hermes-gate-pipeline`, `hermes-orchestrator`, `hermes-gateway`
+* **Systemd Services:** `agenthive-gate-pipeline`, `agenthive-orchestrator`, `agenthive-mcp`, `agenthive-discord-bridge`
 * **SCM Policy:** Always commit work with specific file references immediately upon completion of a task. Avoid massive "mega-commits."
 

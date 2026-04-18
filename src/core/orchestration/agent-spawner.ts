@@ -28,7 +28,7 @@ const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 
 // P245: host identity used for host-level spawn policy lookup.
 // Resolved once at module load; systemd units set AGENTHIVE_HOST explicitly
-// (e.g. hermes-orchestrator → AGENTHIVE_HOST=hermes).
+// (e.g. agenthive-orchestrator on hermes → AGENTHIVE_HOST=hermes).
 const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? hostname();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
