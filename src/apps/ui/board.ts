@@ -1434,7 +1434,7 @@ export async function renderBoardTui(
 			feedOnlyMode = !feedOnlyMode;
 			if (feedOnlyMode) {
 				feedPinnedToLatest = true;
-				feedWindowStart = 0;
+				feedWindowStart = Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 				renderFeedPanel();
 			}
 			showTransientFooter(
@@ -1832,7 +1832,10 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.max(feedWindowStart - FEED_PAGE_SIZE, 0);
+				feedWindowStart = Math.min(
+					feedWindowStart + FEED_PAGE_SIZE,
+					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
+				);
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -1858,10 +1861,7 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.min(
-					feedWindowStart + FEED_PAGE_SIZE,
-					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
-				);
+				feedWindowStart = Math.max(feedWindowStart - FEED_PAGE_SIZE, 0);
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -2169,7 +2169,12 @@ export async function renderBoardTui(
 		const FEED_HISTORY_LIMIT = 200;
 		let feedWindowStart = 0;
 		let feedPinnedToLatest = true;
+		const getFeedMaxWindowStart = () =>
+			Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 		const renderFeedPanel = () => {
+			if (feedPinnedToLatest) {
+				feedWindowStart = getFeedMaxWindowStart();
+			}
 			const visibleLines = feedLines.slice(
 				feedWindowStart,
 				feedWindowStart + FEED_PAGE_SIZE,
@@ -2192,7 +2197,10 @@ export async function renderBoardTui(
 				seenFeedEventIds.add(event.id);
 			}
 
-			const formattedLines = unseenEvents.map((e) => {
+			const formattedLines = unseenEvents
+				.slice()
+				.reverse()
+				.map((e) => {
 				const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
 					hour: "2-digit",
 					minute: "2-digit",
@@ -2220,14 +2228,13 @@ export async function renderBoardTui(
 					}[e.type] || ".";
 				return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
 			});
-			feedLines = [...formattedLines, ...feedLines].slice(0, FEED_HISTORY_LIMIT);
+			feedLines = [...feedLines, ...formattedLines].slice(
+				-FEED_HISTORY_LIMIT,
+			);
 			if (feedPinnedToLatest) {
-				feedWindowStart = 0;
+				feedWindowStart = getFeedMaxWindowStart();
 			} else {
-				feedWindowStart = Math.min(
-					feedWindowStart + formattedLines.length,
-					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
-				);
+				feedWindowStart = Math.min(feedWindowStart, getFeedMaxWindowStart());
 			}
 			renderFeedPanel();
 			screen.render();

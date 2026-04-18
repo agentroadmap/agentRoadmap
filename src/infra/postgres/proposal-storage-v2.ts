@@ -240,8 +240,14 @@ export async function createProposal(
 		start_stage: string | null;
 		valid_stages: string[];
 	}>(
-		`SELECT MIN(ws.stage_name) FILTER (WHERE ws.stage_order = MIN(ws.stage_order) OVER ()) AS start_stage,
-		        ARRAY_AGG(DISTINCT ws.stage_name) AS valid_stages
+		`SELECT (
+			  SELECT ws2.stage_name
+			    FROM roadmap.workflow_stages ws2
+			   WHERE ws2.template_id = wt.id
+			   ORDER BY ws2.stage_order ASC, ws2.stage_name ASC
+			   LIMIT 1
+			) AS start_stage,
+		        ARRAY_AGG(DISTINCT ws.stage_name ORDER BY ws.stage_order, ws.stage_name) AS valid_stages
        FROM roadmap_proposal.proposal_type_config ptc
        JOIN roadmap.workflow_templates wt ON wt.name = ptc.workflow_name
        JOIN roadmap.workflow_stages ws ON ws.template_id = wt.id
