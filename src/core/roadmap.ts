@@ -19,6 +19,7 @@ import { GitOperations } from "../git/operations.ts";
 import * as pgPool from "../postgres/pool.ts";
 import type {
 	ProposalAcceptanceCriterionRow,
+	ProposalActivity,
 	ProposalDependency,
 	ProposalRow,
 	ProposalSummary,
@@ -712,9 +713,13 @@ export class Core {
 			dependencies?: ProposalDependency[];
 			acceptanceCriteria?: ProposalAcceptanceCriterionRow[];
 			parentProposalId?: string;
+			activity?: ProposalActivity | null;
+			activityLog?: ActivityLogEntry[];
 		},
 	): Promise<Proposal> {
 		const summary = options?.summary ?? (await pg.getProposalSummary(row.id));
+		const activity = options?.activity ?? null;
+		const activityLog = options?.activityLog;
 		const dependencies = (options?.dependencies ?? []).filter(
 			(dependency) =>
 				dependency.from_proposal_id === row.id &&
@@ -734,8 +739,13 @@ export class Core {
 			(summary?.lease_expires === null ||
 				summary?.lease_expires === undefined ||
 				new Date(summary.lease_expires) > new Date());
-		const assignee =
-			summary?.leased_by && leaseActive ? [summary.leased_by] : [];
+		// P270: prefer active lease holder, fall back to gate dispatch agent so
+		// the board shows "who's on this" even during gate review when there's
+		// no lease yet.
+		const liveAssignee = leaseActive
+			? (summary?.leased_by ?? activity?.lease_holder ?? null)
+			: (activity?.gate_dispatch_agent ?? null);
+		const assignee = liveAssignee ? [liveAssignee] : [];
 		const claimCreated = summary?.leased_at
 			? formatLocalDateTime(new Date(summary.leased_at))
 			: undefined;
@@ -805,6 +815,29 @@ export class Core {
 				: {}),
 			...(maturity && { maturity }),
 			...(priority && { priority }),
+			...(activityLog && activityLog.length > 0 ? { activityLog } : {}),
+			...(activity
+				? (() => {
+						const live: NonNullable<Proposal["liveActivity"]> = {};
+						if (activity.lease_holder)
+							live.leaseHolder = activity.lease_holder;
+						if (activity.gate_dispatch_agent)
+							live.gateDispatchAgent = activity.gate_dispatch_agent;
+						if (activity.gate_dispatch_role)
+							live.gateDispatchRole = activity.gate_dispatch_role;
+						if (activity.gate_dispatch_status)
+							live.gateDispatchStatus = activity.gate_dispatch_status;
+						if (activity.active_cubic)
+							live.activeCubic = activity.active_cubic;
+						if (activity.active_model)
+							live.activeModel = activity.active_model;
+						if (typeof activity.heartbeat_age_seconds === "number")
+							live.heartbeatAgeSeconds = activity.heartbeat_age_seconds;
+						if (activity.last_event_type)
+							live.lastEventType = activity.last_event_type;
+						return Object.keys(live).length > 0 ? { liveActivity: live } : {};
+					})()
+				: {}),
 			...(metadata?.verificationProposalments &&
 			Array.isArray(metadata.verificationProposalments) &&
 			metadata.verificationProposalments.length > 0
@@ -951,7 +984,7 @@ export class Core {
 		};
 
 		const [stateRows, maturityRows, eventRows] = await Promise.all([
-			query<{
+			pgPool.query<{
 				transitioned_at: Date;
 				transitioned_by: string | null;
 				from_state: string;
@@ -966,7 +999,7 @@ export class Core {
          LIMIT $2`,
 				[proposalId, limit],
 			),
-			query<{
+			pgPool.query<{
 				created_at: Date;
 				transitioned_by: string | null;
 				from_maturity: string;
@@ -981,7 +1014,7 @@ export class Core {
          LIMIT $2`,
 				[proposalId, limit],
 			),
-			query<{
+			pgPool.query<{
 				created_at: Date;
 				event_type: string;
 				payload: Record<string, unknown>;
@@ -1159,18 +1192,23 @@ export class Core {
 		if (!row) {
 			return null;
 		}
-		const [summary, dependencies, acceptanceCriteria, activityLog] =
+		const [summary, dependencies, acceptanceCriteria, activityLog, activity] =
 			await Promise.all([
 			pg.getProposalSummary(row.id),
 			pg.listDependencies([row.id]),
 			pg.listAcceptanceCriteria(row.id),
 			this.loadPgProposalActivity(row.id),
+			pg
+				.listProposalActivity({ status: row.status, type: row.type })
+				.then((rows) => rows.find((r) => r.proposal_id === row.id) ?? null)
+				.catch(() => null),
 		]);
 		return await this.hydratePgProposalRow(row, {
 			summary,
 			dependencies,
 			acceptanceCriteria,
 			activityLog,
+			activity,
 		});
 	}
 
@@ -1244,12 +1282,25 @@ export class Core {
 			const summaryById = new Map(
 				summaries.map((summary) => [summary.id, summary]),
 			);
+			// P270: load live activity in one shot — best effort, never fatal.
+			let activityById = new Map<number, ProposalActivity>();
+			try {
+				const activities = await pg.listProposalActivity(pgFilters);
+				activityById = new Map(
+					activities.map((activity) => [activity.proposal_id, activity]),
+				);
+			} catch (err) {
+				if (process.env.DEBUG) {
+					console.error("[DEBUG] listProposalActivity failed:", err);
+				}
+			}
 			const rowById = new Map(rows.map((row) => [row.id, row]));
 			const proposals = await Promise.all(
 				rows.map(async (row) =>
 					this.hydratePgProposalRow(row, {
 						summary: summaryById.get(row.id),
 						dependencies: dependencyRows,
+						activity: activityById.get(row.id) ?? null,
 						parentProposalId:
 							row.parent_id !== null
 								? rowById.get(row.parent_id)?.display_id

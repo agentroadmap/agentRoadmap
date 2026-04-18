@@ -70,6 +70,31 @@ export type ProposalSummary = Pick<
 	decision_at: Date | null;
 };
 
+/**
+ * Live activity projection for a proposal, from roadmap.v_proposal_activity.
+ * Joins proposal × active lease × assigned/active squad_dispatch × agent_health
+ * × latest proposal_event so the board can render "who's on this right now".
+ */
+export type ProposalActivity = {
+	proposal_id: number;
+	display_id: string;
+	proposal_type: string;
+	status: string;
+	maturity: string;
+	lease_holder: string | null;
+	lease_claimed_at: Date | null;
+	lease_expires_at: Date | null;
+	gate_dispatch_agent: string | null;
+	gate_dispatch_role: string | null;
+	gate_dispatch_status: string | null;
+	active_cubic: string | null;
+	active_model: string | null;
+	last_heartbeat_at: Date | null;
+	heartbeat_age_seconds: number | null;
+	last_event_at: Date | null;
+	last_event_type: string | null;
+};
+
 export type QueueItem = {
 	id: number;
 	display_id: string;
@@ -216,6 +241,42 @@ export async function listProposalSummaries(filters?: {
      FROM roadmap_proposal.v_proposal_summary
      ${where}
      ORDER BY id ASC`,
+		params,
+	);
+	return rows;
+}
+
+/**
+ * List live activity rows from roadmap.v_proposal_activity.
+ * P272: unified projection joining lease × dispatch × agent_health × latest event.
+ */
+export async function listProposalActivity(filters?: {
+	status?: string;
+	type?: string;
+}): Promise<ProposalActivity[]> {
+	const clauses: string[] = [];
+	const params: unknown[] = [];
+	let idx = 1;
+
+	if (filters?.status) {
+		clauses.push(`status = $${idx++}`);
+		params.push(filters.status);
+	}
+	if (filters?.type) {
+		clauses.push(`proposal_type = $${idx++}`);
+		params.push(filters.type);
+	}
+
+	const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+	const { rows } = await query<ProposalActivity>(
+		`SELECT proposal_id, display_id, proposal_type, status, maturity,
+		        lease_holder, lease_claimed_at, lease_expires_at,
+		        gate_dispatch_agent, gate_dispatch_role, gate_dispatch_status,
+		        active_cubic, active_model,
+		        last_heartbeat_at, heartbeat_age_seconds,
+		        last_event_at, last_event_type
+		   FROM roadmap.v_proposal_activity
+		   ${where}`,
 		params,
 	);
 	return rows;

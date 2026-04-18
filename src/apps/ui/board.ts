@@ -392,9 +392,32 @@ export function formatProposalListItem(
 	proposal: Proposal,
 	isMoving = false,
 ): string {
-	const assignee = proposal.assignee?.[0]
-		? ` {cyan-fg}${proposal.assignee[0].startsWith("@") ? proposal.assignee[0] : `@${proposal.assignee[0]}`}{/}`
-		: "";
+	// P270: render assignee from live activity when available. Prefer lease
+	// holder (cyan), fall back to gate dispatch agent (magenta + "gate"),
+	// fall back to static proposal.assignee (plain cyan). Append cubic/model
+	// in dim gray when agent_health reports them.
+	const live = proposal.liveActivity;
+	const rawAssignee = proposal.assignee?.[0];
+	let assignee = "";
+	if (rawAssignee) {
+		const handle = rawAssignee.startsWith("@") ? rawAssignee : `@${rawAssignee}`;
+		if (live?.leaseHolder && rawAssignee === live.leaseHolder) {
+			assignee = ` {cyan-fg}●${handle}{/}`;
+		} else if (
+			live?.gateDispatchAgent &&
+			rawAssignee === live.gateDispatchAgent
+		) {
+			assignee = ` {magenta-fg}◐${handle} (gate){/}`;
+		} else {
+			assignee = ` {cyan-fg}${handle}{/}`;
+		}
+	}
+	const liveDetail =
+		live?.activeCubic || live?.activeModel
+			? ` {gray-fg}${live.activeCubic ? `⬢${live.activeCubic}` : ""}${
+					live.activeCubic && live.activeModel ? " " : ""
+				}${live.activeModel ? `✦${live.activeModel}` : ""}{/}`
+			: "";
 	const labels = proposal.labels?.length
 		? ` {yellow-fg}[${proposal.labels.join(", ")}]{/}`
 		: "";
@@ -431,7 +454,7 @@ export function formatProposalListItem(
 
 	// Cross-branch proposals are dimmed to indicate read-only status
 	const displayId = proposal.id.replace(/^STATE-/, "STEP-");
-	const content = `${statusColor}${statusStyle.icon}{/} ${maturityColor}${maturityIcon}{bold}${displayId} - ${proposal.title}{/bold}{/}${assignee}${labels}${branch}${mergeSuffix}`;
+	const content = `${statusColor}${statusStyle.icon}{/} ${maturityColor}${maturityIcon}{bold}${displayId} - ${proposal.title}{/bold}{/}${assignee}${liveDetail}${labels}${branch}${mergeSuffix}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
