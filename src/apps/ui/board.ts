@@ -66,7 +66,7 @@ type ColumnView = {
 	box: BoxInterface;
 };
 
-export type WorkflowViewKey = "rfc" | "quick-fix" | "hotfix";
+export type WorkflowViewKey = "all" | "rfc" | "quick-fix" | "hotfix" | "obsolete";
 
 export interface WorkflowViewDefinition {
 	key: WorkflowViewKey;
@@ -77,6 +77,13 @@ export interface WorkflowViewDefinition {
 }
 
 const WORKFLOW_VIEWS: WorkflowViewDefinition[] = [
+	{
+		key: "all",
+		label: "All",
+		description: "Combined workflow view",
+		proposalTypes: [],
+		statuses: [],
+	},
 	{
 		key: "rfc",
 		label: "RFC",
@@ -97,6 +104,13 @@ const WORKFLOW_VIEWS: WorkflowViewDefinition[] = [
 		description: "Urgent operational workflow",
 		proposalTypes: ["hotfix"],
 		statuses: ["TRIAGE", "FIXING", "DONE"],
+	},
+	{
+		key: "obsolete",
+		label: "Obsolete",
+		description: "Archived and obsolete proposals",
+		proposalTypes: [],
+		statuses: [],
 	},
 ];
 
@@ -195,6 +209,34 @@ const QUICK_FIX_STATUSES = new Set([
 ]);
 const HOTFIX_STATUSES = new Set(["triage", "fixing", "done"]);
 
+function isObsoleteProposal(proposal: Proposal): boolean {
+	return (proposal.maturity ?? "").toLowerCase() === "obsolete";
+}
+
+function getCombinedWorkflowStatuses(proposals: Proposal[]): string[] {
+	const canonicalStatuses = [
+		...new Set(
+			WORKFLOW_VIEWS.flatMap((workflow) =>
+				workflow.key === "all" || workflow.key === "obsolete"
+					? []
+					: workflow.statuses,
+			),
+		),
+	];
+	const extraStatuses = new Set<string>();
+	for (const proposal of proposals) {
+		const workflow = getWorkflowViewForProposal(proposal);
+		const status = normalizeWorkflowStatus(proposal.status, workflow.key);
+		if (status && !canonicalStatuses.includes(status)) {
+			extraStatuses.add(status);
+		}
+	}
+	return [
+		...canonicalStatuses,
+		...Array.from(extraStatuses).sort((a, b) => a.localeCompare(b)),
+	];
+}
+
 export function getWorkflowViewDefinition(
 	key: WorkflowViewKey,
 ): WorkflowViewDefinition {
@@ -249,8 +291,16 @@ export function filterProposalsForWorkflow(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): Proposal[] {
+	if (workflowKey === "all") {
+		return proposals.filter((proposal) => !isObsoleteProposal(proposal));
+	}
+	if (workflowKey === "obsolete") {
+		return proposals.filter((proposal) => isObsoleteProposal(proposal));
+	}
 	return proposals.filter(
-		(proposal) => getWorkflowViewForProposal(proposal).key === workflowKey,
+		(proposal) =>
+			getWorkflowViewForProposal(proposal).key === workflowKey &&
+			!isObsoleteProposal(proposal),
 	);
 }
 
@@ -258,6 +308,11 @@ export function resolveWorkflowStatuses(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): string[] {
+	if (workflowKey === "all" || workflowKey === "obsolete") {
+		return getCombinedWorkflowStatuses(
+			filterProposalsForWorkflow(proposals, workflowKey),
+		);
+	}
 	const workflow = getWorkflowViewDefinition(workflowKey);
 	const canonicalStatuses = [...workflow.statuses];
 	const extraStatuses = new Set<string>();
@@ -280,6 +335,15 @@ function normalizeProposalsForWorkflow(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): Proposal[] {
+	if (workflowKey === "all" || workflowKey === "obsolete") {
+		return proposals.map((proposal) => ({
+			...proposal,
+			status: normalizeWorkflowStatus(
+				proposal.status,
+				getWorkflowViewForProposal(proposal).key,
+			),
+		}));
+	}
 	return proposals.map((proposal) => ({
 		...proposal,
 		status: normalizeWorkflowStatus(proposal.status, workflowKey),
@@ -469,7 +533,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[W]{/} Workflow | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[S]{/} Feed | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[W]{/} Workflow Menu | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[S]{/} Feed | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -1443,12 +1507,41 @@ export async function renderBoardTui(
 
 		screen.key(["w", "W"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
-			currentWorkflowViewIndex =
-				(currentWorkflowViewIndex + 1) % WORKFLOW_VIEWS.length;
-			showTransientFooter(
-				` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
-			);
-			renderView();
+			popupOpen = true;
+			void (async () => {
+				try {
+					const currentView = getCurrentWorkflowView();
+					const selected = await openSingleSelectFilterPopup({
+						screen,
+						title: "Workflow View",
+						selectedValue: currentView.key,
+						choices: WORKFLOW_VIEWS.filter(
+							(workflow) => workflow.key !== "all",
+						).map((workflow) => ({
+							label: workflow.label,
+							value: workflow.key,
+						})),
+						helpText:
+							" {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
+					});
+					if (selected === null) {
+						return;
+					}
+					const nextIndex = WORKFLOW_VIEWS.findIndex(
+						(workflow) => workflow.key === selected,
+					);
+					if (nextIndex >= 0) {
+						currentWorkflowViewIndex = nextIndex;
+						showTransientFooter(
+							` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
+						);
+						renderView();
+					}
+				} finally {
+					popupOpen = false;
+					screen.render();
+				}
+			})();
 		});
 
 		screen.key(["s", "S"], () => {
@@ -2148,7 +2241,17 @@ export async function renderBoardTui(
 				screen.destroy();
 				await options.viewSwitcher.switchView();
 				resolve();
+				return;
 			}
+
+			currentWorkflowViewIndex =
+				(currentWorkflowViewIndex + 1) % WORKFLOW_VIEWS.length;
+			showTransientFooter(
+				` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
+			);
+			renderView();
+			screen.render();
+			return;
 		});
 
 		screen.key(["m"], () => {
