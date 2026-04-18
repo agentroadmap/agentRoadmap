@@ -75,6 +75,39 @@ function formatSectionHeading(title: string, color: string): string {
 	return `{bold}{${color}-fg}▍ ${title}{/${color}-fg}{/bold}`;
 }
 
+function formatCurrentStateLine(proposal: Proposal): string {
+	const statusColor = getStatusColor(proposal.status);
+	const maturity = proposal.maturity ?? "unknown";
+	const maturityColor = getMaturityColor(maturity);
+	return [
+		"{bold}Current:{/bold}",
+		`{blink}{${statusColor}-fg}${proposal.status}{/}{/}`,
+		"{gray-fg}·{/}",
+		`{blink}{${maturityColor}-fg}${maturity}{/}{/}`,
+	].join(" ");
+}
+
+function formatActivityThread(
+	activityLog: Proposal["activityLog"],
+): string[] {
+	if (!activityLog || activityLog.length === 0) {
+		return ["{gray-fg}No proposal activity yet{/}"];
+	}
+
+	const lines: string[] = [];
+	const lastIndex = activityLog.length - 1;
+
+	for (const [index, entry] of activityLog.entries()) {
+		const branch = index === lastIndex ? "└" : "├";
+		const reason = entry.reason ? ` {gray-fg}(${entry.reason}){/}` : "";
+		lines.push(
+			`  {cyan-fg}${branch}─{/} ${entry.timestamp} {gray-fg}|{/} {magenta-fg}${entry.actor}{/} {gray-fg}|{/} ${entry.action}${reason}`,
+		);
+	}
+
+	return lines;
+}
+
 function escapeCodeBlockText(text: string): string {
 	return text.replace(/[{}]/g, (ch) => (ch === "{" ? "{open}" : "{close}"));
 }
@@ -1401,6 +1434,7 @@ export function generateDetailContent(
 	bodyContent.push(formatSectionHeading("Details", "cyan"));
 
 	const metadata: string[] = [];
+	metadata.push(formatCurrentStateLine(proposal));
 	metadata.push(
 		`{bold}Created:{/bold} ${formatDateForDisplay(proposal.createdDate)}`,
 	);
@@ -1541,6 +1575,10 @@ export function generateDetailContent(
 		bodyContent.push(formatMarkdownBody(finalSummary));
 		bodyContent.push("");
 	}
+
+	bodyContent.push(formatSectionHeading("Activity Thread", "blue"));
+	bodyContent.push(formatActivityThread(proposal.activityLog).join("\n"));
+	bodyContent.push("");
 
 	return { headerContent, bodyContent };
 }

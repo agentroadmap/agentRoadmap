@@ -27,6 +27,7 @@ import * as pg from "../postgres/proposal-storage-v2.ts";
 import {
 	type AcceptanceCriterion,
 	type Agent,
+	type ActivityLogEntry,
 	type Decision,
 	type Directive,
 	type Document,
@@ -940,6 +941,191 @@ export class Core {
 		}
 	}
 
+	private async loadPgProposalActivity(
+		proposalId: number,
+		limit = 50,
+	): Promise<ActivityLogEntry[]> {
+		type TimelineEntry = {
+			timestampMs: number;
+			entry: ActivityLogEntry;
+		};
+
+		const [stateRows, maturityRows, eventRows] = await Promise.all([
+			query<{
+				transitioned_at: Date;
+				transitioned_by: string | null;
+				from_state: string;
+				to_state: string;
+				transition_reason: string | null;
+				notes: string | null;
+			}>(
+				`SELECT transitioned_at, transitioned_by, from_state, to_state, transition_reason, notes
+         FROM roadmap_proposal.proposal_state_transitions
+         WHERE proposal_id = $1
+         ORDER BY transitioned_at ASC, id ASC
+         LIMIT $2`,
+				[proposalId, limit],
+			),
+			query<{
+				created_at: Date;
+				transitioned_by: string | null;
+				from_maturity: string;
+				to_maturity: string;
+				transition_reason: string | null;
+				decision_notes: string | null;
+			}>(
+				`SELECT created_at, transitioned_by, from_maturity, to_maturity, transition_reason, decision_notes
+         FROM roadmap_proposal.proposal_maturity_transitions
+         WHERE proposal_id = $1
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2`,
+				[proposalId, limit],
+			),
+			query<{
+				created_at: Date;
+				event_type: string;
+				payload: Record<string, unknown>;
+			}>(
+				`SELECT created_at, event_type, payload
+         FROM roadmap_proposal.proposal_event
+         WHERE proposal_id = $1
+           AND event_type IN (
+             'proposal_created',
+             'lease_claimed',
+             'lease_released',
+             'decision_made',
+             'dependency_added',
+             'dependency_resolved',
+             'ac_updated',
+             'review_submitted',
+             'milestone_achieved'
+           )
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2`,
+				[proposalId, limit],
+			),
+		]);
+
+		const entries: TimelineEntry[] = [];
+
+		for (const row of stateRows.rows) {
+			const reason = [row.transition_reason, row.notes]
+				.filter((part): part is string => Boolean(part?.trim()))
+				.join(" — ");
+			entries.push({
+				timestampMs: new Date(row.transitioned_at).getTime(),
+				entry: {
+					timestamp: formatLocalDateTime(new Date(row.transitioned_at)),
+					actor: row.transitioned_by ?? "system",
+					action: `state ${row.from_state} → ${row.to_state}`,
+					...(reason ? { reason } : {}),
+				},
+			});
+		}
+
+		for (const row of maturityRows.rows) {
+			const reason = [row.transition_reason, row.decision_notes]
+				.filter((part): part is string => Boolean(part?.trim()))
+				.join(" — ");
+			entries.push({
+				timestampMs: new Date(row.created_at).getTime(),
+				entry: {
+					timestamp: formatLocalDateTime(new Date(row.created_at)),
+					actor: row.transitioned_by ?? "system",
+					action: `maturity ${row.from_maturity} → ${row.to_maturity}`,
+					...(reason ? { reason } : {}),
+				},
+			});
+		}
+
+		for (const row of eventRows.rows) {
+			const agent = this.extractEventActor(row.payload) ?? "system";
+			const reason = this.extractEventReason(row.event_type, row.payload);
+			const action = this.describeProposalEvent(row.event_type);
+			entries.push({
+				timestampMs: new Date(row.created_at).getTime(),
+				entry: {
+					timestamp: formatLocalDateTime(new Date(row.created_at)),
+					actor: agent,
+					action,
+					...(reason ? { reason } : {}),
+				},
+			});
+		}
+
+		return entries
+			.sort((left, right) => {
+				if (left.timestampMs !== right.timestampMs) {
+					return left.timestampMs - right.timestampMs;
+				}
+				return left.entry.action.localeCompare(right.entry.action);
+			})
+			.slice(-limit)
+			.map((item) => item.entry);
+	}
+
+	private extractEventActor(payload: Record<string, unknown>): string | undefined {
+		const actor =
+			typeof payload.agent === "string"
+				? payload.agent
+				: typeof payload.agent_identity === "string"
+					? payload.agent_identity
+					: typeof payload.source === "string"
+						? payload.source
+						: undefined;
+		return actor?.trim() || undefined;
+	}
+
+	private extractEventReason(
+		eventType: string,
+		payload: Record<string, unknown>,
+	): string | undefined {
+		const text = (value: unknown): string | undefined =>
+			typeof value === "string" && value.trim().length > 0
+				? value.trim()
+				: undefined;
+
+		switch (eventType) {
+			case "proposal_created":
+				return text(payload.status) ? `status ${String(payload.status)}` : undefined;
+			case "lease_claimed":
+				return text(payload.expires_at)
+					? `expires ${String(payload.expires_at)}`
+					: undefined;
+			case "lease_released":
+				return text(payload.release_reason);
+			default:
+				return text(payload.reason) ?? text(payload.notes) ?? text(payload.message);
+		}
+	}
+
+	private describeProposalEvent(
+		eventType: string,
+	): string {
+		switch (eventType) {
+			case "proposal_created":
+				return "created proposal";
+			case "lease_claimed":
+				return "lease claimed";
+			case "lease_released":
+				return "lease released";
+			case "decision_made":
+				return "decision recorded";
+			case "dependency_added":
+				return "dependency added";
+			case "dependency_resolved":
+				return "dependency resolved";
+			case "ac_updated":
+				return "acceptance criteria updated";
+			case "review_submitted":
+				return "review submitted";
+			case "milestone_achieved":
+				return "milestone achieved";
+			default:
+				return eventType.replace(/_/g, " ");
+		}
+	}
+
 	/** Ensure Postgres pool is initialised — needed when CLI has no PG_PASSWORD env from systemd. */
 	private async ensurePgPool(): Promise<void> {
 		try {
@@ -973,15 +1159,18 @@ export class Core {
 		if (!row) {
 			return null;
 		}
-		const [summary, dependencies, acceptanceCriteria] = await Promise.all([
+		const [summary, dependencies, acceptanceCriteria, activityLog] =
+			await Promise.all([
 			pg.getProposalSummary(row.id),
 			pg.listDependencies([row.id]),
 			pg.listAcceptanceCriteria(row.id),
+			this.loadPgProposalActivity(row.id),
 		]);
 		return await this.hydratePgProposalRow(row, {
 			summary,
 			dependencies,
 			acceptanceCriteria,
+			activityLog,
 		});
 	}
 

@@ -16,6 +16,19 @@ describe("proposal viewer formatting", () => {
 			dependencies: [],
 			description: "Body\n\n```sql\nSELECT 1;\n```",
 			implementationPlan: "Plan",
+			activityLog: [
+				{
+					timestamp: "2025-01-01 09:00",
+					actor: "codex",
+					action: "state Draft → Review",
+					reason: "ready for gating",
+				},
+				{
+					timestamp: "2025-01-01 09:05",
+					actor: "codex",
+					action: "maturity new → mature",
+				},
+			],
 		};
 
 		const { headerContent, bodyContent } = generateDetailContent(proposal);
@@ -24,8 +37,13 @@ describe("proposal viewer formatting", () => {
 		expect(headerContent[0]).toContain("{green-fg}");
 		expect(headerContent[0]).toContain("P001 - Colorful Details");
 		expect(body).toContain("{cyan-fg}▍ Details");
+		expect(body).toContain("{bold}Current:{/bold}");
+		expect(body).toContain("{blink}");
 		expect(body).toContain("{green-fg}▍ Description");
 		expect(body).toContain("{cyan-fg}▍ Implementation Plan");
+		expect(body).toContain("{blue-fg}▍ Activity Thread");
+		expect(body).toContain("state Draft → Review");
+		expect(body).toContain("maturity new → mature");
 		expect(body).toContain("┌─ sql ─");
 		expect(body).toContain("{cyan-fg}│{/} SELECT 1;");
 	});
