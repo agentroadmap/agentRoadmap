@@ -15,7 +15,7 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
+import { spawnAgent, detectProvider } from "../src/core/orchestration/agent-spawner.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { getPool, query } from "../src/infra/postgres/pool.ts";
 import { mcpText } from "./mcp-result.ts";
@@ -111,6 +111,98 @@ const AGENT_PROMPTS: Record<string, string> = {
 		"You are a Triage Agent. Evaluate issues and decide what to work on.",
 	"fix-agent": "You are a Fix Agent. Implement code changes to resolve issues.",
 };
+
+// ─── Provider Health & Dynamic Control ─────────────────────────────────────
+
+const RATE_LIMIT_PATTERNS = [
+	/rate.?limit/i,
+	/429/,
+	/too many requests/i,
+	/throttle/i,
+	/retry.?after/i,
+	/rpm.?exceeded/i,
+	/tpm.?exceeded/i,
+];
+
+const CREDIT_PATTERNS = [
+	/credit/i,
+	/insufficient.?funds/i,
+	/billing/i,
+	/quota.?exceeded/i,
+	/usage.?limit/i,
+	/budget.?exceeded/i,
+];
+
+/**
+ * Classify an error string into rate_limit, credit_exhausted, or unknown.
+ */
+function classifyProviderError(stderr: string): {
+	type: "rate_limit" | "credit_exhausted" | "unknown";
+	matched: string;
+} | null {
+	for (const pat of RATE_LIMIT_PATTERNS) {
+		const m = stderr.match(pat);
+		if (m) return { type: "rate_limit", matched: m[0] };
+	}
+	for (const pat of CREDIT_PATTERNS) {
+		const m = stderr.match(pat);
+		if (m) return { type: "credit_exhausted", matched: m[0] };
+	}
+	return null;
+}
+
+/**
+ * Check if a provider is in cooldown. Returns true if provider should NOT be used.
+ */
+async function isProviderInCooldown(provider: string): Promise<boolean> {
+	const { rows } = await query<{ in_cooldown: boolean }>(
+		`SELECT (cooldown_until IS NOT NULL AND cooldown_until > now()) AS in_cooldown
+       FROM roadmap.provider_health
+       WHERE provider_name = $1`,
+		[provider],
+	);
+	return rows[0]?.in_cooldown ?? false;
+}
+
+/**
+ * Set cooldown on a provider. rate_limit: 2min backoff, credit_exhausted: 30min.
+ */
+async function setProviderCooldown(
+	provider: string,
+	errorType: "rate_limit" | "credit_exhausted",
+	errorMsg: string,
+): Promise<void> {
+	const cooldownMinutes = errorType === "rate_limit" ? 2 : 30;
+	await query(
+		`INSERT INTO roadmap.provider_health
+       (provider_name, status, last_error_at, last_error_msg, error_count, cooldown_until, updated_at)
+     VALUES ($1, $2, now(), $3, 1, now() + interval '${cooldownMinutes} minutes', now())
+     ON CONFLICT (provider_name) DO UPDATE SET
+       status = EXCLUDED.status,
+       last_error_at = now(),
+       last_error_msg = EXCLUDED.last_error_msg,
+       error_count = roadmap.provider_health.error_count + 1,
+       cooldown_until = now() + interval '${cooldownMinutes} minutes',
+       updated_at = now()`,
+		[provider, errorType === "rate_limit" ? "rate_limited" : "credit_exhausted", errorMsg.slice(0, 500)],
+	);
+	logger.warn(
+		`⏱ Provider ${provider} → ${errorType}, cooldown ${cooldownMinutes}min: ${errorMsg.slice(0, 100)}`,
+	);
+}
+
+/**
+ * Record a successful run for a provider (resets error_count, clears cooldown).
+ */
+async function recordProviderSuccess(provider: string): Promise<void> {
+	await query(
+		`UPDATE roadmap.provider_health
+        SET status = 'healthy', error_count = 0, cooldown_until = NULL,
+            last_success_at = now(), updated_at = now()
+      WHERE provider_name = $1`,
+		[provider],
+	);
+}
 
 type TransitionQueueRow = {
 	id: number;
@@ -372,10 +464,24 @@ async function dispatchAgent(
 			logger.log(
 				`✅ ${agent} completed (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			// Record provider success — clears any cooldown
+			try {
+				const provider = await detectProvider(worktree);
+				await recordProviderSuccess(provider);
+			} catch {}
 		} else {
 			logger.warn(
 				`⚠️ ${agent} exited ${result.exitCode} (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			// Dynamic control: classify error, set cooldown
+			const fullError = [result.stderr, result.stdout].filter(Boolean).join("\n");
+			const classified = classifyProviderError(fullError);
+			if (classified) {
+				try {
+					const provider = await detectProvider(worktree);
+					await setProviderCooldown(provider, classified.type, fullError);
+				} catch {}
+			}
 		}
 
 		return cubicId;
@@ -404,6 +510,20 @@ async function handleStateChange(proposalId: string, newState: string) {
 
 	// Release any locked cubics for this proposal from previous phases
 	await releaseStaleCubics(proposalId);
+
+	// Dynamic control: check if provider is in cooldown before dispatching
+	try {
+		const worktree = await selectExecutorWorktree(null);
+		const provider = await detectProvider(worktree);
+		if (await isProviderInCooldown(provider)) {
+			logger.log(
+				`⏸ Skipping P${proposalId} (${newState}): provider ${provider} is in cooldown`,
+			);
+			return;
+		}
+	} catch {
+		// Provider resolution failed — let dispatch handle it
+	}
 
 	// Dispatch all agents for this state (parallel, tolerate individual failures)
 	const results = await Promise.allSettled(
@@ -611,6 +731,20 @@ async function dispatchImplicitGate(
 	}
 
 	const worktree = await selectExecutorWorktree(null);
+
+	// Dynamic control: check if provider is in cooldown before dispatching
+	try {
+		const provider = await detectProvider(worktree);
+		if (await isProviderInCooldown(provider)) {
+			logger.log(
+				`⏸ Skipping ${proposal.display_id}: provider ${provider} is in cooldown`,
+			);
+			return;
+		}
+	} catch {
+		// Provider resolution failed — let spawn handle the error
+	}
+
 	await ensureAgentIdentity("orchestrator", "State Machine Orchestrator");
 	await ensureAgentIdentity(worktree, "Gate Executor");
 
@@ -746,6 +880,19 @@ async function dispatchImplicitGate(
 		result.exitCode === 0
 			? `gate agent completed but proposal state could not be read`
 			: `gate agent exited ${result.exitCode}: ${[result.stderr, result.stdout].filter(Boolean).join("\n").slice(0, 2000)}`;
+
+	// Dynamic control: classify error and set provider cooldown if needed
+	const fullError = [result.stderr, result.stdout].filter(Boolean).join("\n");
+	const classified = classifyProviderError(fullError);
+	if (classified && result.exitCode !== 0) {
+		try {
+			const provider = await detectProvider(worktree);
+			await setProviderCooldown(provider, classified.type, fullError);
+		} catch {
+			// Provider detection failed — skip cooldown
+		}
+	}
+
 	await query(
 		`UPDATE roadmap_workforce.squad_dispatch
         SET dispatch_status = 'blocked',

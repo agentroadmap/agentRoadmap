@@ -84,6 +84,7 @@ export interface ModelRoute {
 	modelName: string;
 	routeProvider: string;
 	agentProvider: string;
+	agentCli: string;
 	apiSpec: "anthropic" | "openai" | "google";
 	baseUrl: string;
 	planType: string | null;
@@ -189,6 +190,27 @@ function buildClaudeArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 }
 
 /**
+ * Build argv + env for the Hermes CLI.
+ * Used when agent_cli = 'hermes' — the native AgentHive agent framework.
+ * Uses `hermes chat -q <prompt> -m <model> --provider <provider> --yolo`.
+ */
+function buildHermesArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
+	const argv = [
+		"hermes",
+		"chat",
+		"-q",
+		req.task,
+		"-m",
+		route.modelName,
+		"--provider",
+		route.routeProvider,
+		"--yolo",
+		"-Q", // quiet mode: no spinner/activity
+	];
+	return { argv, env: {} };
+}
+
+/**
  * Build argv + env for the OpenAI Codex CLI.
  * Used when agent_provider = 'codex' (openai spec, `codex` terminal tool).
  * https://github.com/openai/codex
@@ -235,16 +257,20 @@ function buildGeminiArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	return { argv, env: {} };
 }
 
-/** Dispatch to the correct builder based on route.apiSpec and agent_provider. */
+/** Dispatch to the correct builder based on route.agentCli (DB is source of truth). */
 function buildArgsBySpec(req: SpawnRequest, route: ModelRoute): CommandSpec {
-	// Codex CLI gets its own builder regardless of api_spec (always openai spec)
-	if (route.agentProvider === "codex") return buildCodexArgs(req, route);
-	switch (route.apiSpec) {
-		case "anthropic":
+	// agent_cli from DB determines which CLI to use
+	switch (route.agentCli) {
+		case "codex":
+			return buildCodexArgs(req, route);
+		case "claude":
 			return buildClaudeArgs(req, route);
-		case "google":
+		case "gemini":
 			return buildGeminiArgs(req, route);
-		case "openai":
+		case "hermes":
+			return buildHermesArgs(req, route);
+		default:
+			// copilot, llm, or any other → openai-compatible CLI
 			return buildOpenAICompatArgs(req, route);
 	}
 }
@@ -384,7 +410,7 @@ async function loadEnvAgent(
  * Look up agent_provider from model_routes DB table.
  * No hardcoded prefix matching — DB is source of truth.
  */
-async function detectProvider(worktreeName: string): Promise<AgentProvider> {
+export async function detectProvider(worktreeName: string): Promise<AgentProvider> {
 	const { rows } = await query<{ agent_provider: string }>(
 		`SELECT DISTINCT agent_provider
        FROM roadmap.model_routes
@@ -421,6 +447,7 @@ async function resolveModelRoute(
 		model_name: string;
 		route_provider: string;
 		agent_provider: string;
+		agent_cli: string;
 		api_spec: string;
 		base_url: string;
 		plan_type: string | null;
@@ -435,7 +462,7 @@ async function resolveModelRoute(
 		if (perMillionPricing) {
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE model_name = $1
@@ -449,7 +476,7 @@ async function resolveModelRoute(
 
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-              api_spec, base_url, plan_type,
+              agent_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output
        FROM roadmap.model_routes
@@ -466,6 +493,7 @@ async function resolveModelRoute(
 		modelName: r.model_name,
 		routeProvider: r.route_provider,
 		agentProvider: r.agent_provider,
+		agentCli: r.agent_cli ?? r.agent_provider,
 		apiSpec: r.api_spec as ModelRoute["apiSpec"],
 		baseUrl: r.base_url,
 		planType: r.plan_type,
@@ -493,7 +521,7 @@ async function resolveModelRoute(
 	const { rows } = perMillionPricing
 		? await query<RouteRow>(
 				`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE agent_provider = $1
@@ -504,12 +532,12 @@ async function resolveModelRoute(
 			)
 		: await query<RouteRow>(
 				`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
-               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-               NULL::numeric AS cost_per_million_output
-        FROM roadmap.model_routes
-        WHERE agent_provider = $1
-          AND is_enabled = true
+              agent_cli, api_spec, base_url, plan_type,
+              cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+              NULL::numeric AS cost_per_million_output
+       FROM roadmap.model_routes
+       WHERE agent_provider = $1
+         AND is_enabled = true
         ORDER BY priority ASC, cost_per_1k_input ASC
         LIMIT 1`,
 				[provider],
@@ -526,7 +554,7 @@ async function resolveModelRoute(
 		const { rows: defaultRows } = perMillionPricing
 			? await query<RouteRow>(
 					`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE model_name = $1
@@ -538,13 +566,13 @@ async function resolveModelRoute(
 				)
 			: await query<RouteRow>(
 					`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
-               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-               NULL::numeric AS cost_per_million_output
-        FROM roadmap.model_routes
-        WHERE model_name = $1
-          AND agent_provider = $2
-          AND is_enabled = true
+              agent_cli, api_spec, base_url, plan_type,
+              cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+              NULL::numeric AS cost_per_million_output
+       FROM roadmap.model_routes
+       WHERE model_name = $1
+         AND agent_provider = $2
+         AND is_enabled = true
         ORDER BY priority ASC, cost_per_1k_input ASC
         LIMIT 1`,
 					[fallbackModel, provider],
