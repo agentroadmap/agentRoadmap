@@ -32,6 +32,19 @@ const logger = {
 	error: (...args: unknown[]) => console.error("[Orchestrator]", ...args),
 };
 
+// P266: graceful-shutdown bookkeeping. New dispatches are refused once
+// `stopping` is true; in-flight ones are awaited (bounded) before exit.
+let stopping = false;
+const inFlight = new Set<Promise<unknown>>();
+function trackInFlight<T>(p: Promise<T>): Promise<T> {
+	inFlight.add(p);
+	p.finally(() => inFlight.delete(p)).catch(() => {});
+	return p;
+}
+const SHUTDOWN_DRAIN_MS = Number(
+	process.env.AGENTHIVE_ORCHESTRATOR_DRAIN_MS ?? 240_000,
+);
+
 // State → cubic phase mapping
 const STATE_TO_PHASE: Record<string, string> = {
 	DRAFT: "design",
@@ -808,9 +821,11 @@ async function drainImplicitGateReady(
 	reason: string,
 	limit = 5,
 ): Promise<void> {
+	if (stopping) return;
 	const proposals = await claimImplicitGateReady(undefined, limit);
 	for (const proposal of proposals) {
-		await dispatchImplicitGate(proposal.id, reason);
+		if (stopping) return;
+		await trackInFlight(dispatchImplicitGate(proposal.id, reason));
 	}
 }
 
@@ -1067,6 +1082,10 @@ async function releaseStaleCubics(proposalId: string) {
 	}
 }
 
+// P266: poller handles owned by main() so shutdown() can clear them.
+let pollTimer: NodeJS.Timeout | null = null;
+let implicitGateTimer: NodeJS.Timeout | null = null;
+
 // Main orchestrator
 async function main() {
 	logger.log("Starting Orchestrator with dynamic agent deployment...");
@@ -1097,14 +1116,14 @@ async function main() {
 		async (msg: { channel: string; payload?: string }) => {
 			if (!msg.payload) return;
 
+			if (stopping) return;
 			try {
 				const data = JSON.parse(msg.payload);
 				if (msg.channel === "proposal_gate_ready") {
 					const proposalId = Number(data.proposal_id || data.id);
 					if (Number.isFinite(proposalId)) {
-						await dispatchImplicitGate(
-							proposalId,
-							"notify:proposal_gate_ready",
+						await trackInFlight(
+							dispatchImplicitGate(proposalId, "notify:proposal_gate_ready"),
 						);
 					}
 					return;
@@ -1121,7 +1140,9 @@ async function main() {
 
 				if (result.rows.length > 0) {
 					const wf = result.rows[0];
-					await handleStateChange(String(wf.proposal_id), wf.current_stage);
+					await trackInFlight(
+						handleStateChange(String(wf.proposal_id), wf.current_stage),
+					);
 				}
 			} catch (e) {
 				logger.error("Error handling notification:", e);
@@ -1131,8 +1152,9 @@ async function main() {
 
 	if (ENABLE_POLLING) {
 		// Poll for proposals needing agents (every 2 minutes)
-		setInterval(
+		pollTimer = setInterval(
 			async () => {
+				if (stopping) return;
 				try {
 					// Find workflows in NEW states that haven't had agents dispatched yet
 					// (workflows with no recent agent activity, ordered by recency)
@@ -1150,7 +1172,10 @@ async function main() {
 					);
 
 					for (const wf of result.rows) {
-						await handleStateChange(String(wf.proposal_id), wf.current_stage);
+						if (stopping) return;
+						await trackInFlight(
+							handleStateChange(String(wf.proposal_id), wf.current_stage),
+						);
 					}
 				} catch (e) {
 					logger.error("Polling error:", e);
@@ -1167,7 +1192,8 @@ async function main() {
 
 	if (IMPLICIT_GATE_POLL_INTERVAL_MS > 0) {
 		await drainImplicitGateReady("startup", 5);
-		setInterval(async () => {
+		implicitGateTimer = setInterval(async () => {
+			if (stopping) return;
 			try {
 				await drainImplicitGateReady("implicit-gate-poll", 5);
 			} catch (e) {
@@ -1181,16 +1207,80 @@ async function main() {
 
 	logger.log("Orchestrator running with dynamic agent deployment...");
 
-	// Graceful shutdown
+	// P266: graceful shutdown — drain in-flight dispatches before exit.
 	const shutdown = async (signal: string) => {
-		logger.log(`Received ${signal}, shutting down...`);
-		pgClient.release();
-		await pool.end();
+		if (stopping) return;
+		stopping = true;
+		logger.log(
+			`Received ${signal}, draining ${inFlight.size} in-flight dispatch(es) (timeout ${SHUTDOWN_DRAIN_MS}ms)...`,
+		);
+
+		if (pollTimer) clearInterval(pollTimer);
+		if (implicitGateTimer) clearInterval(implicitGateTimer);
+
+		const drainStart = Date.now();
+		const drainPromise = Promise.allSettled(Array.from(inFlight));
+		const timeoutPromise = new Promise<"timeout">((resolve) =>
+			setTimeout(() => resolve("timeout"), SHUTDOWN_DRAIN_MS),
+		);
+		const winner = await Promise.race([
+			drainPromise.then(() => "drained" as const),
+			timeoutPromise,
+		]);
+		logger.log(
+			`Drain ${winner} after ${Date.now() - drainStart}ms; ${inFlight.size} still in-flight`,
+		);
+
+		// If anything is still hanging, mark the corresponding squad_dispatch
+		// rows as cancelled so the next boot's reaper has nothing left to do.
+		if (inFlight.size > 0) {
+			try {
+				const r = await pool.query(
+					`UPDATE roadmap_workforce.squad_dispatch
+					 SET dispatch_status='cancelled',
+					     completed_at=now(),
+					     metadata = COALESCE(metadata,'{}'::jsonb)
+					                || jsonb_build_object('shutdown_cancelled_at', to_jsonb(now()),
+					                                       'shutdown_signal', $1::text)
+					 WHERE dispatch_status IN ('assigned','active')
+					   AND completed_at IS NULL
+					   AND assigned_at > now() - interval '1 hour'
+					 RETURNING id`,
+					[signal],
+				);
+				logger.warn(
+					`Cancelled ${r.rowCount ?? 0} dispatch row(s) on forced shutdown`,
+				);
+			} catch (e) {
+				logger.error("Failed to cancel hanging dispatches:", e);
+			}
+		}
+
+		try {
+			pgClient.release();
+		} catch (e) {
+			logger.warn(`pgClient release: ${e instanceof Error ? e.message : e}`);
+		}
+		try {
+			await pool.end();
+		} catch (e) {
+			logger.warn(`pool.end: ${e instanceof Error ? e.message : e}`);
+		}
 		process.exit(0);
 	};
 
-	process.on("SIGTERM", () => shutdown("SIGTERM"));
-	process.on("SIGINT", () => shutdown("SIGINT"));
+	process.on("SIGTERM", () => {
+		shutdown("SIGTERM").catch((e) => {
+			logger.error("Shutdown failed:", e);
+			process.exit(1);
+		});
+	});
+	process.on("SIGINT", () => {
+		shutdown("SIGINT").catch((e) => {
+			logger.error("Shutdown failed:", e);
+			process.exit(1);
+		});
+	});
 }
 
 main().catch((err) => {
