@@ -6,6 +6,7 @@
  */
 import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
 import { PipelineCron } from "../src/core/pipeline/pipeline-cron.ts";
+import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { closePool, getPool } from "../src/infra/postgres/pool.ts";
 
 const executorMode = process.env.AGENTHIVE_GATE_EXECUTOR ?? "cubic";
@@ -43,14 +44,25 @@ async function main() {
 	);
 
 	// Initialize the postgres pool to verify connectivity
+	let pool: ReturnType<typeof getPool>;
 	try {
-		const pool = getPool();
+		pool = getPool();
 		await pool.query("SELECT 1");
 		console.log("[GatePipeline] Database connection verified");
 	} catch (err) {
 		console.error("[GatePipeline] Failed to connect to database:", err);
 		process.exit(1);
 	}
+
+	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.
+	await reapStaleRows(
+		pool,
+		{
+			log: (m) => console.log(m),
+			warn: (m) => console.warn(m),
+		},
+		"GatePipeline.Reaper",
+	);
 
 	// Start the cron worker
 	await cron.run();

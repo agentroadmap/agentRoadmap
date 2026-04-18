@@ -16,6 +16,7 @@ import { basename, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
+import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { getPool, query } from "../src/infra/postgres/pool.ts";
 import { mcpText } from "./mcp-result.ts";
 
@@ -1071,6 +1072,17 @@ async function main() {
 	logger.log("Starting Orchestrator with dynamic agent deployment...");
 
 	const pool = getPool();
+
+	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.
+	await reapStaleRows(
+		pool,
+		{
+			log: (m) => logger.log(m),
+			warn: (m) => logger.warn(m),
+		},
+		"Orchestrator.Reaper",
+	);
+
 	const pgClient = await pool.connect();
 
 	// Listen for state changes
