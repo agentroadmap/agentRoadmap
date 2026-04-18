@@ -90,7 +90,9 @@ export interface ModelRoute {
 	modelName: string;
 	routeProvider: string;
 	agentProvider: string;
-	apiSpec: "anthropic" | "openai" | "google";
+	agentCli: string;
+	fallbackCli: string;
+	apiSpec: string;
 	baseUrl: string;
 	planType: string | null;
 	costPer1kInput: number;
@@ -246,37 +248,29 @@ function buildHermesArgs(
 
 /** Dispatch to the correct builder based on route.apiSpec and agent_provider. */
 /**
- * Which agent CLI to use, based on MODEL PROVIDER and API SPEC.
+ * Build args for a model route. Reads agent_cli from DB.
  *
- * Model provider (route_provider) determines which API endpoint to hit.
- * Agent CLI (the subprocess) determines which CLI tool format to use.
- *
- * claude CLI works with any anthropic-spec endpoint (anthropic, xiaomi).
- * codex CLI works with openai-spec endpoints.
- * hermes CLI is the universal fallback with --provider flag.
+ * Known CLIs have dedicated builders. Unknown CLIs fall back to the route's
+ * fallback_cli (DB-controlled, default: codex). The fallback CLI's builder
+ * is used with the original route's provider/model.
  */
-function selectAgentCLI(route: ModelRoute): "claude" | "codex" | "hermes" {
-	// codex always uses codex CLI
-	if (route.agentProvider === "codex") return "codex";
-
-	// claude CLI handles any anthropic-spec endpoint (anthropic, xiaomi)
-	if (route.apiSpec === "anthropic") return "claude";
-
-	// everything else: hermes CLI
-	return "hermes";
-}
+const CLI_BUILDERS: Record<string, (req: SpawnRequest, route: ModelRoute) => CommandSpec> = {
+	claude: buildClaudeArgs,
+	codex: buildCodexArgs,
+	hermes: (req, route) => buildHermesArgs(req, route, route.routeProvider),
+};
 
 function buildArgsBySpec(req: SpawnRequest, route: ModelRoute): CommandSpec {
-	const cli = selectAgentCLI(route);
+	// Try agent_cli first
+	const builder = CLI_BUILDERS[route.agentCli];
+	if (builder) return builder(req, route);
 
-	switch (cli) {
-		case "codex":
-			return buildCodexArgs(req, route);
-		case "claude":
-			return buildClaudeArgs(req, route);
-		case "hermes":
-			return buildHermesArgs(req, route, route.routeProvider);
-	}
+	// Unknown CLI: fall back to the route's fallback_cli
+	const fallbackBuilder = CLI_BUILDERS[route.fallbackCli];
+	if (fallbackBuilder) return fallbackBuilder(req, route);
+
+	// Last resort: codex (most compatible with openai-spec endpoints)
+	return buildCodexArgs(req, route);
 }
 
 export function assertResolvedRouteMetadata(
@@ -443,6 +437,8 @@ async function resolveModelRoute(
 		model_name: string;
 		route_provider: string;
 		agent_provider: string;
+		agent_cli: string;
+		fallback_cli: string;
 		api_spec: string;
 		base_url: string;
 		plan_type: string | null;
@@ -457,7 +453,7 @@ async function resolveModelRoute(
 		if (perMillionPricing) {
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, fallback_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE model_name = $1
@@ -471,7 +467,7 @@ async function resolveModelRoute(
 
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-              api_spec, base_url, plan_type,
+              agent_cli, fallback_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output
        FROM roadmap.model_routes
@@ -488,7 +484,9 @@ async function resolveModelRoute(
 		modelName: r.model_name,
 		routeProvider: r.route_provider,
 		agentProvider: r.agent_provider,
-		apiSpec: r.api_spec as ModelRoute["apiSpec"],
+		agentCli: r.agent_cli,
+		fallbackCli: r.fallback_cli,
+		apiSpec: r.api_spec,
 		baseUrl: r.base_url,
 		planType: r.plan_type,
 		costPer1kInput: Number(r.cost_per_1k_input ?? 0),
