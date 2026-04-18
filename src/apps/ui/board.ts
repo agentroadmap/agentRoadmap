@@ -510,7 +510,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[W]{/} Workflow | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[S]{/} Feed | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
+	" {cyan-fg}[W]{/} Workflow Menu | {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[S]{/} Feed | {cyan-fg}[/]{/} Search | {cyan-fg}[P]{/} Priority | {cyan-fg}[F]{/} Labels | {cyan-fg}[~]{/} Hide Empty | {cyan-fg}[=]{/} Hide Archive | {cyan-fg}[←→]{/} Columns | {cyan-fg}[↑↓]{/} Proposals | {cyan-fg}[PgUp/PgDn]{/} Page | {cyan-fg}[Home/End]{/} First/Last | {cyan-fg}[Enter]{/} View | {cyan-fg}[X]{/} Export | {cyan-fg}[q/Esc]{/} Quit";
 
 function _arraysEqual(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
@@ -1484,12 +1484,41 @@ export async function renderBoardTui(
 
 		screen.key(["w", "W"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
-			currentWorkflowViewIndex =
-				(currentWorkflowViewIndex + 1) % WORKFLOW_VIEWS.length;
-			showTransientFooter(
-				` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
-			);
-			renderView();
+			popupOpen = true;
+			void (async () => {
+				try {
+					const currentView = getCurrentWorkflowView();
+					const selected = await openSingleSelectFilterPopup({
+						screen,
+						title: "Workflow View",
+						selectedValue: currentView.key,
+						choices: WORKFLOW_VIEWS.filter(
+							(workflow) => workflow.key !== "all",
+						).map((workflow) => ({
+							label: workflow.label,
+							value: workflow.key,
+						})),
+						helpText:
+							" {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
+					});
+					if (selected === null) {
+						return;
+					}
+					const nextIndex = WORKFLOW_VIEWS.findIndex(
+						(workflow) => workflow.key === selected,
+					);
+					if (nextIndex >= 0) {
+						currentWorkflowViewIndex = nextIndex;
+						showTransientFooter(
+							` {magenta-fg}Workflow: ${getCurrentWorkflowView().label}{/}`,
+						);
+						renderView();
+					}
+				} finally {
+					popupOpen = false;
+					screen.render();
+				}
+			})();
 		});
 
 		screen.key(["s", "S"], () => {
