@@ -415,6 +415,14 @@ async function dispatchAgent(
 			`${verb} cubic ${cubicId.substring(0, 8)} for ${agent} → P${proposalId} (${phase})`,
 		);
 
+		// Rich event: agent dispatched
+		await emitEvent(Number(proposalId), "agent_dispatched", {
+			agent,
+			cubic_id: cubicId.substring(0, 8),
+			phase,
+			cubic_action: data.was_created ? "created" : data.was_recycled ? "recycled" : "reused",
+		});
+
 		// Spawn the agent process
 		const taskPrompt = `${AGENT_PROMPTS[agent] || ""}\n\nProposal P${proposalId}: ${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
 		const result = await spawnAgent({
@@ -429,10 +437,23 @@ async function dispatchAgent(
 			logger.log(
 				`✅ ${agent} completed (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			await emitEvent(Number(proposalId), "agent_completed", {
+				agent,
+				run_id: result.agentRunId,
+				duration_ms: result.durationMs,
+				exit_code: 0,
+			});
 		} else {
 			logger.warn(
 				`⚠️ ${agent} exited ${result.exitCode} (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			await emitEvent(Number(proposalId), "agent_failed", {
+				agent,
+				run_id: result.agentRunId,
+				duration_ms: result.durationMs,
+				exit_code: result.exitCode,
+				stderr_tail: result.stderr.slice(-500),
+			});
 		}
 
 		return cubicId;
@@ -458,6 +479,14 @@ async function handleStateChange(proposalId: string, newState: string) {
 
 	logger.log(`📢 P${proposalId} → ${newState} (${phase})`);
 	logger.log(`   Squad: ${agents.join(", ")}`);
+
+	// Rich event: squad dispatched
+	await emitEvent(Number(proposalId), "squad_dispatched", {
+		state: newState,
+		phase,
+		squad: agents,
+		squad_size: agents.length,
+	});
 
 	// Release any locked cubics for this proposal from previous phases
 	await releaseStaleCubics(proposalId);
@@ -486,6 +515,28 @@ async function ensureAgentIdentity(
            status = 'active'`,
 		[agentIdentity, role],
 	);
+}
+
+// ─── Rich Event Emission ───────────────────────────────────────────────────
+//
+// Emits structured events to proposal_event for the state feed.
+// Events should tell a story: what happened, who did it, why, what was the outcome.
+
+async function emitEvent(
+	proposalId: number | null,
+	eventType: string,
+	payload: Record<string, unknown>,
+): Promise<void> {
+	if (!proposalId) return;
+	try {
+		await query(
+			`INSERT INTO roadmap_proposal.proposal_event (proposal_id, event_type, payload)
+			 VALUES ($1, $2, $3::jsonb)`,
+			[proposalId, eventType, JSON.stringify(payload)],
+		);
+	} catch (e) {
+		logger.warn(`Failed to emit ${eventType} event for P${proposalId}:`, e);
+	}
 }
 
 async function recordGateCommunication(input: {
@@ -1171,6 +1222,14 @@ async function handleSOS(
 	const model = (payload.model as string) || "unknown";
 	const action = (payload.action as string) || "retry";
 
+	// Rich event: agent in distress
+	await emitEvent(msg.proposalId, "agent_sos", {
+		agent: msg.fromAgent,
+		error: error.slice(0, 300),
+		model,
+		suggested_action: action,
+	});
+
 	// Log escalation to DB
 	try {
 		await query(
@@ -1238,6 +1297,13 @@ async function handleAsk(
 
 	logger.log(`❓ ASK from ${msg.fromAgent} on ${proposalLabel} [${topic}]: ${question.slice(0, 150)}`);
 
+	// Rich event: agent asking for context
+	await emitEvent(msg.proposalId, "agent_ask", {
+		agent: msg.fromAgent,
+		topic,
+		question: question.slice(0, 300),
+	});
+
 	// Look up context based on topic
 	let answer = "Orchestrator received your question but could not find relevant context.";
 
@@ -1289,6 +1355,13 @@ async function handleDecision(
 	logger.log(
 		`⚖️ DECISION from ${msg.fromAgent} on ${proposalLabel}: ${question.slice(0, 100)}`,
 	);
+
+	// Rich event: agent requesting decision
+	await emitEvent(msg.proposalId, "agent_decision", {
+		agent: msg.fromAgent,
+		question: question.slice(0, 300),
+		options,
+	});
 
 	// Auto-decide based on heuristics, or escalate to human
 	let decision = "escalate";
