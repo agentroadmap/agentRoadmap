@@ -97,6 +97,60 @@ export interface ModelRoute {
 	costPerMillionOutput: number;
 }
 
+export function buildSpawnProcessEnv(input: {
+	provider: AgentProvider;
+	worktree: string;
+	route: ModelRoute;
+	agentEnv: Record<string, string>;
+	extraEnv: Record<string, string>;
+}): Record<string, string> {
+	const baseEnv: Record<string, string> = {
+		// Carry through essential PATH
+		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+		HOME: process.env.HOME ?? "/root",
+		// Agent-specific overrides from .env.agent
+		DATABASE_URL: input.agentEnv.DATABASE_URL ?? "",
+		AGENT_WORKTREE: input.worktree,
+		AGENT_PROVIDER: input.provider,
+		AGENT_ROUTE_PROVIDER: input.route.routeProvider,
+		AGENT_API_SPEC: input.route.apiSpec,
+		// Git identity isolation
+		GIT_CONFIG_GLOBAL: `${GITCONFIG_ROOT}/${input.worktree}.gitconfig`,
+		GIT_CONFIG_NOSYSTEM: "1",
+		// API keys: pass through only what the provider route needs
+		...(input.provider === "claude" &&
+		process.env.ANTHROPIC_API_KEY
+			? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY }
+			: {}),
+		...(input.provider === "gemini" && process.env.GEMINI_API_KEY
+			? { GEMINI_API_KEY: process.env.GEMINI_API_KEY }
+			: {}),
+		...(input.provider === "openclaw" && process.env.NOUS_API_KEY
+			? {
+					OPENAI_API_KEY: process.env.NOUS_API_KEY,
+					NOUS_API_KEY: process.env.NOUS_API_KEY,
+				}
+			: {}),
+		...(input.provider === "copilot" && process.env.OPENAI_API_KEY
+			? { OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+			: {}),
+		...(input.provider === "codex" && process.env.OPENAI_API_KEY
+			? { OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+			: {}),
+		...(process.env.XIAOMI_API_KEY && input.provider === "claude"
+			? { XIAOMI_API_KEY: process.env.XIAOMI_API_KEY }
+			: {}),
+		...(process.env.GITHUB_TOKEN && {
+			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+		}),
+	};
+
+	return {
+		...baseEnv,
+		...input.extraEnv,
+	};
+}
+
 /**
  * Build argv + env for the Anthropic Claude CLI.
  * Used when api_spec = 'anthropic' (native claude CLI).
@@ -637,41 +691,13 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const { argv, env: extraEnv, stdin } = buildArgsBySpec(spawnReq, route);
 
 	// Assemble process environment (agent-scoped, not inheriting secrets from host)
-	const processEnv: Record<string, string> = {
-		// Carry through essential PATH
-		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-		HOME: process.env.HOME ?? "/root",
-		// Agent-specific overrides from .env.agent
-		DATABASE_URL: agentEnv.DATABASE_URL ?? "",
-		AGENT_WORKTREE: worktree,
-		AGENT_PROVIDER: provider,
-		AGENT_ROUTE_PROVIDER: route.routeProvider,
-		AGENT_API_SPEC: route.apiSpec,
-		// Git identity isolation
-		GIT_CONFIG_GLOBAL: `${GITCONFIG_ROOT}/${worktree}.gitconfig`,
-		GIT_CONFIG_NOSYSTEM: "1",
-		// API keys: pass through from host environment (agents need them)
-		...(process.env.ANTHROPIC_API_KEY && {
-			ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-		}),
-		...(process.env.GEMINI_API_KEY && {
-			GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-		}),
-		...(process.env.OPENAI_API_KEY && {
-			OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-		}),
-		...(process.env.XIAOMI_API_KEY && {
-			XIAOMI_API_KEY: process.env.XIAOMI_API_KEY,
-		}),
-		...(process.env.NOUS_API_KEY && {
-			NOUS_API_KEY: process.env.NOUS_API_KEY,
-		}),
-		...(process.env.GITHUB_TOKEN && {
-			GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-		}),
-		// Route-specific env from argv builder (OPENAI_BASE_URL, ANTHROPIC_BASE_URL, etc.)
-		...extraEnv,
-	};
+	const processEnv = buildSpawnProcessEnv({
+		provider,
+		worktree,
+		route,
+		agentEnv,
+		extraEnv,
+	});
 
 	// Insert agent_runs row (status = running)
 	const { rows } = await query(
