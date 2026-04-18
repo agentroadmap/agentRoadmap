@@ -230,78 +230,106 @@ export async function createProposal(
 	input: ProposalCreateInput,
 	authorIdentity: string,
 ): Promise<ProposalRow> {
-	// Resolve the workflow's start_stage for this proposal type so the initial
-	// status matches the workflow (e.g. Quick Fix starts at TRIAGE, not Draft).
-	// Falls back to "Draft" if no workflow is configured for this type.
-	// If input.status is provided, validate it exists in the workflow's stages;
-	// if not, silently use the workflow's start stage instead.
-	let initialStatus = "Draft";
-	const { rows: wfRows } = await query<{
-		start_stage: string | null;
-		valid_stages: string[];
-	}>(
-		`SELECT (
-			  SELECT ws2.stage_name
-			    FROM roadmap.workflow_stages ws2
-			   WHERE ws2.template_id = wt.id
-			   ORDER BY ws2.stage_order ASC, ws2.stage_name ASC
-			   LIMIT 1
-			) AS start_stage,
-		        ARRAY_AGG(DISTINCT ws.stage_name ORDER BY ws.stage_order, ws.stage_name) AS valid_stages
-       FROM roadmap_proposal.proposal_type_config ptc
-       JOIN roadmap.workflow_templates wt ON wt.name = ptc.workflow_name
-       JOIN roadmap.workflow_stages ws ON ws.template_id = wt.id
-       WHERE ptc.type = $1
-       GROUP BY ptc.type`,
-		[input.type],
-	);
-	const startStage = wfRows[0]?.start_stage ?? null;
-	const validStages: string[] = wfRows[0]?.valid_stages ?? [];
+	const client = await getPool().connect();
+	try {
+		await client.query("BEGIN");
 
-	if (input.status && validStages.length > 0) {
-		// Validate provided status exists in workflow stages (case-insensitive)
-		const matchStage = validStages.find(
-			(s) => s.toLowerCase() === input.status!.toLowerCase(),
+		// Resolve the workflow's start_stage for this proposal type so the initial
+		// status matches the workflow (e.g. Quick Fix starts at TRIAGE, not Draft).
+		// Falls back to "Draft" if no workflow is configured for this type.
+		// If input.status is provided, validate it exists in the workflow's stages;
+		// if not, silently use the workflow's start stage instead.
+		let initialStatus = "Draft";
+		const { rows: wfRows } = await client.query<{
+			start_stage: string | null;
+			valid_stages: string[];
+		}>(
+			`SELECT (
+				  SELECT ws2.stage_name
+				    FROM roadmap.workflow_stages ws2
+				   WHERE ws2.template_id = wt.id
+				   ORDER BY ws2.stage_order ASC, ws2.stage_name ASC
+				   LIMIT 1
+				) AS start_stage,
+			        ARRAY_AGG(ws.stage_name ORDER BY ws.stage_order, ws.stage_name) AS valid_stages
+		       FROM roadmap_proposal.proposal_type_config ptc
+		       JOIN roadmap.workflow_templates wt ON wt.name = ptc.workflow_name
+		       JOIN roadmap.workflow_stages ws ON ws.template_id = wt.id
+		       WHERE ptc.type = $1
+		       GROUP BY ptc.type`,
+			[input.type],
 		);
-		initialStatus = matchStage ?? startStage ?? "Draft";
-	} else if (input.status) {
-		// No workflow configured — accept provided status as-is
-		initialStatus = input.status;
-	} else {
-		// No status provided — use workflow start stage or default
-		initialStatus = startStage ?? "Draft";
-	}
+		const startStage = wfRows[0]?.start_stage ?? null;
+		const validStages: string[] = wfRows[0]?.valid_stages ?? [];
 
-	const { rows } = await query<ProposalRow>(
-		`INSERT INTO roadmap_proposal.proposal (
-      display_id, type, status, title, parent_id, summary, motivation, design,
-      drawbacks, alternatives, dependency, priority, tags, audit
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb)
-    RETURNING ${PROPOSAL_COLUMNS}`,
-		[
-			input.display_id ?? null,
-			input.type,
-			initialStatus,
-			input.title,
-			input.parent_id ?? null,
-			input.summary ?? null,
-			input.motivation ?? null,
-			input.design ?? null,
-			input.drawbacks ?? null,
-			input.alternatives ?? null,
-			input.dependency ?? null,
-			input.priority ?? null,
-			input.tags ? JSON.stringify(input.tags) : null,
-			JSON.stringify([
-				{
-					TS: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-					Agent: authorIdentity,
-					Activity: "Created",
-				},
-			]),
-		],
-	);
-	return rows[0];
+		if (input.status && validStages.length > 0) {
+			// Validate provided status exists in workflow stages (case-insensitive)
+			const matchStage = validStages.find(
+				(s) => s.toLowerCase() === input.status!.toLowerCase(),
+			);
+			initialStatus = matchStage ?? startStage ?? "Draft";
+		} else if (input.status) {
+			// No workflow configured — accept provided status as-is
+			initialStatus = input.status;
+		} else {
+			// No status provided — use workflow start stage or default
+			initialStatus = startStage ?? "Draft";
+		}
+
+		const { rows } = await client.query<ProposalRow>(
+			`INSERT INTO roadmap_proposal.proposal (
+	      display_id, type, status, title, parent_id, summary, motivation, design,
+	      drawbacks, alternatives, dependency, priority, tags, audit
+	    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb)
+	    RETURNING ${PROPOSAL_COLUMNS}`,
+			[
+				input.display_id ?? null,
+				input.type,
+				initialStatus,
+				input.title,
+				input.parent_id ?? null,
+				input.summary ?? null,
+				input.motivation ?? null,
+				input.design ?? null,
+				input.drawbacks ?? null,
+				input.alternatives ?? null,
+				input.dependency ?? null,
+				input.priority ?? null,
+				input.tags ? JSON.stringify(input.tags) : null,
+				JSON.stringify([
+					{
+						TS: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+						Agent: authorIdentity,
+						Activity: "Created",
+					},
+				]),
+			],
+		);
+		const created = rows[0];
+
+		await client.query(
+			`INSERT INTO roadmap_proposal.proposal_event (proposal_id, event_type, payload)
+			 VALUES ($1, 'proposal_created', $2::jsonb)`,
+			[
+				created.id,
+				JSON.stringify({
+					agent: authorIdentity,
+					title: created.title,
+					type: created.type,
+					status: created.status,
+					ts: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+				}),
+			],
+		);
+
+		await client.query("COMMIT");
+		return created;
+	} catch (error) {
+		await client.query("ROLLBACK").catch(() => {});
+		throw error;
+	} finally {
+		client.release();
+	}
 }
 
 export async function listProposalTypes(): Promise<ProposalTypeConfigRow[]> {
