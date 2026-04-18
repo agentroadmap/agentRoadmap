@@ -145,6 +145,7 @@ const agentRoutes: RouteMap = {
 	cubic_focus: "cubic_focus",
 	cubic_transition: "cubic_transition",
 	cubic_recycle: "cubic_recycle",
+	cubic_acquire: "cubic_acquire",
 };
 
 const memoryRoutes: RouteMap = {

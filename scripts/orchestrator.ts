@@ -332,7 +332,7 @@ function safeParseMcpResponse(text: string | undefined): any {
 	}
 }
 
-// Dispatch agent to cubic — ONE cubic per agent type, reused across proposals
+// Dispatch agent to cubic — uses cubic_acquire for atomic find-or-create + focus
 async function dispatchAgent(
 	agent: string,
 	proposalId: string,
@@ -345,73 +345,29 @@ async function dispatchAgent(
 	try {
 		await client.connect(transport);
 
-		// Step 1: Find existing cubic for this agent (locked OR idle)
-		let cubicId: string | null = null;
-		const existing = await client.callTool({
-			name: "cubic_list",
-			arguments: {},
-		});
-		const data = safeParseMcpResponse(mcpText(existing));
-
-		if (data?.cubics) {
-			for (const cubic of data.cubics) {
-				const agents = cubic.agents || [];
-				if (agents.includes(agent)) {
-					cubicId = cubic.id;
-					break;
-				}
-			}
-		}
-
-		// Step 2: If cubic exists, release its lock first (may be working on old proposal)
-		if (cubicId) {
-			await client.callTool({
-				name: "cubic_recycle",
-				arguments: { cubicId, resetCode: false },
-			});
-			logger.log(`♻️ Recycled ${agent} cubic ${cubicId.substring(0, 8)}`);
-		}
-
-		// Step 3: Create new only if no cubic exists for this agent
-		if (!cubicId) {
-			const created = await client.callTool({
-				name: "cubic_create",
-				arguments: {
-					name: `${agent}`,
-					agents: [agent],
-					proposals: [proposalId],
-				},
-			});
-			const createdData = safeParseMcpResponse(mcpText(created));
-			if (createdData?.success && createdData?.cubic?.id) {
-				const newCubicId = String(createdData.cubic.id);
-				cubicId = newCubicId;
-				logger.log(`📦 New cubic ${newCubicId.substring(0, 8)} for ${agent}`);
-			}
-		}
-
-		if (!cubicId) {
-			logger.warn(`No cubic for ${agent} on P${proposalId}`);
-			return null;
-		}
-
-		// Step 4: Focus with the phase. Model selection is handled by
-		// agent-spawner/model_routes (P235); do not hardcode cross-provider models here.
-		await client.callTool({
-			name: "cubic_focus",
+		// Single MCP call replaces: cubic_list → cubic_recycle → cubic_focus
+		const acquired = await client.callTool({
+			name: "cubic_acquire",
 			arguments: {
-				cubicId,
-				agent,
-				task: `${AGENT_PROMPTS[agent] || ""} Proposal ${proposalId}: ${task}`,
+				agent_identity: agent,
+				proposal_id: Number(proposalId),
 				phase,
 			},
 		});
+		const data = safeParseMcpResponse(mcpText(acquired));
 
+		if (!data?.success || !data?.cubic_id) {
+			logger.warn(`cubic_acquire failed for ${agent} on P${proposalId}: ${mcpText(acquired)?.substring(0, 120)}`);
+			return null;
+		}
+
+		const cubicId = data.cubic_id as string;
+		const verb = data.was_created ? "📦 New" : data.was_recycled ? "♻️ Recycled" : "🔄 Reused";
 		logger.log(
-			`🚀 ${agent} → ${cubicId.substring(0, 8)} | ${phase} | platform-routed | P${proposalId}`,
+			`${verb} cubic ${cubicId.substring(0, 8)} for ${agent} → P${proposalId} (${phase})`,
 		);
 
-		// Step 5: Actually spawn the agent process
+		// Spawn the agent process
 		const taskPrompt = `${AGENT_PROMPTS[agent] || ""}\n\nProposal P${proposalId}: ${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
 		const result = await spawnAgent({
 			worktree: await selectExecutorWorktree(null),

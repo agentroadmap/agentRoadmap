@@ -229,6 +229,56 @@ export class PgCubicHandlers {
 		}
 	}
 
+	async acquireCubic(args: {
+		agent_identity: string;
+		proposal_id: number;
+		phase?: string;
+		budget_usd?: number;
+		worktree_path?: string;
+	}): Promise<CallToolResult> {
+		try {
+			const { rows } = await query<{
+				cubic_id: string;
+				was_recycled: boolean;
+				was_created: boolean;
+				status: string;
+				worktree_path: string | null;
+			}>(
+				`SELECT cubic_id, was_recycled, was_created, status, worktree_path
+				 FROM roadmap.fn_acquire_cubic($1, $2, $3, $4, $5)`,
+				[
+					args.agent_identity,
+					args.proposal_id,
+					args.phase ?? 'design',
+					args.budget_usd ?? null,
+					args.worktree_path ?? null,
+				],
+			);
+			const r = rows[0];
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								success: true,
+								cubic_id: r.cubic_id,
+								was_recycled: r.was_recycled,
+								was_created: r.was_created,
+								status: r.status,
+								worktree_path: r.worktree_path,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (err) {
+			return errorResult("Failed to acquire cubic", err);
+		}
+	}
+
 	async recycleCubic(args: {
 		cubicId: string;
 		resetCode?: boolean;

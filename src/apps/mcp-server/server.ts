@@ -934,7 +934,42 @@ export async function createMcpServer(
 				},
 				required: ["cubicId"],
 			},
-			handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
+		handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
+	});
+		server.addTool({
+			name: "cubic_acquire",
+			description:
+				"Atomic cubic acquisition: find-or-create for agent, recycle if locked elsewhere, focus on proposal. One call replaces cubic_list + cubic_recycle + cubic_focus.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					agent_identity: {
+						type: "string",
+						description: "Agent identity (e.g. 'architect', 'developer', 'skeptic-alpha')",
+					},
+					proposal_id: {
+						type: "number",
+						description: "Proposal ID to focus the cubic on",
+					},
+					phase: {
+						type: "string",
+						description: "Cubic phase (design, build, test, ship). Default: design",
+					},
+					budget_usd: {
+						type: "number",
+						description: "Optional budget allocation for this cubic session",
+					},
+					worktree_path: {
+						type: "string",
+						description: "Optional worktree path override",
+					},
+				},
+				required: ["agent_identity", "proposal_id"],
+			},
+			handler: (a) =>
+				cubic.acquireCubic(
+					a as Parameters<typeof cubic.acquireCubic>[0],
+				),
 		});
 
 		// Pulse Fleet Observability tools (P063) — Postgres-backed
