@@ -1086,6 +1086,245 @@ async function releaseStaleCubics(proposalId: string) {
 	}
 }
 
+// ─── Agent Communication Protocol ──────────────────────────────────────────
+//
+// Spawned agents send structured messages to the orchestrator via message_ledger.
+// Message types:
+//   sos     -- critical failure, needs immediate attention
+//   ask     -- clarification question, agent is blocked waiting for answer
+//   decision -- needs orchestrator to make a choice
+//   report  -- status update, no response expected
+//
+// The orchestrator reads the full message, evaluates, and responds:
+//   reply   -- answer to ask/decision (written back to message_ledger)
+//   command -- instruction to agent (retry, switch_model, abort)
+
+type AgentMessage = {
+	fromAgent: string;
+	toAgent: string;
+	proposalId: number | null;
+	messageId: number | null;
+};
+
+async function handleAgentSOS(msg: AgentMessage): Promise<void> {
+	// Read full message content
+	if (!msg.messageId) {
+		logger.warn(`SOS from ${msg.fromAgent} but no message_id`);
+		return;
+	}
+
+	const { rows } = await query<{
+		message_type: string;
+		message_content: string;
+		channel: string | null;
+		metadata: Record<string, unknown> | null;
+	}>(
+		`SELECT message_type, message_content, channel, metadata
+		 FROM roadmap.message_ledger WHERE id = $1`,
+		[msg.messageId],
+	);
+
+	if (rows.length === 0) {
+		logger.warn(`SOS message ${msg.messageId} not found`);
+		return;
+	}
+
+	const { message_type, message_content, metadata } = rows[0];
+
+	// Parse the message content (agents send JSON payloads)
+	let payload: Record<string, unknown> = {};
+	try {
+		payload = JSON.parse(message_content);
+	} catch {
+		payload = { raw: message_content };
+	}
+
+	const action = (payload.action as string) || "unknown";
+	const error = (payload.error as string) || "no error detail";
+	const proposalLabel = msg.proposalId ? `P${msg.proposalId}` : "no-proposal";
+
+	logger.warn(
+		`🆘 ${message_type.toUpperCase()} from ${msg.fromAgent} on ${proposalLabel}: ${action} — ${error.slice(0, 200)}`,
+	);
+
+	// ─── Handle by message type ──────────────────────────────────────────
+
+	if (message_type === "sos") {
+		await handleSOS(msg, payload, proposalLabel);
+	} else if (message_type === "ask") {
+		await handleAsk(msg, payload, proposalLabel);
+	} else if (message_type === "decision") {
+		await handleDecision(msg, payload, proposalLabel);
+	} else if (message_type === "report") {
+		logger.log(
+			`📋 Report from ${msg.fromAgent} on ${proposalLabel}: ${(payload.status as string) || "update"}`,
+		);
+	}
+}
+
+async function handleSOS(
+	msg: AgentMessage,
+	payload: Record<string, unknown>,
+	proposalLabel: string,
+): Promise<void> {
+	const error = (payload.error as string) || "unknown error";
+	const model = (payload.model as string) || "unknown";
+	const action = (payload.action as string) || "retry";
+
+	// Log escalation to DB
+	try {
+		await query(
+			`INSERT INTO roadmap.escalation_log
+			   (proposal_id, obstacle_type, description, severity, source_agent, metadata)
+			 VALUES ($1, 'AGENT_DEAD', $2, 'high', $3, $4::jsonb)`,
+			[
+				msg.proposalId,
+				`SOS from ${msg.fromAgent}: ${error} (model=${model})`,
+				msg.fromAgent,
+				JSON.stringify({ error, model, requested_action: action, message_id: msg.messageId }),
+			],
+		);
+	} catch (e) {
+		logger.error("Failed to log SOS escalation:", e);
+	}
+
+	// If there's an active dispatch for this agent, mark it as blocked
+	// so the orchestrator can retry or escalate
+	if (msg.proposalId) {
+		try {
+			await query(
+				`UPDATE roadmap_workforce.squad_dispatch
+				 SET dispatch_status = 'blocked',
+				     completed_at = now(),
+				     metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+				 WHERE proposal_id = $1
+				   AND agent_identity = $2
+				   AND dispatch_status IN ('assigned', 'active')
+				   AND completed_at IS NULL`,
+				[
+					msg.proposalId,
+					msg.fromAgent,
+					JSON.stringify({ sos_error: error, sos_action: action, sos_at: new Date().toISOString() }),
+				],
+			);
+		} catch (e) {
+			logger.error("Failed to update dispatch on SOS:", e);
+		}
+	}
+
+	// Send reply acknowledging the SOS
+	await sendReply(
+		msg.fromAgent,
+		"orchestrator",
+		msg.messageId,
+		msg.proposalId,
+		{
+			status: "received",
+			action: action === "model_switch" ? "will_retry_with_different_model" : "logged",
+			message: `SOS received by orchestrator. Error logged to escalation_log. Dispatch marked blocked for retry.`,
+		},
+	);
+
+	logger.log(`🆘 SOS handled for ${msg.fromAgent} on ${proposalLabel}`);
+}
+
+async function handleAsk(
+	msg: AgentMessage,
+	payload: Record<string, unknown>,
+	proposalLabel: string,
+): Promise<void> {
+	const question = (payload.question as string) || (payload.raw as string) || "no question";
+	const topic = (payload.topic as string) || "general";
+
+	logger.log(`❓ ASK from ${msg.fromAgent} on ${proposalLabel} [${topic}]: ${question.slice(0, 150)}`);
+
+	// Look up context based on topic
+	let answer = "Orchestrator received your question but could not find relevant context.";
+
+	if (topic === "proposal_status" && msg.proposalId) {
+		const { rows } = await query<{ status: string; maturity: string; title: string }>(
+			`SELECT status, maturity, title FROM roadmap_proposal.proposal WHERE id = $1`,
+			[msg.proposalId],
+		);
+		if (rows.length > 0) {
+			answer = `Proposal ${proposalLabel}: status=${rows[0].status}, maturity=${rows[0].maturity}, title="${rows[0].title}"`;
+		}
+	} else if (topic === "host_policy") {
+		const host = process.env.AGENTHIVE_HOST ?? "unknown";
+		const { rows } = await query<{ allowed_providers: string[]; forbidden_providers: string[] }>(
+			`SELECT allowed_providers, forbidden_providers FROM roadmap.host_model_policy WHERE host_name = $1`,
+			[host],
+		);
+		if (rows.length > 0) {
+			answer = `Host ${host}: allowed=[${rows[0].allowed_providers}], forbidden=[${rows[0].forbidden_providers}]`;
+		}
+	} else if (topic === "system_state") {
+		const { rows } = await query<{ active: string; idle: string; expired: string }>(
+			`SELECT
+			   (SELECT COUNT(*)::text FROM roadmap.cubics WHERE status='active') as active,
+			   (SELECT COUNT(*)::text FROM roadmap.cubics WHERE status='idle') as idle,
+			   (SELECT COUNT(*)::text FROM roadmap.cubics WHERE status='expired') as expired`,
+		);
+		answer = `Cubics: ${rows[0]?.active} active, ${rows[0]?.idle} idle, ${rows[0]?.expired} expired`;
+	}
+
+	await sendReply(msg.fromAgent, "orchestrator", msg.messageId, msg.proposalId, {
+		answer,
+		topic,
+		timestamp: new Date().toISOString(),
+	});
+
+	logger.log(`❓ Answered ${msg.fromAgent}: ${answer.slice(0, 100)}...`);
+}
+
+async function handleDecision(
+	msg: AgentMessage,
+	payload: Record<string, unknown>,
+	proposalLabel: string,
+): Promise<void> {
+	const question = (payload.question as string) || "decision needed";
+	const options = (payload.options as string[]) || [];
+	const context = (payload.context as string) || "";
+
+	logger.log(
+		`⚖️ DECISION from ${msg.fromAgent} on ${proposalLabel}: ${question.slice(0, 100)}`,
+	);
+
+	// Auto-decide based on heuristics, or escalate to human
+	let decision = "escalate";
+	let rationale = "No auto-decision rule matched. Escalating to human.";
+
+	// If it's a model switch request, approve it
+	if (question.toLowerCase().includes("model") || question.toLowerCase().includes("switch")) {
+		decision = "approved";
+		rationale = "Auto-approved model switch request. Agent should retry with a different model.";
+	}
+
+	await sendReply(msg.fromAgent, "orchestrator", msg.messageId, msg.proposalId, {
+		decision,
+		rationale,
+		options,
+		timestamp: new Date().toISOString(),
+	});
+
+	logger.log(`⚖️ Decision for ${msg.fromAgent}: ${decision}`);
+}
+
+async function sendReply(
+	toAgent: string,
+	fromAgent: string,
+	replyToId: number | null,
+	proposalId: number | null,
+	payload: Record<string, unknown>,
+): Promise<void> {
+	await query(
+		`INSERT INTO roadmap.message_ledger
+		   (from_agent, to_agent, channel, message_type, message_content, proposal_id, reply_to)
+		 VALUES ($1, $2, 'orchestrator', 'reply', $3, $4, $5)`,
+		[fromAgent, toAgent, JSON.stringify(payload), proposalId, replyToId],
+	);
+}
+
 // P266: poller handles owned by main() so shutdown() can clear them.
 let pollTimer: NodeJS.Timeout | null = null;
 let implicitGateTimer: NodeJS.Timeout | null = null;
@@ -1111,6 +1350,7 @@ async function main() {
 	// Listen for state changes
 	await pgClient.query("LISTEN proposal_gate_ready");
 	await pgClient.query("LISTEN proposal_maturity_changed");
+	await pgClient.query("LISTEN new_message"); // SOS protocol: agents call for help
 
 	logger.log("Listening for state changes to dispatch agents...");
 
@@ -1132,6 +1372,20 @@ async function main() {
 					}
 					return;
 				}
+
+				// SOS protocol: agent calling for help
+				if (msg.channel === "new_message" && data.message_type === "sos") {
+					await trackInFlight(
+						handleAgentSOS({
+							fromAgent: data.from_agent,
+							toAgent: data.to_agent,
+							proposalId: data.proposal_id ? Number(data.proposal_id) : null,
+							messageId: data.message_id ? Number(data.message_id) : null,
+						}),
+					);
+					return;
+				}
+
 				const proposalId = data.proposal_id || data.id;
 
 				if (!proposalId) return;

@@ -623,6 +623,55 @@ async function buildProposalContextPackage(input: {
 // ─── Core spawn logic ─────────────────────────────────────────────────────────
 
 /**
+ * Build the agent communication protocol instructions injected into spawned agent tasks.
+ * Agents use MCP tools to send messages to the orchestrator and check for replies.
+ */
+function buildCommProtocol(proposalId: number, agentIdentity: string): string {
+	return [
+		"## Agent Communication Protocol",
+		"",
+		"You can communicate with the orchestrator via MCP tools.",
+		"MCP endpoint: http://127.0.0.1:6421/sse",
+		"",
+		"### Sending messages to the orchestrator:",
+		"Use `mcp_message` with action `send`:",
+		"  from_agent: \"your-agent-identity\"",
+		"  to_agent: \"orchestrator\"",
+		"  channel: \"orchestrator\"",
+		"  message_type: one of [sos, ask, decision, report]",
+		"  message_content: JSON string with your payload",
+		`  proposal_id: ${proposalId}`,
+		"",
+		"### Message types:",
+		"",
+		"**sos** (critical failure — LLM error, model unavailable, budget exceeded):",
+		'  {"action": "sos", "error": "description of what went wrong", "model": "model-name", "suggested_action": "retry|model_switch|abort"}',
+		"",
+		"**ask** (you need context not visible to you):",
+		'  {"action": "ask", "topic": "proposal_status|host_policy|system_state", "question": "your question"}',
+		"",
+		"**decision** (you need the orchestrator to make a choice):",
+		'  {"action": "decision", "question": "what you need decided", "options": ["opt1", "opt2"], "context": "relevant info"}',
+		"",
+		"**report** (status update, no response expected):",
+		'  {"action": "report", "status": "progress update", "details": "what you accomplished"}',
+		"",
+		"### Checking for replies:",
+		"Use `mcp_message` with action `read`:",
+		'  to_agent: "your-agent-identity"',
+		'  channel: "orchestrator"',
+		"  The reply will have message_type=\"reply\" and reply_to matching your message id.",
+		"",
+		"### When to communicate:",
+		"- If an LLM call fails or returns an error → send sos",
+		"- If you need architectural context not in your task → send ask",
+		"- If you need approval to proceed → send decision",
+		"- If you want to report progress → send report",
+		"- Do NOT silently fail — always report errors via sos",
+	].join("\n");
+}
+
+/**
  * Spawn an agent subprocess inside its worktree.
  * Records the run in agent_runs and agent_budget_ledger.
  */
@@ -651,7 +700,8 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 			agentIdentity: worktree,
 			maxTokens: 2000,
 		});
-		assembledTask = `${contextPackage}\n\n## Task\n${task}`;
+		const commProtocol = buildCommProtocol(proposalId, worktree);
+		assembledTask = `${contextPackage}\n\n${commProtocol}\n\n## Task\n${task}`;
 	}
 
 	const spawnReq = { ...req, task: assembledTask };
