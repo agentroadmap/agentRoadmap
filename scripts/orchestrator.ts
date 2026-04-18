@@ -750,6 +750,16 @@ async function dispatchImplicitGate(
 		`Implicit gate dispatch ${dispatchId} -> ${worktree} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${gate.gate})`,
 	);
 
+	// Rich event: gate dispatch started
+	await emitEvent(proposal.id, "gate_dispatched", {
+		dispatch_id: dispatchId,
+		agent: worktree,
+		gate: gate.gate,
+		from: proposal.status,
+		to: gate.toStage,
+		reason,
+	});
+
 	const result = await spawnAgent({
 		worktree,
 		task: buildImplicitGateTask(proposal, gate),
@@ -775,6 +785,14 @@ async function dispatchImplicitGate(
 			worktree,
 			`gate ${gate.gate} advanced to ${gate.toStage}`,
 		);
+		// Rich event: gate advanced
+		await emitEvent(proposal.id, "gate_advanced", {
+			gate: gate.gate,
+			from: proposal.status,
+			to: gate.toStage,
+			agent: worktree,
+			duration_ms: result.durationMs,
+		});
 		await query(
 			`UPDATE roadmap_workforce.squad_dispatch
           SET dispatch_status = 'completed',
@@ -805,6 +823,16 @@ async function dispatchImplicitGate(
 				`gate ${gate.gate} sent back or held`,
 			);
 		}
+		// Rich event: gate held (agent completed but didn't advance)
+		await emitEvent(proposal.id, "gate_held", {
+			gate: gate.gate,
+			from: proposal.status,
+			to: gate.toStage,
+			agent: worktree,
+			current_status: current.status,
+			current_maturity: finalMaturity,
+			duration_ms: result.durationMs,
+		});
 		const decisionMessage = `gate decision completed without state transition: proposal is ${current.status}/${finalMaturity}`;
 		await recordGateCommunication({
 			proposalId: proposal.id,
@@ -854,6 +882,18 @@ async function dispatchImplicitGate(
 		result.exitCode === 0
 			? `gate agent completed but proposal state could not be read`
 			: `gate agent exited ${result.exitCode}: ${[result.stderr, result.stdout].filter(Boolean).join("\n").slice(0, 2000)}`;
+
+	// Rich event: gate failed
+	await emitEvent(proposal.id, "gate_failed", {
+		gate: gate.gate,
+		from: proposal.status,
+		to: gate.toStage,
+		agent: worktree,
+		exit_code: result.exitCode,
+		error: errorMessage.slice(0, 500),
+		duration_ms: result.durationMs,
+	});
+
 	await query(
 		`UPDATE roadmap_workforce.squad_dispatch
         SET dispatch_status = 'blocked',
