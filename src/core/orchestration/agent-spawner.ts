@@ -184,23 +184,21 @@ function buildArgsBySpec(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	}
 }
 
-function assertPlatformAwareRoute(
+export function assertPlatformAwareRoute(
 	provider: AgentProvider,
 	route: ModelRoute,
 ): void {
+	const expected = {
+		claude: { routeProvider: "anthropic", apiSpec: "anthropic" },
+		gemini: { routeProvider: "google", apiSpec: "google" },
+		copilot: { routeProvider: "openai", apiSpec: "openai" },
+		openclaw: { routeProvider: "nous", apiSpec: "openai" },
+		codex: { routeProvider: "openai", apiSpec: "openai" },
+	}[provider];
+
 	if (route.agentProvider !== provider) {
 		throw new Error(
 			`[P235] Route agent_provider "${route.agentProvider}" does not match worktree provider "${provider}" for model "${route.modelName}".`,
-		);
-	}
-	if (provider === "claude" && route.routeProvider !== "anthropic") {
-		throw new Error(
-			`[P235] Refusing to run route_provider "${route.routeProvider}" through Claude CLI for model "${route.modelName}". Use an openclaw/hermes route for Xiaomi/Nous models.`,
-		);
-	}
-	if (provider === "codex" && route.routeProvider !== "openai") {
-		throw new Error(
-			`[P235] Refusing to run route_provider "${route.routeProvider}" through Codex CLI for model "${route.modelName}".`,
 		);
 	}
 	if (provider === "openclaw" && !HERMES_SAFE_MODELS.has(route.modelName)) {
@@ -208,9 +206,9 @@ function assertPlatformAwareRoute(
 			`[P235] Hermes route "${route.modelName}" is not allowlisted. Use only ${[...HERMES_SAFE_MODELS].join(", ")}.`,
 		);
 	}
-	if (provider === "openclaw" && route.routeProvider !== "nous") {
+	if (route.routeProvider !== expected.routeProvider || route.apiSpec !== expected.apiSpec) {
 		throw new Error(
-			`[P235] Hermes routes must use the Nous provider; got "${route.routeProvider}" for model "${route.modelName}".`,
+			`[P235] Refusing to run "${provider}" route "${route.modelName}" through "${route.routeProvider}" / "${route.apiSpec}". Expected "${expected.routeProvider}" / "${expected.apiSpec}".`,
 		);
 	}
 }
@@ -505,30 +503,43 @@ async function resolveModelRoute(
 	console.warn(
 		`[P235] No routes in DB for agent_provider "${provider}". Using hard-coded default "${fallbackModel}".`,
 	);
-	const fallbackApiSpec: ModelRoute["apiSpec"] =
-		provider === "gemini"
-			? "google"
-			: provider === "claude"
-				? "anthropic"
-				: "openai";
-	const fallbackBaseUrl =
-		provider === "claude"
-			? "https://api.anthropic.com"
-			: provider === "gemini"
-				? "https://generativelanguage.googleapis.com/v1beta"
-				: "https://api.openai.com/v1";
-	const fallbackRouteProvider =
-		provider === "claude"
-			? "anthropic"
-			: provider === "codex"
-				? "openai"
-				: provider;
+	const fallbackRouteConfig: Record<
+		AgentProvider,
+		{ routeProvider: string; apiSpec: ModelRoute["apiSpec"]; baseUrl: string }
+	> = {
+		claude: {
+			routeProvider: "anthropic",
+			apiSpec: "anthropic",
+			baseUrl: "https://api.anthropic.com",
+		},
+		gemini: {
+			routeProvider: "google",
+			apiSpec: "google",
+			baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		copilot: {
+			routeProvider: "openai",
+			apiSpec: "openai",
+			baseUrl: "https://api.openai.com/v1",
+		},
+		openclaw: {
+			routeProvider: "nous",
+			apiSpec: "openai",
+			baseUrl: "https://inference-api.nousresearch.com/v1",
+		},
+		codex: {
+			routeProvider: "openai",
+			apiSpec: "openai",
+			baseUrl: "https://api.openai.com/v1",
+		},
+	};
+	const fallbackRouteConfigForProvider = fallbackRouteConfig[provider];
 	const fallbackRoute = {
 		modelName: fallbackModel,
-		routeProvider: fallbackRouteProvider,
+		routeProvider: fallbackRouteConfigForProvider.routeProvider,
 		agentProvider: provider,
-		apiSpec: fallbackApiSpec,
-		baseUrl: fallbackBaseUrl,
+		apiSpec: fallbackRouteConfigForProvider.apiSpec,
+		baseUrl: fallbackRouteConfigForProvider.baseUrl,
 		planType: null,
 		costPer1kInput: 0,
 		costPerMillionInput: 0,
