@@ -1966,7 +1966,7 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				eventPanel.scroll(FEED_PAGE_SIZE);
+				eventPanel.scroll((eventPanel as any).iheight || 20);
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -1992,7 +1992,7 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				eventPanel.scroll(-FEED_PAGE_SIZE);
+				eventPanel.scroll(-((eventPanel as any).iheight || 20));
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -2306,7 +2306,6 @@ export async function renderBoardTui(
 		let _currentEvents: StreamEvent[] = [];
 		const seenFeedEventIds = new Set<string>();
 		let feedLines: string[] = [];
-		const FEED_PAGE_SIZE = 12;
 		const FEED_HISTORY_LIMIT = 500;
 		let feedPinnedToLatest = true;
 		let feedThreadMode = false;
