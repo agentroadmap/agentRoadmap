@@ -215,12 +215,18 @@ export class OfferProvider {
 		const worktree = asString(meta.worktree_hint) ?? this.agentIdentity;
 		const timeoutMs = asNumber(meta.timeout_ms) ?? 300_000;
 
+		// Generate ephemeral worker identity for this dispatch
+		const workerIdentity = `${this.agentIdentity}/worker-${dispatch_id}`;
+
 		this.logger.log(
-			`[OfferProvider] Claimed dispatch ${dispatch_id} (${dispatch_role}) for proposal ${proposal_id}`,
+			`[OfferProvider] Claimed dispatch ${dispatch_id} (${dispatch_role}) for proposal ${proposal_id} — worker: ${workerIdentity}`,
 		);
 
-		// Activate before starting the spawn
-		const activated = await this.activate(dispatch_id, claim_token);
+		// Register worker in agent_registry
+		await this.registerWorker(workerIdentity);
+
+		// Activate with worker_identity so dispatch record tracks who does the work
+		const activated = await this.activate(dispatch_id, claim_token, workerIdentity);
 		if (!activated) {
 			this.logger.warn(
 				`[OfferProvider] dispatch ${dispatch_id} activation rejected — likely reaped`,
@@ -271,17 +277,34 @@ export class OfferProvider {
 
 	// ─── SQL helpers ─────────────────────────────────────────────────────────────
 
-	private async activate(dispatchId: number, claimToken: string): Promise<boolean> {
+	private async activate(dispatchId: number, claimToken: string, workerIdentity?: string): Promise<boolean> {
 		try {
 			const result = (await this.queryFn(
-				`SELECT roadmap_workforce.fn_activate_work_offer($1, $2, $3::uuid) AS ok`,
-				[dispatchId, this.agentIdentity, claimToken],
+				`SELECT roadmap_workforce.fn_activate_work_offer($1, $2, $3::uuid, $4) AS ok`,
+				[dispatchId, this.agentIdentity, claimToken, workerIdentity ?? null],
 			)) as QueryResultLike;
 			const row = result.rows[0] as { ok: boolean } | undefined;
 			return row?.ok === true;
 		} catch (err) {
 			this.logger.error(`[OfferProvider] activate ${dispatchId} error:`, err);
 			return false;
+		}
+	}
+
+	private async registerWorker(workerIdentity: string): Promise<void> {
+		try {
+			await this.queryFn(
+				`SELECT roadmap_workforce.fn_register_worker($1, $2, $3, $4, $5)`,
+				[
+					workerIdentity,
+					this.agentIdentity,
+					'workforce',
+					this.capabilitiesJson,
+					null, // preferred_model — inherited from agency
+				],
+			);
+		} catch (err) {
+			this.logger.error(`[OfferProvider] registerWorker ${workerIdentity} error:`, err);
 		}
 	}
 
