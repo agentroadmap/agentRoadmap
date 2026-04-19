@@ -158,7 +158,7 @@ function askHermes(message: string): Promise<string> {
 }
 
 // Handle incoming Discord message
-async function handleDiscordMessage(content: string, author: string): Promise<string | null> {
+async function handleDiscordMessage(content: string, author: string): Promise<string | string[] | null> {
   // Check for status command
   if (content.toLowerCase() === "status") {
     return await getPipelineStatus();
@@ -194,49 +194,88 @@ async function handleDiscordMessage(content: string, author: string): Promise<st
   return null;
 }
 
-// Get pipeline status grouped by workflow
-async function getPipelineStatus(): Promise<string> {
+// Get pipeline status grouped by proposal type, ordered by workflow state
+async function getPipelineStatus(): Promise<string[]> {
   try {
-    const result = await query(
-      `SELECT COALESCE(t.name, 'Unknown') AS workflow,
-              UPPER(w.current_stage) AS stage,
-              COUNT(*) AS count
-       FROM roadmap.workflows w
-       LEFT JOIN roadmap.workflow_templates t ON w.template_id = t.id
-       WHERE w.completed_at IS NULL
-       GROUP BY t.name, UPPER(w.current_stage)
-       ORDER BY t.name,
-         CASE UPPER(w.current_stage)
+    const { rows } = await query<{
+      type: string;
+      display_id: string;
+      status: string;
+      maturity: string;
+    }>(
+      `SELECT p.type,
+              p.display_id,
+              p.status,
+              p.maturity
+       FROM roadmap_proposal.proposal p
+       WHERE p.status NOT IN ('COMPLETE','REJECTED','DISCARDED','ABANDONED')
+         AND p.maturity != 'obsolete'
+       ORDER BY p.type,
+         CASE UPPER(p.status)
            WHEN 'DRAFT' THEN 1
            WHEN 'REVIEW' THEN 2
-           WHEN 'TRIAGE' THEN 3
-           WHEN 'FIX' THEN 4
-           WHEN 'DEVELOP' THEN 5
-           WHEN 'MERGE' THEN 6
-           WHEN 'COMPLETE' THEN 7
-           WHEN 'DEPLOYED' THEN 8
-           ELSE 9
-         END`
+           WHEN 'REVIEWING' THEN 3
+           WHEN 'DEVELOP' THEN 4
+           WHEN 'MERGE' THEN 5
+           WHEN 'COMPLETE' THEN 6
+           WHEN 'DEPLOYED' THEN 7
+           ELSE 8
+         END,
+         p.display_id`,
     );
 
-    // Group by workflow
-    const byWorkflow: Record<string, string[]> = {};
-    for (const row of result.rows) {
-      const wf = row.workflow;
-      if (!byWorkflow[wf]) byWorkflow[wf] = [];
-      byWorkflow[wf].push(`${row.stage}: ${row.count}`);
+    // Group by type → status
+    const byType: Record<string, Record<string, string[]>> = {};
+    const typeOrder = ["product", "component", "feature", "issue", "hotfix"];
+
+    for (const row of rows) {
+      const t = row.type ?? "unknown";
+      const s = (row.status ?? "?").toUpperCase();
+      if (!byType[t]) byType[t] = {};
+      if (!byType[t][s]) byType[t][s] = [];
+
+      // Compact: ID + maturity glyph
+      const glyph = row.maturity === "mature" ? "🟢"
+        : row.maturity === "active" ? "🔵"
+        : row.maturity === "new" ? "⚪"
+        : row.maturity === "obsolete" ? "⚫"
+        : "⚪";
+      byType[t][s].push(`${glyph}${row.display_id}`);
     }
 
-    let status = "**AgentHive Pipeline Status:**\n";
-    for (const [wf, stages] of Object.entries(byWorkflow)) {
-      status += `\n**${wf}**\n`;
-      for (const s of stages) {
-        status += `  • ${s}\n`;
+    const stateOrder = ["DRAFT", "REVIEW", "REVIEWING", "DEVELOP", "MERGE", "COMPLETE", "DEPLOYED"];
+
+    // Build messages, splitting if over 1900 chars per chunk
+    const chunks: string[] = [];
+    let current = "";
+
+    for (const type of typeOrder) {
+      const statuses = byType[type];
+      if (!statuses) continue;
+
+      let section = `\n**${type.toUpperCase()}**\n`;
+      for (const state of stateOrder) {
+        const ids = statuses[state];
+        if (!ids || ids.length === 0) continue;
+        section += `  ${state}: ${ids.join(" ")}\n`;
+      }
+
+      if (current.length + section.length > 1900) {
+        chunks.push(current);
+        current = section;
+      } else {
+        current += section;
       }
     }
-    return status || "No active workflows.";
+
+    if (current.length > 0) chunks.push(current);
+    if (chunks.length === 0) return ["No active proposals."];
+
+    // Prepend header to first chunk
+    chunks[0] = "**AgentHive Pipeline Status:**\n" + chunks[0];
+    return chunks;
   } catch (error) {
-    return "Failed to get pipeline status";
+    return [`❌ Failed to get pipeline status: ${error instanceof Error ? error.message : String(error)}`];
   }
 }
 
@@ -343,7 +382,10 @@ client.once("ready", async () => {
           // Send reply via discord.js (keeps WebSocket connection alive)
           const channel = client.channels.cache.get(channelId);
           if (channel && "send" in channel) {
-            await (channel as any).send(response);
+            const chunks = Array.isArray(response) ? response : [response];
+            for (const chunk of chunks) {
+              await (channel as any).send(chunk);
+            }
           }
         }
       }
@@ -392,7 +434,10 @@ client.on("messageCreate", async (msg) => {
 
   const response = await handleDiscordMessage(content, author);
   if (response) {
-    await msg.channel.send(response);
+    const chunks = Array.isArray(response) ? response : [response];
+    for (const chunk of chunks) {
+      await msg.channel.send(chunk);
+    }
   }
 });
 
