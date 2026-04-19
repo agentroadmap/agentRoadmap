@@ -1229,6 +1229,34 @@ export async function createMcpServer(
 		server.setConsolidatedToolSurface(true);
 	}
 
+	// P289: Workforce management tools (agency registration, provider registry, dispatches)
+	const workforce = await import("./tools/workforce/handlers.ts");
+	const workforceSchemas = await import("./tools/workforce/schemas.ts");
+	server.addTool({
+		name: "agency_register",
+		description: "Register an agency (long-lived identity) in agent_registry. Call this first before registering as a provider.",
+		inputSchema: workforceSchemas.agencyRegisterSchema,
+		handler: (a) => workforce.agencyRegisterHandler(a),
+	});
+	server.addTool({
+		name: "provider_register",
+		description: "Register an agency as a provider for a project/squad with capabilities. Agency must be registered first via agency_register.",
+		inputSchema: workforceSchemas.providerRegisterSchema,
+		handler: (a) => workforce.providerRegisterHandler(a),
+	});
+	server.addTool({
+		name: "dispatch_list",
+		description: "List squad_dispatch offers with status filter. Shows agency, worker, offer status, and lease info.",
+		inputSchema: workforceSchemas.dispatchListSchema,
+		handler: (a) => workforce.dispatchListHandler(a),
+	});
+	server.addTool({
+		name: "worker_register",
+		description: "Register an ephemeral worker agent under a parent agency. Called on spawn.",
+		inputSchema: workforceSchemas.workerRegisterSchema,
+		handler: (a) => workforce.workerRegisterHandler(a),
+	});
+
 	// Start background maintenance tasks
 	const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 	setInterval(async () => {
