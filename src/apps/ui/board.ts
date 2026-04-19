@@ -1566,6 +1566,7 @@ export async function renderBoardTui(
 		screen.key(["t", "T"], () => {
 			if (popupOpen || filterPopupOpen || moveOp || currentFocus === "filters")
 				return;
+			if (!feedOnlyMode) return; // t is for title edit in board mode
 			feedThreadMode = !feedThreadMode;
 			if (feedThreadMode) {
 				// Rebuild feed as threads from accumulated events
@@ -2202,6 +2203,7 @@ export async function renderBoardTui(
 		};
 
 		screen.key(["t", "T"], async () => {
+			if (feedOnlyMode) return; // t is for thread mode in feed view
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
