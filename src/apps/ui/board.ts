@@ -1550,7 +1550,6 @@ export async function renderBoardTui(
 			feedOnlyMode = !feedOnlyMode;
 			if (feedOnlyMode) {
 				feedPinnedToLatest = true;
-				feedWindowStart = Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 				renderFeedPanel();
 			}
 			showTransientFooter(
@@ -1575,7 +1574,6 @@ export async function renderBoardTui(
 				feedLines = _allFeedEvents.map(formatEventLine);
 			}
 			feedPinnedToLatest = true;
-			feedWindowStart = getFeedMaxWindowStart();
 			renderFeedPanel();
 			showTransientFooter(
 				feedThreadMode
@@ -1968,10 +1966,7 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.min(
-					feedWindowStart + FEED_PAGE_SIZE,
-					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
-				);
+				eventPanel.scroll(FEED_PAGE_SIZE);
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -1997,7 +1992,7 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.max(feedWindowStart - FEED_PAGE_SIZE, 0);
+				eventPanel.scroll(-FEED_PAGE_SIZE);
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -2313,25 +2308,19 @@ export async function renderBoardTui(
 		let feedLines: string[] = [];
 		const FEED_PAGE_SIZE = 12;
 		const FEED_HISTORY_LIMIT = 500;
-		let feedWindowStart = 0;
 		let feedPinnedToLatest = true;
 		let feedThreadMode = false;
 		let _allFeedEvents: StreamEvent[] = []; // kept for thread mode rebuild
-		const getFeedMaxWindowStart = () =>
-			Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 		const renderFeedPanel = () => {
-			if (feedPinnedToLatest) {
-				feedWindowStart = getFeedMaxWindowStart();
-			}
-			const visibleLines = feedLines.slice(
-				feedWindowStart,
-				feedWindowStart + FEED_PAGE_SIZE,
-			);
 			eventPanel.setContent(
-				visibleLines.length > 0
-					? visibleLines.join("\n")
+				feedLines.length > 0
+					? feedLines.join("\n")
 					: "{gray-fg}No recent feed items{/}",
 			);
+			if (feedPinnedToLatest) {
+				// Scroll to bottom — blessed uses setScrollPerc or scrollTo
+				eventPanel.setScrollPerc(100);
+			}
 		};
 		// Board-style icons matching status-icon.ts
 		const stateIconMap: Record<string, string> = {
@@ -2466,11 +2455,6 @@ export async function renderBoardTui(
 					.reverse()
 					.map(formatEventLine);
 				feedLines = [...feedLines, ...newLines].slice(-FEED_HISTORY_LIMIT);
-			}
-			if (feedPinnedToLatest) {
-				feedWindowStart = getFeedMaxWindowStart();
-			} else {
-				feedWindowStart = Math.min(feedWindowStart, getFeedMaxWindowStart());
 			}
 			renderFeedPanel();
 			screen.render();
