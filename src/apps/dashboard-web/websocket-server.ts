@@ -296,6 +296,7 @@ export function startWebSocketServer(
 		try {
 			const pool = getPool();
 			const pgClient = await pool.connect();
+			await pgClient.query("LISTEN proposal_state_changed");
 			await pgClient.query("LISTEN proposal_gate_ready");
 			await pgClient.query("LISTEN proposal_maturity_changed");
 			await pgClient.query("LISTEN transition_queued");
