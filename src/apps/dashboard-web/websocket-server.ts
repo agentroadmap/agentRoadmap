@@ -1,53 +1,95 @@
 /**
  * WebSocket bridge for the board UI.
  *
- * Publishes filesystem-backed proposal, agent, channel, and message snapshots
- * so the browser UI can stay in sync without any database-specific runtime.
+ * Serves live data from Postgres — no filesystem dependency.
+ * Subscribes to pg_notify for real-time push updates.
  */
 
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { Core } from "../../core/roadmap.ts";
-import type { Proposal as InternalProposal } from "../../shared/types/index.ts";
+import { query, getPool } from "../../infra/postgres/pool.ts";
 
 let wss: WebSocketServer | null = null;
 const clients = new Set<WebSocket>();
 
-// ─── Wire-format mapper ────────────────────────────────────────────────────────
-// The dashboard Proposal interface uses legacy field names.  This mapper
-// converts the internal Proposal shape to the wire shape the browser expects.
+// ─── Data queries ─────────────────────────────────────────────────────────────
 
-const MATURITY_LEVEL: Record<string, number> = {
-	new: 0,
-	active: 1,
-	mature: 2,
-	obsolete: 3,
-	skeleton: 0,
-	contracted: 1,
-	audited: 2,
-};
-
-function toWireProposal(p: InternalProposal): Record<string, unknown> {
-	return {
-		id: p.id,
-		displayId: p.id,
-		parentId: p.parentProposalId ?? null,
-		proposalType: p.proposalType ?? p.type ?? "",
-		category: p.category ?? "",
-		domainId: p.domainId ?? "",
-		title: p.title,
-		status: p.status,
-		priority: p.priority ?? "",
-		bodyMarkdown: p.description ?? null,
-		processLogic: p.implementationPlan ?? null,
-		maturityLevel: p.maturity != null ? (MATURITY_LEVEL[p.maturity] ?? null) : null,
+async function loadProposals(): Promise<Record<string, unknown>[]> {
+	const rows = await query(
+		`SELECT id, display_id, parent_id, type, status, title, summary,
+				priority, maturity, tags, created_at, modified_at
+		 FROM roadmap_proposal.proposal
+		 ORDER BY id`,
+	);
+	return rows.rows.map((r: any) => ({
+		id: r.display_id || r.id,
+		displayId: r.display_id,
+		parentId: r.parent_id,
+		proposalType: r.type,
+		category: r.type ?? "",
+		domainId: "",
+		title: r.title,
+		status: r.status,
+		priority: r.priority ?? "",
+		bodyMarkdown: r.summary ?? null,
+		processLogic: null,
+		maturityLevel: r.maturity ?? null,
 		repositoryPath: null,
-		budgetLimitUsd: p.budgetLimitUsd ?? 0,
-		tags: p.labels?.length ? p.labels.join(",") : null,
-		createdAt: p.createdDate,
-		updatedAt: p.updatedDate ?? p.createdDate,
-	};
+		budgetLimitUsd: 0,
+		tags: r.tags ? (Array.isArray(r.tags) ? r.tags.join(",") : String(r.tags)) : null,
+		createdAt: r.created_at,
+		updatedAt: r.modified_at ?? r.created_at,
+	}));
 }
+
+async function loadAgents(): Promise<Record<string, unknown>[]> {
+	const rows = await query(
+		`SELECT id, agent_identity, agent_type, role, skills, status,
+				trust_tier, agency_id, created_at, updated_at
+		 FROM roadmap_workforce.agent_registry
+		 ORDER BY agent_identity`,
+	);
+	return rows.rows.map((r: any) => ({
+		identity: r.agent_identity,
+		agentId: r.agent_identity,
+		role: r.role ?? r.agent_type ?? "agent",
+		isActive: r.status === "active",
+		activeProposalId: null,
+		lastSeenAt: r.updated_at ?? r.created_at,
+		statusMessage: r.status,
+		isZombie: false,
+	}));
+}
+
+async function loadChannels(): Promise<Record<string, unknown>[]> {
+	const rows = await query(
+		`SELECT DISTINCT channel AS name FROM roadmap.channel_subscription ORDER BY channel`,
+	);
+	return rows.rows.map((r: any) => ({
+		channelName: r.name,
+		messageCount: 0,
+	}));
+}
+
+async function loadMessages(channel: string): Promise<Record<string, unknown>[]> {
+	const rows = await query(
+		`SELECT id, from_agent, to_agent, message_content, created_at
+		 FROM roadmap.message_ledger
+		 WHERE channel = $1
+		 ORDER BY created_at DESC
+		 LIMIT 50`,
+		[channel],
+	);
+	return rows.rows.map((r: any) => ({
+		id: r.id,
+		channelName: channel,
+		senderIdentity: r.from_agent,
+		content: r.message_content,
+		timestamp: r.created_at,
+	}));
+}
+
+// ─── Wire-format types ─────────────────────────────────────────────────────────
 
 type BoardMessage =
 	| { type: "proposals" | "proposal_snapshot"; data: unknown[] }
@@ -70,46 +112,18 @@ function safeStringify(data: unknown): string {
 	);
 }
 
-async function buildSnapshot(core: Core) {
-	// Load proposals first, then pass them to listAgents to avoid deadlock
-	// (listAgents used to re-load all proposals internally, causing a
-	// circular dependency when called in parallel with loadProposals).
-	const proposals = await core.loadProposals();
-	core.setPreloadedProposalsForAgents(proposals);
-	const [agents, channels, publicMessages] = await Promise.all([
-		core.listAgents(),
-		core.listChannels(),
-		core.readMessages({ channel: "public" }),
+async function buildSnapshot() {
+	const [proposals, agents, channels, messages] = await Promise.all([
+		loadProposals(),
+		loadAgents(),
+		loadChannels(),
+		loadMessages("public"),
 	]);
-
-	return {
-		proposals: proposals.map(toWireProposal),
-		agents: agents.map((agent) => ({
-			identity: agent.identity ?? agent.name,
-			agentId: agent.name,
-			role: agent.capabilities[0] ?? "agent",
-			isActive: agent.status !== "offline",
-			activeProposalId: agent.claims?.[0]?.id ?? null,
-			lastSeenAt: agent.lastSeen,
-			statusMessage: agent.status,
-			isZombie: false,
-		})),
-		channels: channels.map((channel) => ({
-			channelName: channel.name,
-			messageCount: 0,
-		})),
-		messages: publicMessages.messages.map((message, index) => ({
-			id: `${message.timestamp}-${index}`,
-			channelName: "public",
-			senderIdentity: message.from,
-			content: message.text,
-			timestamp: message.timestamp,
-		})),
-	};
+	return { proposals, agents, channels, messages };
 }
 
-async function sendSnapshot(ws: WebSocket, core: Core): Promise<void> {
-	const snapshot = await buildSnapshot(core);
+async function sendSnapshot(ws: WebSocket): Promise<void> {
+	const snapshot = await buildSnapshot();
 	const payloads: BoardMessage[] = [
 		{ type: "proposal_snapshot", data: snapshot.proposals },
 		{ type: "workforce_snapshot", data: snapshot.agents },
@@ -133,8 +147,8 @@ function broadcast(message: BoardMessage): void {
 	}
 }
 
-async function broadcastSnapshot(core: Core): Promise<void> {
-	const snapshot = await buildSnapshot(core);
+async function broadcastSnapshot(): Promise<void> {
+	const snapshot = await buildSnapshot();
 	broadcast({ type: "proposal_snapshot", data: snapshot.proposals });
 	broadcast({ type: "workforce_snapshot", data: snapshot.agents });
 	broadcast({ type: "channels", data: snapshot.channels });
@@ -148,27 +162,31 @@ async function broadcastSnapshot(core: Core): Promise<void> {
 async function handleMessage(
 	ws: WebSocket,
 	msg: ClientMessage,
-	core: Core,
 ): Promise<void> {
 	switch (msg.type) {
 		case "getProposals":
-			await sendSnapshot(ws, core);
+			await sendSnapshot(ws);
 			return;
 		case "getProposal": {
-			const proposal = await core.getProposal(String(msg.id ?? ""));
-			ws.send(safeStringify({ type: "proposal", data: proposal ?? null }));
+			const id = String(msg.id ?? "");
+			const rows = await query(
+				`SELECT * FROM roadmap_proposal.proposal
+				 WHERE id = $1 OR display_id = $1`,
+				[/^\d+$/.test(id) ? parseInt(id, 10) : id],
+			);
+			ws.send(safeStringify({ type: "proposal", data: rows.rows[0] ?? null }));
 			return;
 		}
 		case "getAgents": {
-			const snapshot = await buildSnapshot(core);
+			const agents = await loadAgents();
 			ws.send(
-				safeStringify({ type: "workforce_snapshot", data: snapshot.agents }),
+				safeStringify({ type: "workforce_snapshot", data: agents }),
 			);
 			return;
 		}
 		case "getChannels": {
-			const snapshot = await buildSnapshot(core);
-			ws.send(safeStringify({ type: "channels", data: snapshot.channels }));
+			const channels = await loadChannels();
+			ws.send(safeStringify({ type: "channels", data: channels }));
 			return;
 		}
 		case "getMessages": {
@@ -176,18 +194,12 @@ async function handleMessage(
 				typeof msg.channel === "string" && msg.channel.trim()
 					? msg.channel
 					: "public";
-			const result = await core.readMessages({ channel });
+			const messages = await loadMessages(channel);
 			ws.send(
 				safeStringify({
 					type: "messages",
 					channel,
-					data: result.messages.map((message, index) => ({
-						id: `${message.timestamp}-${index}`,
-						channelName: channel,
-						senderIdentity: message.from,
-						content: message.text,
-						timestamp: message.timestamp,
-					})),
+					data: messages,
 				}),
 			);
 			return;
@@ -196,14 +208,13 @@ async function handleMessage(
 			ws.send(
 				safeStringify({ type: "subscribed", channel: msg.channel ?? "public" }),
 			);
-			await sendSnapshot(ws, core);
+			await sendSnapshot(ws);
 			return;
 		case "createProposal":
 			ws.send(
 				safeStringify({
 					type: "error",
-					message:
-						"Creating proposals over the websocket bridge is not supported.",
+					message: "Creating proposals over the websocket bridge is not supported.",
 					code: "UNSUPPORTED",
 				}),
 			);
@@ -217,10 +228,8 @@ async function handleMessage(
 
 export function startWebSocketServer(
 	port = 3001,
-	projectRoot = process.cwd(),
 ): void {
 	const server = createServer();
-	const core = new Core(projectRoot, { enableWatchers: true });
 	let snapshotTimer: NodeJS.Timeout | null = null;
 
 	wss = new WebSocketServer({ server });
@@ -241,15 +250,15 @@ export function startWebSocketServer(
 		ws.send(
 			safeStringify({
 				type: "connected",
-				message: "Connected to roadmap bridge",
+				message: "Connected to roadmap bridge (Postgres)",
 			}),
 		);
-		void sendSnapshot(ws, core);
+		void sendSnapshot(ws);
 
 		ws.on("message", async (data: Buffer) => {
 			try {
 				const msg = JSON.parse(data.toString());
-				await handleMessage(ws, msg, core);
+				await handleMessage(ws, msg);
 			} catch {
 				ws.send(safeStringify({ type: "error", message: "Invalid message" }));
 			}
@@ -261,7 +270,7 @@ export function startWebSocketServer(
 	});
 
 	server.listen(port, () => {
-		console.log(`[WS] WebSocket server running on port ${port}`);
+		console.log(`[WS] WebSocket server running on port ${port} (Postgres)`);
 	});
 
 	server.on("error", (err: NodeJS.ErrnoException) => {
@@ -275,11 +284,31 @@ export function startWebSocketServer(
 		console.error("[WS] Server error:", err);
 	});
 
+	// Poll Postgres every 5s for updates
 	snapshotTimer = setInterval(() => {
-		void broadcastSnapshot(core).catch((error) => {
+		void broadcastSnapshot().catch((error) => {
 			console.error("[WS] Snapshot refresh failed:", error);
 		});
-	}, 3000);
+	}, 5000);
+
+	// Subscribe to pg_notify for real-time push
+	void (async () => {
+		try {
+			const pool = getPool();
+			const pgClient = await pool.connect();
+			await pgClient.query("LISTEN proposal_gate_ready");
+			await pgClient.query("LISTEN proposal_maturity_changed");
+			await pgClient.query("LISTEN transition_queued");
+			pgClient.on("notification", () => {
+				void broadcastSnapshot().catch((error) => {
+					console.error("[WS] pg_notify snapshot failed:", error);
+				});
+			});
+			console.log("[WS] Listening for pg_notify events");
+		} catch (error) {
+			console.warn("[WS] pg_notify setup failed, using poll-only mode:", error);
+		}
+	})();
 
 	process.on("exit", () => {
 		if (snapshotTimer) {
