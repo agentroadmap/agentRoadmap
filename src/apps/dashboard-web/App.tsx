@@ -30,11 +30,12 @@ import {
 } from "./hooks/useWebSocket";
 
 const STATUSES = [
-	"Draft",
-	"Review",
-	"Develop",
-	"Merge",
-	"Complete",
+	"DRAFT",
+	"REVIEW",
+	"DEVELOP",
+	"MERGE",
+	"COMPLETE",
+	"DEPLOYED",
 ];
 
 function toSharedProposal(proposal: WebSocketProposal): Proposal {
