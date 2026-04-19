@@ -1611,34 +1611,32 @@ export async function renderBoardTui(
 			renderView();
 		};
 
-		// V = show all columns
-		screen.key(["v", "V"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
-			previousVisibility = [...currentStatuses]; // Save current proposal
+	// V = show all columns / toggle restore
+	let vPressCount = 0;
+	screen.key(["v", "V"], () => {
+		if (popupOpen || filterPopupOpen || moveOp) return;
+		vPressCount++;
+		if (vPressCount === 1 && previousVisibility) {
+			// Restore previous visibility
+			hiddenColumns.clear();
+			currentStatuses.forEach((s) => {
+				if (!previousVisibility?.includes(s)) hiddenColumns.add(s);
+			});
+			applyColumnVisibility();
+			showTransientFooter(
+				" {green-fg}Previous column visibility restored{/}",
+			);
+		} else {
+			// Save current and show all
+			previousVisibility = [...currentStatuses];
 			hiddenColumns.clear();
 			applyColumnVisibility();
+			vPressCount = 0;
 			showTransientFooter(
 				" {green-fg}All columns shown{/} (V again to restore previous)",
 			);
-		});
-
-		// Press V again to restore previous visibility
-		let vPressCount = 0;
-		screen.key(["v", "V"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
-			vPressCount++;
-			if (vPressCount === 1 && previousVisibility) {
-				// Restore previous proposal
-				hiddenColumns.clear();
-				currentStatuses.forEach((s) => {
-					if (!previousVisibility?.includes(s)) hiddenColumns.add(s);
-				});
-				applyColumnVisibility();
-				showTransientFooter(
-					" {green-fg}Previous column visibility restored{/}",
-				);
-			}
-		});
+		}
+	});
 
 		// H = hide current (focused) column
 		screen.key(["h", "H"], () => {
@@ -2218,7 +2216,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["tab"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
 			const column = columns[currentCol];
 			if (column) {
 				const idx = column.list.selected ?? 0;
