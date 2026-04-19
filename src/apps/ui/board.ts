@@ -2321,9 +2321,8 @@ export async function renderBoardTui(
 		let feedThreadMode = false;
 		let _allFeedEvents: StreamEvent[] = []; // kept for thread mode rebuild
 		const getFeedPageSize = () => {
-			const pos = (eventPanel as any).lpos || (eventPanel as any)._getCoords?.();
-			if (pos) return Math.max((pos.yl - pos.yi - ((eventPanel as any).iheight || 2)), 5);
-			return 20;
+			// Use screen rows minus overhead (header=1, footer=2, borders=2)
+			return Math.max((screen.rows as number) - 5, 5);
 		};
 		const getFeedMaxWindowStart = () =>
 			Math.max(feedLines.length - getFeedPageSize(), 0);
@@ -2351,29 +2350,50 @@ export async function renderBoardTui(
 		const maturityIconMap: Record<string, string> = {
 			new: "○", active: "▶", mature: "✓", obsolete: "✖",
 		};
+		const stateColorMap: Record<string, string> = {
+			draft: "white", review: "yellow", develop: "cyan", merge: "magenta", complete: "green",
+			rejected: "red", discard: "gray", replaced: "blue", building: "cyan",
+		};
+		const maturityColorMap: Record<string, string> = {
+			new: "white", active: "cyan", mature: "green", obsolete: "red",
+		};
 		const getFeedIcon = (e: StreamEvent): string => {
 			// State transition: "P289 state draft -> review"
 			if (e.message.includes(" state ")) {
 				const m = e.message.match(/state\s+\S+\s+->\s+(\S+)/);
-				return m ? (stateIconMap[m[1].toLowerCase()] ?? "S") : "S";
+				if (m) {
+					const state = m[1].toLowerCase();
+					const icon = stateIconMap[state] ?? "S";
+					const color = stateColorMap[state] ?? "white";
+					return `{${color}-fg}${icon}{/}`;
+				}
+				return "S";
 			}
 			// Maturity transition: "P289 maturity new -> active"
 			if (e.message.includes(" maturity ")) {
 				const m = e.message.match(/maturity\s+\S+\s+->\s+(\S+)/);
-				return m ? (maturityIconMap[m[1].toLowerCase()] ?? "M") : "M";
+				if (m) {
+					const mat = m[1].toLowerCase();
+					const icon = maturityIconMap[mat] ?? "M";
+					const color = maturityColorMap[mat] ?? "white";
+					return `{${color}-fg}${icon}{/}`;
+				}
+				return "M";
 			}
-			// Other event types
-			const typeMap: Record<string, string> = {
-				proposal_accepted: "▣", proposal_claimed: "◆",
-				proposal_coding: "◒", review_requested: "?",
-				proposal_reviewing: "◆", review_passed: "✓",
-				review_failed: "✖", proposal_complete: "✓",
-				proposal_merged: "▣", proposal_pushed: "P",
-				agent_online: "+", agent_offline: "-",
-				heartbeat: "$", cubic_phase_change: "~",
-				custom: ".", message: "@",
+			// Other event types with colors
+			const typeMap: Record<string, [string, string]> = {
+				proposal_accepted: ["▣", "green"], proposal_claimed: ["◆", "yellow"],
+				proposal_coding: ["◒", "cyan"], review_requested: ["?", "yellow"],
+				proposal_reviewing: ["◆", "yellow"], review_passed: ["✓", "green"],
+				review_failed: ["✖", "red"], proposal_complete: ["✓", "green"],
+				proposal_merged: ["▣", "magenta"], proposal_pushed: ["P", "cyan"],
+				agent_online: ["+", "green"], agent_offline: ["-", "red"],
+				heartbeat: ["$", "gray"], cubic_phase_change: ["~", "blue"],
+				custom: [".", "white"], message: ["@", "cyan"],
 			};
-			return typeMap[e.type] || ".";
+			const entry = typeMap[e.type];
+			if (entry) return `{${entry[1]}-fg}${entry[0]}{/}`;
+			return `{white-fg}.{/}`;
 		};
 
 		const buildThreadLines = (events: StreamEvent[]): string[] => {
