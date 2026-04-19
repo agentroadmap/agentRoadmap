@@ -305,19 +305,19 @@ export async function createProposal(
 			start_stage: string | null;
 			valid_stages: string[];
 		}>(
-			`SELECT (
-				  SELECT ws2.stage_name
-				    FROM roadmap.workflow_stages ws2
-				   WHERE ws2.template_id = wt.id
-				   ORDER BY ws2.stage_order ASC, ws2.stage_name ASC
-				   LIMIT 1
-				) AS start_stage,
-			        ARRAY_AGG(ws.stage_name ORDER BY ws.stage_order, ws.stage_name) AS valid_stages
+		`SELECT (
+			  SELECT ws2.stage_name
+			    FROM roadmap.workflow_stages ws2
+			   WHERE ws2.template_id = wt.id
+			   ORDER BY ws2.stage_order ASC, ws2.stage_name ASC
+			   LIMIT 1
+			) AS start_stage,
+		        ARRAY_AGG(ws.stage_name ORDER BY ws.stage_order, ws.stage_name) AS valid_stages
 		       FROM roadmap_proposal.proposal_type_config ptc
 		       JOIN roadmap.workflow_templates wt ON wt.name = ptc.workflow_name
 		       JOIN roadmap.workflow_stages ws ON ws.template_id = wt.id
 		       WHERE ptc.type = $1
-		       GROUP BY ptc.type`,
+		       GROUP BY ptc.type, wt.id`,
 			[input.type],
 		);
 		const startStage = wfRows[0]?.start_stage ?? null;
@@ -475,9 +475,17 @@ export async function transitionProposal(
 	if (current.rows.length === 0) return null;
 	const fromState = current.rows[0].status;
 
-	// Gate guard: decision transitions require an explicit notes record
+	// Gate guard: all gated transitions require reason='decision' and non-empty notes.
+	// This is not conditional on the caller passing reason='decision' — gated paths
+	// always require an explicit decision record for auditability (P290).
 	const gateKey = `${fromState.toUpperCase()}→${toState.toUpperCase()}`;
-	if (GATE_TRANSITIONS.has(gateKey) && reason === "decision") {
+	if (GATE_TRANSITIONS.has(gateKey)) {
+		if (reason !== "decision") {
+			throw new Error(
+				`Gate transition ${gateKey} must use reason='decision'. ` +
+				`This transition requires an explicit gate review — submit a gate decision first.`,
+			);
+		}
 		if (!notes?.trim()) {
 			throw new Error(
 				`Gate transition ${gateKey} requires a decision record in 'notes' — ` +

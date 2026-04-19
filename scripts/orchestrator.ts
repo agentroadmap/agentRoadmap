@@ -664,18 +664,54 @@ async function releaseDispatchLease(
 	);
 }
 
+// Maps each gate to the dispatch role that should review it and a framing line
+// for the task. D1 uses a skeptic to challenge Draft RFCs; D2 uses an architect
+// to validate design; D3 uses a skeptic to review implementation; D4 validates
+// integration and deployment readiness.
+const GATE_ROLES: Record<string, { role: string; framing: string }> = {
+	D1: {
+		role: "skeptic-alpha",
+		framing:
+			"You are SKEPTIC ALPHA. Challenge this Draft RFC hard. Demand evidence. Question every assumption. " +
+			"Verify ACs are measurable and complete. Only advance if the RFC is coherent, economically sound, and structurally ready for Review.",
+	},
+	D2: {
+		role: "architecture-reviewer",
+		framing:
+			"You are the Architecture Reviewer. Validate design completeness, scalability, integration constraints, and dependency health. " +
+			"Only advance if the proposal is ready to be built.",
+	},
+	D3: {
+		role: "skeptic-beta",
+		framing:
+			"You are SKEPTIC BETA. Review implementation quality: test coverage, error handling, edge cases, and AC verification. " +
+			"Only advance if all ACs are met and the implementation is production-ready.",
+	},
+	D4: {
+		role: "gate-reviewer",
+		framing:
+			"You are the Integration Reviewer. Validate that the merge is clean, tests pass, and the feature is deployable. " +
+			"Only advance if the integration is stable.",
+	},
+};
+
+function gateRole(gate: GateDefinition): string {
+	return GATE_ROLES[gate.gate]?.role ?? "gate-reviewer";
+}
+
 function buildImplicitGateTask(
 	proposal: GateReadyProposal,
 	gate: GateDefinition,
 ): string {
+	const roleConfig = GATE_ROLES[gate.gate];
 	return [
-		`Process implicit maturity gate ${gate.gate} for ${proposal.display_id}.`,
+		roleConfig ? roleConfig.framing : `Process implicit maturity gate ${gate.gate} for ${proposal.display_id}.`,
 		"",
 		`Proposal: ${proposal.display_id}`,
 		`Title: ${proposal.title}`,
 		`Current state: ${proposal.status}`,
 		`Current maturity: ${proposal.maturity}`,
-		`Successful transition: ${proposal.status} -> ${gate.toStage}`,
+		`Target transition: ${proposal.status} -> ${gate.toStage}`,
 		"",
 		proposal.summary ? `Summary: ${proposal.summary}` : null,
 		"",
@@ -783,11 +819,12 @@ async function dispatchImplicitGate(
 	await ensureAgentIdentity("orchestrator", "State Machine Orchestrator");
 	await ensureAgentIdentity(worktree, "Gate Executor");
 
+	const role = gateRole(gate);
 	const { rows: dispatchRows } = await query<{ id: number }>(
 		`INSERT INTO roadmap_workforce.squad_dispatch
        (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
         assigned_by, metadata)
-     VALUES ($1, $2, $3, 'gate-reviewer', 'active', 'orchestrator',
+     VALUES ($1, $2, $3, $8, 'active', 'orchestrator',
        jsonb_build_object(
          'source', 'implicit_maturity_gating',
          'reason', $4::text,
@@ -804,6 +841,7 @@ async function dispatchImplicitGate(
 			gate.gate,
 			proposal.status,
 			gate.toStage,
+			role,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;
