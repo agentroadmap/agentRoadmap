@@ -1563,6 +1563,28 @@ export async function renderBoardTui(
 			screen.render();
 		});
 
+		screen.key(["t", "T"], () => {
+			if (popupOpen || filterPopupOpen || moveOp || currentFocus === "filters")
+				return;
+			feedThreadMode = !feedThreadMode;
+			if (feedThreadMode) {
+				// Rebuild feed as threads from accumulated events
+				feedLines = buildThreadLines(_allFeedEvents);
+			} else {
+				// Rebuild as flat chronological list
+				feedLines = _allFeedEvents.map(formatEventLine);
+			}
+			feedPinnedToLatest = true;
+			feedWindowStart = getFeedMaxWindowStart();
+			renderFeedPanel();
+			showTransientFooter(
+				feedThreadMode
+					? " {cyan-fg}Thread mode: grouped by proposal{/}"
+					: " {cyan-fg}Chronological mode{/}",
+			);
+			screen.render();
+		});
+
 		screen.key(["p", "P"], () => {
 			if (popupOpen || filterPopupOpen || moveOp) return;
 			void openFilterPicker("priority");
@@ -2293,6 +2315,8 @@ export async function renderBoardTui(
 		const FEED_HISTORY_LIMIT = 500;
 		let feedWindowStart = 0;
 		let feedPinnedToLatest = true;
+		let feedThreadMode = false;
+		let _allFeedEvents: StreamEvent[] = []; // kept for thread mode rebuild
 		const getFeedMaxWindowStart = () =>
 			Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 		const renderFeedPanel = () => {
@@ -2309,6 +2333,107 @@ export async function renderBoardTui(
 					: "{gray-fg}No recent feed items{/}",
 			);
 		};
+		// Board-style icons matching status-icon.ts
+		const stateIconMap: Record<string, string> = {
+			draft: "○", review: "◆", develop: "◒", merge: "▣", complete: "✓",
+			rejected: "✖", discard: "●", replaced: "⇄", building: "◒",
+			accepted: "▣", abandoned: "●", obsolete: "✖", blocked: "●",
+		};
+		const maturityIconMap: Record<string, string> = {
+			new: "○", active: "▶", mature: "✓", obsolete: "✖",
+		};
+		const getFeedIcon = (e: StreamEvent): string => {
+			// State transition: "P289 state draft -> review"
+			if (e.message.includes(" state ")) {
+				const m = e.message.match(/state\s+\S+\s+->\s+(\S+)/);
+				return m ? (stateIconMap[m[1].toLowerCase()] ?? "S") : "S";
+			}
+			// Maturity transition: "P289 maturity new -> active"
+			if (e.message.includes(" maturity ")) {
+				const m = e.message.match(/maturity\s+\S+\s+->\s+(\S+)/);
+				return m ? (maturityIconMap[m[1].toLowerCase()] ?? "M") : "M";
+			}
+			// Other event types
+			const typeMap: Record<string, string> = {
+				proposal_accepted: "▣", proposal_claimed: "◆",
+				proposal_coding: "◒", review_requested: "?",
+				proposal_reviewing: "◆", review_passed: "✓",
+				review_failed: "✖", proposal_complete: "✓",
+				proposal_merged: "▣", proposal_pushed: "P",
+				agent_online: "+", agent_offline: "-",
+				heartbeat: "$", cubic_phase_change: "~",
+				custom: ".", message: "@",
+			};
+			return typeMap[e.type] || ".";
+		};
+
+		const buildThreadLines = (events: StreamEvent[]): string[] => {
+			const byProposal = new Map<string, StreamEvent[]>();
+			const global: StreamEvent[] = [];
+			for (const e of events) {
+				if (e.proposalId) {
+					const arr = byProposal.get(e.proposalId);
+					if (arr) arr.push(e);
+					else byProposal.set(e.proposalId, [e]);
+				} else {
+					global.push(e);
+				}
+			}
+			const lines: string[] = [];
+			// Sort proposals by most recent event first
+			const sortedEntries = [...byProposal.entries()].sort((a, b) => {
+				const lastA = Math.max(...a[1].map((e) => e.timestamp));
+				const lastB = Math.max(...b[1].map((e) => e.timestamp));
+				return lastB - lastA;
+			});
+			for (const [pid, evts] of sortedEntries) {
+				// Proposal header with latest state icon
+				const latestState = evts.reduce((best, e) => {
+					if (e.message.includes(" state ")) {
+						const m = e.message.match(/state\s+\S+\s+->\s+(\S+)/);
+						if (m && e.timestamp > best.ts) return { state: m[1], ts: e.timestamp };
+					}
+					return best;
+				}, { state: "", ts: 0 });
+				const headerIcon = latestState.state
+					? (stateIconMap[latestState.state.toLowerCase()] ?? "○")
+					: "○";
+				lines.push(
+					`{white-bg}{black-fg} ${headerIcon} ${pid} {/} {gray-fg}(${evts.length} events){/}`,
+				);
+				for (const e of evts) {
+					const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+						hour: "2-digit", minute: "2-digit", second: "2-digit",
+					});
+					const icon = getFeedIcon(e);
+					// Indent thread items
+					lines.push(`  {cyan-fg}${time}{/} ${icon} ${e.message}`);
+				}
+				lines.push(""); // blank line between threads
+			}
+			if (global.length > 0) {
+				lines.push(
+					"{white-bg}{black-fg} $ global {/} {gray-fg}(" + global.length + " events){/}",
+				);
+				for (const e of global) {
+					const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+						hour: "2-digit", minute: "2-digit", second: "2-digit",
+					});
+					const icon = getFeedIcon(e);
+					lines.push(`  {cyan-fg}${time}{/} ${icon} ${e.message}`);
+				}
+			}
+			return lines;
+		};
+
+		const formatEventLine = (e: StreamEvent): string => {
+			const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+				hour: "2-digit", minute: "2-digit", second: "2-digit",
+			});
+			const icon = getFeedIcon(e);
+			return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
+		};
+
 		const updateEventPanel = async () => {
 			const events = await getBoardLiveFeed(30);
 			_currentEvents = events;
@@ -2321,40 +2446,27 @@ export async function renderBoardTui(
 				seenFeedEventIds.add(event.id);
 			}
 
-			const formattedLines = unseenEvents
-				.slice()
-				.reverse()
-				.map((e) => {
-				const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-				});
-				const icon =
-					{
-						proposal_accepted: "+",
-						proposal_claimed: "C",
-						proposal_coding: ">",
-						review_requested: "?",
-						proposal_reviewing: "R",
-						review_passed: "✓",
-						review_failed: "!",
-						proposal_complete: "*",
-						proposal_merged: "M",
-						proposal_pushed: "P",
-						agent_online: "+",
-						agent_offline: "-",
-						handoff: "S",
-						heartbeat: "$",
-						cubic_phase_change: "~",
-						custom: ".",
-						message: "@",
-					}[e.type] || ".";
-				return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
-			});
-			feedLines = [...feedLines, ...formattedLines].slice(
-				-FEED_HISTORY_LIMIT,
-			);
+			// Accumulate all events for thread mode rebuild
+			for (const e of unseenEvents) {
+				if (!_allFeedEvents.find((x) => x.id === e.id)) {
+					_allFeedEvents.push(e);
+				}
+			}
+			_allFeedEvents.sort((a, b) => a.timestamp - b.timestamp);
+			if (_allFeedEvents.length > FEED_HISTORY_LIMIT) {
+				_allFeedEvents = _allFeedEvents.slice(-FEED_HISTORY_LIMIT);
+			}
+
+			if (feedThreadMode) {
+				// Rebuild entire thread view from accumulated events
+				feedLines = buildThreadLines(_allFeedEvents);
+			} else {
+				const newLines = unseenEvents
+					.slice()
+					.reverse()
+					.map(formatEventLine);
+				feedLines = [...feedLines, ...newLines].slice(-FEED_HISTORY_LIMIT);
+			}
 			if (feedPinnedToLatest) {
 				feedWindowStart = getFeedMaxWindowStart();
 			} else {
