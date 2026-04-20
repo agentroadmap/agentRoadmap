@@ -967,7 +967,7 @@ export async function renderBoardTui(
 		};
 
 		// Mouse wheel on feed panel
-		eventPanel.on("wheeldown", () => {
+		eventPanel.on("element wheeldown", () => {
 			if (feedOnlyMode || feedThreadMode) return;
 			feedPinnedToLatest = false;
 			const pageSize = getFeedPageSize();
@@ -978,7 +978,7 @@ export async function renderBoardTui(
 			renderFeedPanel();
 			screen.render();
 		});
-		eventPanel.on("wheelup", () => {
+		eventPanel.on("element wheelup", () => {
 			if (feedOnlyMode || feedThreadMode) return;
 			feedPinnedToLatest = false;
 			feedWindowStart = Math.max(feedWindowStart - 3, 0);
@@ -1051,7 +1051,7 @@ export async function renderBoardTui(
 				});
 
 				// Mouse wheel on column lists
-				proposalList.on("wheeldown", () => {
+				proposalList.on("element wheeldown", () => {
 					const sel = proposalList.selected ?? 0;
 					const total = columnData.proposals.length;
 					if (sel < total - 1) {
@@ -1060,7 +1060,7 @@ export async function renderBoardTui(
 						screen.render();
 					}
 				});
-				proposalList.on("wheelup", () => {
+				proposalList.on("element wheelup", () => {
 					const sel = proposalList.selected ?? 0;
 					if (sel > 0) {
 						proposalList.select(sel - 1);
@@ -1069,16 +1069,24 @@ export async function renderBoardTui(
 					}
 				});
 
-				// Double-click to edit title
-				proposalList.on("element doubleClick", async () => {
-					if (popupOpen || filterPopupOpen) return;
-					const sel = proposalList.selected ?? 0;
-					const proposal = columnData.proposals[sel];
-					if (proposal) await openQuickEdit(proposal, "title");
+				// Double-click detection (manual — no built-in dblclick)
+				let lastClickTime = 0;
+				proposalList.on("element click", async () => {
+					const now = Date.now();
+					if (now - lastClickTime < 400) {
+						// Double-click — edit title
+						if (popupOpen || filterPopupOpen) return;
+						const sel = proposalList.selected ?? 0;
+						const proposal = columnData.proposals[sel];
+						if (proposal) await openQuickEdit(proposal, "title");
+						lastClickTime = 0;
+					} else {
+						lastClickTime = now;
+					}
 				});
 
 				// Drag start: mousedown remembers proposal
-				proposalList.on("element mousedown", () => {
+				proposalList.on("mousedown", () => {
 					if (popupOpen || filterPopupOpen || moveOp) return;
 					const sel = proposalList.selected ?? 0;
 					const proposal = columnData.proposals[sel];
