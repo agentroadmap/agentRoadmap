@@ -1232,6 +1232,7 @@ export async function createMcpServer(
 	// P289: Workforce management tools (agency registration, provider registry, dispatches)
 	const workforce = await import("./tools/workforce/handlers.ts");
 	const workforceSchemas = await import("./tools/workforce/schemas.ts");
+	const smHandlers = await import("./tools/workforce/state-machine-handlers.ts");
 	server.addTool({
 		name: "agency_register",
 		description: "Register an agency (long-lived identity) in agent_registry. Call this first before registering as a provider.",
@@ -1255,6 +1256,44 @@ export async function createMcpServer(
 		description: "Register an ephemeral worker agent under a parent agency. Called on spawn.",
 		inputSchema: workforceSchemas.workerRegisterSchema,
 		handler: (a) => workforce.workerRegisterHandler(a),
+	});
+
+	// P297: State machine management tools
+	server.addTool({
+		name: "state_machine_start",
+		description: "Start orchestrator and gate-pipeline services",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStartHandler({}),
+	});
+	server.addTool({
+		name: "state_machine_stop",
+		description: "Stop orchestrator and gate-pipeline services",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStopHandler({}),
+	});
+	server.addTool({
+		name: "state_machine_status",
+		description: "Show state machine status: services, agencies, offers, active dispatches",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStatusHandler({}),
+	});
+	server.addTool({
+		name: "agencies_list",
+		description: "List registered agencies and their capabilities",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.agenciesListHandler({}),
+	});
+	server.addTool({
+		name: "offers_list",
+		description: "List dispatch offers, optionally filtered by status",
+		inputSchema: {
+			type: "object",
+			properties: {
+				status: { type: "string", enum: ["open", "claimed", "active", "delivered", "failed", "expired"] },
+			},
+			additionalProperties: false,
+		},
+		handler: (a) => smHandlers.offersListHandler(a),
 	});
 
 	// Start background maintenance tasks

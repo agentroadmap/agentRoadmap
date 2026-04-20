@@ -92,6 +92,7 @@ import { configureAdvancedSettings } from "./commands/configure-advanced-setting
 import { registerCubicCommand } from "./commands/cubic-cli.ts";
 import { runDocsCommand } from "./commands/docs.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
+import { registerStateMachineCommand } from "./commands/state-machine.ts";
 import {
 	pickProposalForEditWizard,
 	runProposalCreateWizard,
@@ -6511,6 +6512,9 @@ program.addCommand(sandboxCommand);
 
 // Cubic management
 registerCubicCommand(program);
+
+// State machine management
+registerStateMachineCommand(program);
 
 program.parseAsync(process.argv).finally(() => {
 	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
