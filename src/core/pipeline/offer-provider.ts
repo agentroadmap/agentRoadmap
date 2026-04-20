@@ -295,42 +295,33 @@ export class OfferProvider {
 	}
 
 	// P297: Register this agency in agent_registry + agent_capability
+	// Capabilities are read from agent_capability table (DB), not from env/config.
+	// If no capabilities exist yet, register with empty set (can claim offers with no capability requirement).
 	private async registerAgency(): Promise<void> {
 		try {
-			// Parse capabilities from the JSON string
-			let caps: string[] = [];
-			try {
-				const parsed = JSON.parse(this.capabilitiesJson);
-				caps = parsed.all ?? [];
-			} catch { /* empty capabilities */ }
-
-			// Upsert agency in agent_registry
+			// Upsert agency in agent_registry (no skills — capabilities live in agent_capability)
 			await this.queryFn(
 				`INSERT INTO roadmap_workforce.agent_registry
-				 (agent_identity, agent_type, status, skills)
-				 VALUES ($1, 'agency', 'active', $2::jsonb)
+				 (agent_identity, agent_type, status)
+				 VALUES ($1, 'agency', 'active')
 				 ON CONFLICT (agent_identity) DO UPDATE SET
 				   status = 'active',
-				   skills = EXCLUDED.skills,
 				   updated_at = now()`,
-				[this.agentIdentity, this.capabilitiesJson],
+				[this.agentIdentity],
 			);
 
-			// Insert capabilities into agent_capability (one row per cap)
-			if (caps.length > 0) {
-				await this.queryFn(
-					`INSERT INTO roadmap_workforce.agent_capability (agent_id, capability)
-					 SELECT ar.id, cap.val
-					 FROM roadmap_workforce.agent_registry ar
-					 CROSS JOIN unnest($2::text[]) AS cap(val)
-					 WHERE ar.agent_identity = $1
-					 ON CONFLICT DO NOTHING`,
-					[this.agentIdentity, caps],
-				);
-			}
+			// Read existing capabilities from DB (pre-configured by operator or MCP)
+			const capsResult = await this.queryFn(
+				`SELECT ac.capability
+				 FROM roadmap_workforce.agent_capability ac
+				 JOIN roadmap_workforce.agent_registry ar ON ar.id = ac.agent_id
+				 WHERE ar.agent_identity = $1`,
+				[this.agentIdentity],
+			);
+			const caps: string[] = capsResult.rows.map((r: any) => r.capability);
 
 			this.logger.log(
-				`[OfferProvider] Agency registered: ${this.agentIdentity} (caps: ${caps.join(", ") || "none"})`,
+				`[OfferProvider] Agency registered: ${this.agentIdentity} (caps: ${caps.join(", ") || "none — configure via agent_capability table"})`,
 			);
 		} catch (err) {
 			this.logger.error(`[OfferProvider] registerAgency ${this.agentIdentity} error:`, err);

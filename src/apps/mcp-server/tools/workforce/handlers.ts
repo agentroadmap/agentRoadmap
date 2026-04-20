@@ -13,14 +13,13 @@ export const agencyRegisterHandler: ToolHandler = async (args) => {
 	// Register in agent_registry
 	const result = await query(
 		`INSERT INTO roadmap_workforce.agent_registry
-		 (agent_identity, agent_type, status, preferred_provider, preferred_model, skills)
-		 VALUES ($1, $2, 'active', $3, $4, $5::jsonb)
+		 (agent_identity, agent_type, status, preferred_provider, preferred_model)
+		 VALUES ($1, $2, 'active', $3, $4)
 		 ON CONFLICT (agent_identity) DO UPDATE SET
 		   agent_type = EXCLUDED.agent_type,
 		   status = 'active',
 		   preferred_provider = EXCLUDED.preferred_provider,
 		   preferred_model = EXCLUDED.preferred_model,
-		   skills = EXCLUDED.skills,
 		   updated_at = now()
 		 RETURNING id, agent_identity, agent_type`,
 		[
@@ -28,16 +27,26 @@ export const agencyRegisterHandler: ToolHandler = async (args) => {
 			agentType,
 			provider ?? null,
 			model ?? null,
-			JSON.stringify({ all: skills ?? [] }),
 		],
 	);
 
 	const row = result.rows[0];
+
+	// Insert capabilities into agent_capability (used by fn_claim_work_offer)
+	if (skills && skills.length > 0) {
+		await query(
+			`INSERT INTO roadmap_workforce.agent_capability (agent_id, capability)
+			 SELECT $1, unnest($2::text[])
+			 ON CONFLICT DO NOTHING`,
+			[row.id, skills],
+		);
+	}
+
 	return {
 		content: [
 			{
 				type: "text" as const,
-				text: `Agency registered: ${row.agent_identity} (${row.agent_type}, id=${row.id})`,
+				text: `Agency registered: ${row.agent_identity} (${row.agent_type}, id=${row.id}) — caps: ${skills?.join(", ") || "none"}`,
 			},
 		],
 	};
