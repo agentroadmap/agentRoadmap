@@ -1296,6 +1296,77 @@ export async function createMcpServer(
 		handler: (a) => smHandlers.offersListHandler(a),
 	});
 
+	// P297: Project management tools (multi-project agency routing)
+	const projectHandlers = await import("./tools/workforce/project-handlers.ts");
+	server.addTool({
+		name: "project_list",
+		description: "List all projects with agency counts",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => projectHandlers.projectListHandler({}),
+	});
+	server.addTool({
+		name: "project_create",
+		description: "Create a new project",
+		inputSchema: {
+			type: "object",
+			properties: {
+				name: { type: "string", description: "Project name (unique)" },
+				description: { type: "string", description: "What this project is about" },
+				owner: { type: "string", description: "Who created it" },
+			},
+			required: ["name"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectCreateHandler(a),
+	});
+	server.addTool({
+		name: "project_join",
+		description: "Agency joins a project. Call agency_register first.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agencyIdentity: { type: "string", description: "Agency identity" },
+				projectName: { type: "string", description: "Project to join" },
+				capabilities: { type: "array", items: { type: "string" }, description: "Caps for this project" },
+			},
+			required: ["agencyIdentity", "projectName"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectJoinHandler(a),
+	});
+	server.addTool({
+		name: "project_leave",
+		description: "Agency leaves a project",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agencyIdentity: { type: "string" },
+				projectName: { type: "string" },
+			},
+			required: ["agencyIdentity", "projectName"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectLeaveHandler(a),
+	});
+	server.addTool({
+		name: "project_agencies",
+		description: "List agencies in a project (or all projects)",
+		inputSchema: {
+			type: "object",
+			properties: {
+				projectName: { type: "string", description: "Filter by project name" },
+			},
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectAgenciesHandler(a),
+	});
+	server.addTool({
+		name: "project_overview",
+		description: "Full overview: all projects with their agencies and capabilities",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => projectHandlers.projectOverviewHandler({}),
+	});
+
 	// Start background maintenance tasks
 	const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 	setInterval(async () => {
