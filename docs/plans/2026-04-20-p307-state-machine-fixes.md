@@ -16,7 +16,7 @@
 
 | Bug | Lines | Issue |
 |-----|-------|-------|
-| B1 | 88, 124, 140 | `PGPASSWORD=***` literal — never interpolates `pgPass` variable |
+| B1 | 88, 124, 140 | `PGPASSWORD=*** literal — never interpolates `pgPass` variable |
 | B2 | 88, 124, 140 | `-U admin` — no `admin` user exists (valid: xiaomi, andy, claude) |
 | B3 | 87, 122, 138 | `pgPass` declared 3 times, never used |
 | B4 | 8 | Help text documents `sm register` — no handler exists |
@@ -52,14 +52,14 @@ for (const r of result.rows) { ... }
 
 At top of file, add after existing imports:
 ```typescript
-import { query } from "../../infra/postgres/pool.ts";
+import { query } from "../../../infra/postgres/pool.ts";
 ```
 
 **Step 2: Rewrite status action handler**
 
 Replace lines 76-117 (the status action). The current code:
 - Line 87: declares `pgPass` (unused)
-- Line 88: builds `psql` string with `PGPASSWORD=***` and `-U admin`
+- Line 88: builds `psql` string with `PGPASSWORD=*** and `-U admin`
 - Lines 91-116: shells out 3 times for agencies, offers, dispatches
 
 Replace with async handler that uses `query()`:
@@ -305,7 +305,77 @@ Refs: P307"
 
 ---
 
-### Task 5: Verify all changes work together
+### Task 6: Fix pool.ts bugs (same root cause chain)
+
+**Objective:** Fix 3 bugs in pool.ts that compound the state-machine credential issues.
+
+**Files:**
+- Modify: `src/infra/postgres/pool.ts`
+
+**Step 1: Fix line 44 — literal *** instead of match[1].trim()**
+
+Replace:
+```typescript
+process.env.PG_PASSWORD=***
+```
+With:
+```typescript
+process.env.PG_PASSWORD = match[1].trim();
+```
+
+This is the root cause of the sentinel `***` being loaded as the actual password. The `.env` file has `PG_PASSWORD=***` as a placeholder, and the code loads the literal string instead of extracting the matched value.
+
+**Step 2: Fix line 168 — default user "admin"**
+
+Replace:
+```typescript
+config?.user ?? process.env.PG_USER ?? databaseUrlConfig.user ?? "admin",
+```
+With:
+```typescript
+config?.user ?? process.env.PG_USER ?? databaseUrlConfig.user ?? "xiaomi",
+```
+
+**Step 3: Fix line 266 — truncated variable name**
+
+Replace:
+```typescript
+process.env.__PG_PASSWORD_FROM_CONFIG=dbConf...ord;
+```
+With:
+```typescript
+process.env.__PG_PASSWORD_FROM_CONFIG = dbConfig.password;
+```
+
+**Step 4: Fix line 276 — default user "admin" in initPoolFromConfig**
+
+Replace:
+```typescript
+user: dbConfig.user ?? process.env.PG_USER ?? "admin",
+```
+With:
+```typescript
+user: dbConfig.user ?? process.env.PG_USER ?? "xiaomi",
+```
+
+**Step 5: Verify compilation** Run: `cd /data/code/AgentHive && npx tsc --noEmit src/infra/postgres/pool.ts 2>&1 | head -20`
+
+**Step 6: Commit**
+
+```bash
+git add src/infra/postgres/pool.ts
+git commit -m "fix(pool): literal ***, truncated var, wrong default user
+
+- Line 44: match[1].trim() instead of literal ***
+- Line 266: dbConfig.password instead of dbConf...ord
+- Lines 168/276: default user xiaomi instead of admin
+
+Refs: P307"
+```
+
+---
+
+### Task 7: Verify all changes work together
 
 **Objective:** Full integration test of the rewritten CLI.
 
@@ -320,7 +390,7 @@ Expected: No errors from state-machine.ts.
 **Step 2: Review final file**
 
 Read the full file to verify:
-- No `PGPASSWORD=***` literals remain
+- No `PGPASSWORD=*** literals remain
 - No `-U admin` remains
 - No unused `pgPass` variables
 - All DB queries use `await query()` from pool.ts
@@ -360,6 +430,12 @@ Refs: P307"
 | `pgPass` declared but unused | Removed |
 | `run()` swallows errors | `run()` logs stderr |
 | `register` in help, no handler | Removed from help |
-| 151 lines, 3 psql shell-outs | ~145 lines, 0 shell-outs |
+| pool.ts: literal `***` loaded as password | `match[1].trim()` |
+| pool.ts: truncated `dbConf...ord` | `dbConfig.password` |
+| pool.ts: default user `admin` | default user `xiaomi` |
+
+**Files changed:** `src/apps/commands/state-machine.ts` + `src/infra/postgres/pool.ts`
 
 The fix mirrors the working pattern in `state-machine-handlers.ts` which already uses `query()` from pool.ts for identical queries. No new dependencies, no schema changes, no MCP tool changes needed.
+
+**Architect note (2026-04-20):** The original plan only covered state-machine.ts (5 tasks). During review, 3 additional pool.ts bugs were discovered as part of the same root cause chain: literal `***` loading (line 44), truncated variable (line 266), and wrong default user (lines 168, 276). These are now included as Task 6. Total: 7 tasks.

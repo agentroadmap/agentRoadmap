@@ -13,16 +13,16 @@ mcp:
   port: 6421
   transport: sse
 proposals:
-  default_status: Draft
+  default_status: DRAFT
   statuses:
-    - Draft
-    - Review
-    - Develop
-    - Merge
-    - Complete
-    - Rejected
-    - Abandoned
-    - Replaced
+    - DRAFT
+    - REVIEW
+    - DEVELOP
+    - MERGE
+    - COMPLETE
+    - REJECTED
+    - ABANDONED
+    - REPLACED
   labels:
     - feature
     - bugfix

@@ -30,6 +30,7 @@ const spawnAdapter =
 				stage: string;
 				model?: string;
 				timeoutMs?: number;
+				agentLabel?: string;
 			}) =>
 				spawnAgent({
 					worktree: request.worktree,
@@ -43,6 +44,7 @@ const spawnAdapter =
 					stage: request.stage,
 					model: request.model,
 					timeoutMs: request.timeoutMs,
+					agentLabel: request.agentLabel,
 				})
 		: undefined;
 
