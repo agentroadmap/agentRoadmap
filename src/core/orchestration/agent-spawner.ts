@@ -65,6 +65,8 @@ export interface SpawnRequest {
 	timeoutMs?: number;
 	/** P300: Project-aware worktree root (defaults to WORKTREE_ROOT) */
 	worktreeRoot?: string;
+	/** Display label for context package (e.g. "worker-4620 (skeptic-alpha)") */
+	agentLabel?: string;
 }
 
 export interface SpawnResult {
@@ -692,7 +694,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		const contextPackage = await buildProposalContextPackage({
 			proposalId,
 			taskType: stage ?? "unknown",
-			agentIdentity: worktree,
+			agentIdentity: req.agentLabel ?? worktree,
 			maxTokens: 2000,
 		});
 		assembledTask = `${contextPackage}\n\n## Task\n${task}`;
@@ -720,7 +722,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		[
 			proposalId ?? null,
 			`wt:${worktree}`,
-			worktree,
+			req.agentLabel ?? worktree,
 			stage ?? "unknown",
 			route.modelName,
 		],

@@ -334,11 +334,14 @@ export async function createProposal(
 			// No workflow configured — accept provided status as-is
 			initialStatus = input.status;
 		} else {
-			// No status provided — use workflow start stage or default
-			initialStatus = startStage ?? "Draft";
-		}
+		// No status provided — use workflow start stage or default
+		initialStatus = startStage ?? "Draft";
+	}
 
-		const { rows } = await client.query<ProposalRow>(
+	// P306: Normalize status to UPPERCASE before INSERT (belt-and-suspenders with DB trigger)
+	initialStatus = initialStatus.toUpperCase();
+
+	const { rows } = await client.query<ProposalRow>(
 			`INSERT INTO roadmap_proposal.proposal (
       display_id, type, status, title, parent_id, summary, motivation, design,
       drawbacks, alternatives, dependency, priority, tags, required_capabilities, audit

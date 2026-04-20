@@ -610,7 +610,7 @@ async function handleStateChange(proposalId: string, _newState: string) {
 
 	// Create open offers for each agent in the squad
 	for (const role of agents) {
-		const requiredCaps = { capabilities: [role] };
+		const requiredCaps = roleToCapabilities(role);
 		try {
 		const { rows: dispatchRows } = await query<{ id: number }>(
 			`INSERT INTO roadmap_workforce.squad_dispatch
@@ -788,6 +788,35 @@ const GATE_ROLES: Record<string, { role: string; framing: string }> = {
 	},
 };
 
+// Map dispatch roles to required capabilities for offer matching.
+// Returns {"all": ["cap1", "cap2"]} — an agency needs ALL listed caps to claim.
+// Empty array = any agency can claim (no capability requirement).
+function roleToCapabilities(role: string): Record<string, string[]> {
+	const ROLE_CAP_MAP: Record<string, string[]> = {
+		"developer": ["code"],
+		"senior-developer": ["code"],
+		"architect": ["design"],
+		"reviewer": ["review"],
+		"gate-reviewer": ["review"],
+		"tester": ["testing"],
+		"devops": ["devops"],
+		"pm": ["management"],
+		"skeptic": ["review"],
+		"skeptic-alpha": ["design", "review"],
+		"skeptic-beta": ["review"],
+		"architecture-reviewer": ["design", "review"],
+		"researcher": ["research"],
+		"documenter": ["docs"],
+		"triage-agent": ["triage"],
+		"fix-agent": ["code"],
+		"merge-agent": ["code"],
+		"enhancer": ["code"],
+	};
+
+	const mapped = ROLE_CAP_MAP[role.toLowerCase()];
+	return mapped && mapped.length > 0 ? { all: [...mapped] } : {};
+}
+
 function gateRole(gate: GateDefinition): string {
 	return GATE_ROLES[gate.gate]?.role ?? "gate-reviewer";
 }
@@ -856,7 +885,7 @@ async function claimImplicitGateReady(
           LIMIT 1
        ) dispatch ON true
       WHERE p.maturity = 'mature'
-        AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge')
+        AND p.status IN ('DRAFT', 'REVIEW', 'DEVELOP', 'MERGE')
         AND ($1::bigint IS NULL OR p.id = $1)
       ORDER BY p.modified_at ASC, p.id ASC
       LIMIT $2`,
@@ -896,7 +925,7 @@ async function dispatchImplicitGate(
 	const role = gateRole(gate);
 	const task = buildImplicitGateTask(proposal, gate);
 	const squadName = `gate-${proposal.display_id}-${gate.gate}`;
-	const requiredCaps = { capabilities: [role] };
+	const requiredCaps = roleToCapabilities(role);
 
 const { rows: dispatchRows } = await query<{ id: number }>(
 	`INSERT INTO roadmap_workforce.squad_dispatch

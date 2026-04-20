@@ -27,6 +27,7 @@ export type SpawnFn = (req: {
 	stage?: string;
 	model?: string;
 	timeoutMs?: number;
+	agentLabel?: string;
 }) => Promise<SpawnResult>;
 
 export interface ListenerClient {
@@ -257,6 +258,7 @@ export class OfferProvider {
 				stage,
 				model,
 				timeoutMs,
+				agentLabel: `worker-${dispatch_id} (${dispatch_role})`,
 			});
 		} catch (err) {
 			spawnError = err instanceof Error ? err : new Error(String(err));

@@ -42,7 +42,7 @@ async function printPipelineSummary() {
 		`SELECT status, COUNT(*)::text AS count
 		 FROM roadmap_proposal.proposal
 		 WHERE maturity = 'mature'
-		   AND LOWER(status) IN ('draft', 'review', 'develop', 'merge')
+		   AND status IN ('DRAFT', 'REVIEW', 'DEVELOP', 'MERGE')
 		 GROUP BY status
 		 ORDER BY status`,
 		[],
@@ -102,7 +102,7 @@ async function bootstrapDevelopStage() {
 	const { rows } = await query<ProposalRow>(
 		`SELECT id, display_id, title, status, maturity
 		 FROM roadmap_proposal.proposal
-		 WHERE LOWER(status) = 'develop' AND maturity IN ('new', 'active')
+	 WHERE status = 'DEVELOP' AND maturity IN ('new', 'active')
 		 ORDER BY id`,
 		[],
 	);
