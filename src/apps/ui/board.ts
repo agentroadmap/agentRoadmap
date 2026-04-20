@@ -711,6 +711,7 @@ export async function renderBoardTui(
 			label: " 📰 Feed ",
 			style: { border: { fg: "cyan" } },
 			tags: true,
+			mouse: true,
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
@@ -965,7 +966,6 @@ export async function renderBoardTui(
 			);
 		};
 
-		eventPanel.mouse = true;
 		// Mouse wheel on feed panel
 		eventPanel.on("wheeldown", () => {
 			if (feedOnlyMode || feedThreadMode) return;
