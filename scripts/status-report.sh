@@ -63,40 +63,23 @@ FROM (SELECT phase, COUNT(*) as count FROM roadmap.cubics WHERE status = 'active
 " 2>/dev/null)
 CUBICS_DETAIL=$(echo "$CUBICS_DETAIL" | tr '\n' ' ' | sed 's/ $//')
 
-# --- Proposals by type × state ---
-PROPOSALS_BY_TYPE=$($PG -F'|' -c "
-SELECT type || ' ' || upper_status || ':' || count
-FROM (
-  SELECT type,
-    CASE
-      WHEN upper(status) = 'DRAFT' THEN 'Draft'
-      WHEN upper(status) = 'REVIEW' THEN 'Review'
-      WHEN upper(status) = 'DEVELOP' THEN 'Develop'
-      WHEN upper(status) = 'MERGE' THEN 'Merge'
-      WHEN upper(status) = 'COMPLETE' THEN 'Complete'
-      ELSE status
-    END AS upper_status,
-    COUNT(*) as count
-  FROM roadmap_proposal.proposal
-  WHERE upper(status) NOT IN ('COMPLETE', 'DEPLOYED')
-  GROUP BY type,
-    CASE
-      WHEN upper(status) = 'DRAFT' THEN 'Draft'
-      WHEN upper(status) = 'REVIEW' THEN 'Review'
-      WHEN upper(status) = 'DEVELOP' THEN 'Develop'
-      WHEN upper(status) = 'MERGE' THEN 'Merge'
-      WHEN upper(status) = 'COMPLETE' THEN 'Complete'
-      ELSE status
-    END
-) sub
-ORDER BY
-  CASE type WHEN 'product' THEN 1 WHEN 'component' THEN 2 WHEN 'feature' THEN 3 WHEN 'issue' THEN 4 WHEN 'hotfix' THEN 5 ELSE 6 END,
-  CASE upper_status WHEN 'Draft' THEN 1 WHEN 'Review' THEN 2 WHEN 'Develop' THEN 3 WHEN 'Merge' THEN 4 END;
-" 2>/dev/null)
+# --- Proposals by type × state (crosstab via FILTER) ---
+PROPOSALS_TABLE=$($PG -F'|' -c "
+SELECT type,
+  COUNT(*) FILTER (WHERE upper(status) = 'DRAFT') AS draft,
+  COUNT(*) FILTER (WHERE upper(status) = 'REVIEW') AS review,
+  COUNT(*) FILTER (WHERE upper(status) = 'DEVELOP') AS develop,
+  COUNT(*) FILTER (WHERE upper(status) = 'MERGE') AS merge,
+  COUNT(*) FILTER (WHERE upper(status) IN ('COMPLETE','DEPLOYED')) AS done,
+  COUNT(*) AS total
+FROM roadmap_proposal.proposal
+GROUP BY type
+ORDER BY CASE type WHEN 'product' THEN 1 WHEN 'component' THEN 2 WHEN 'feature' THEN 3 WHEN 'issue' THEN 4 WHEN 'hotfix' THEN 5 ELSE 6 END;
+" 2>/dev/null) || PROPOSALS_TABLE=""
 
-TOTAL_ACTIVE=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal WHERE upper(status) NOT IN ('COMPLETE', 'DEPLOYED');" 2>/dev/null)
-TOTAL_DONE=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal WHERE upper(status) IN ('COMPLETE', 'DEPLOYED');" 2>/dev/null)
-TOTAL_ALL=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal;" 2>/dev/null)
+TOTAL_ACTIVE=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal WHERE upper(status) NOT IN ('COMPLETE', 'DEPLOYED');" 2>/dev/null) || TOTAL_ACTIVE=0
+TOTAL_DONE=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal WHERE upper(status) IN ('COMPLETE', 'DEPLOYED');" 2>/dev/null) || TOTAL_DONE=0
+TOTAL_ALL=$($PG -c "SELECT COUNT(*) FROM roadmap_proposal.proposal;" 2>/dev/null) || TOTAL_ALL=0
 
 # --- Last hour ---
 CHANGES=$($PG -F'|' -c "
@@ -132,25 +115,35 @@ $(if [ "${CUBIC_WT_MISMATCH:-0}" -gt 0 ]; then
     echo "$line"
   done <<< "$CUBIC_WT_LIST"
 fi)
+**🔵 Cubics** — ${CUBICS_ACTIVE} active (${CUBICS_DETAIL})"
 
-**🔵 Cubics** — ${CUBICS_ACTIVE} active (${CUBICS_DETAIL})
+# --- Build proposals table (outside REPORT string) ---
+PROPOSALS_SUMMARY="**📊 Proposals** — ${TOTAL_ACTIVE} active · ${TOTAL_DONE} done · ${TOTAL_ALL} total"
+if [ -n "$PROPOSALS_TABLE" ]; then
+  PROPOSALS_SUMMARY="${PROPOSALS_SUMMARY}
+\`\`\`
+Type          Dft  Rev  Dev  Mrg  Done  Ttl
+──────────── ──── ──── ──── ──── ───── ────"
+  while IFS='|' read -r ptype draft review develop merge done total; do
+    [ -z "$ptype" ] && continue
+    # Show blank instead of 0 for states that don't apply
+    [ "$draft" = "0" ]   && draft="-"
+    [ "$review" = "0" ]  && review="-"
+    [ "$develop" = "0" ] && develop="-"
+    [ "$merge" = "0" ]   && merge="-"
+    [ "$done" = "0" ]    && done="-"
+    PROPOSALS_SUMMARY="${PROPOSALS_SUMMARY}
+$(printf '%-12s  %3s  %3s  %3s  %3s  %4s  %3d' "$ptype" "$draft" "$review" "$develop" "$merge" "$done" "$total")"
+  done <<< "$PROPOSALS_TABLE"
+  TOTALS=$(echo "$PROPOSALS_TABLE" | awk -F'|' '{d+=$2;r+=$3;v+=$4;m+=$5;n+=$6;t+=$7} END{print d,r,v,m,n,t}')
+  PROPOSALS_SUMMARY="${PROPOSALS_SUMMARY}
+──────────── ──── ──── ──── ──── ───── ────
+$(printf '%-12s  %3s  %3s  %3s  %3s  %4s  %3d' 'TOTAL' $TOTALS)
+\`\`\`"
+fi
 
-**📊 Proposals** — ${TOTAL_ACTIVE} active / ${TOTAL_DONE} done / ${TOTAL_ALL} total"
-
-# Group by type
-CURRENT_TYPE=""
-while IFS='|' read -r entry; do
-  [ -z "$entry" ] && continue
-  TYPE=$(echo "$entry" | awk '{print $1}')
-  REST=$(echo "$entry" | sed "s/^$TYPE //")
-  if [ "$TYPE" != "$CURRENT_TYPE" ]; then
-    CURRENT_TYPE="$TYPE"
-    REPORT="${REPORT}
-*${TYPE}*  ${REST}"
-  else
-    REPORT="${REPORT} | ${REST}"
-  fi
-done <<< "$PROPOSALS_BY_TYPE"
+REPORT="${REPORT}
+${PROPOSALS_SUMMARY}"
 
 if [ -n "$CHANGES" ]; then
   REPORT="${REPORT}

@@ -23,7 +23,7 @@ mkdir -p "$OUTDIR"
 echo "$REPORT" > "$OUTDIR/status-$NOW.md"
 
 # --- Discord webhook (2000 char limit) ---
-WEBHOOK_URL="https://discord.com/api/webhooks/1495804554997137459/H_p4zoRJEQWoRzabKyz49-Qpmcjwae9tTRKtdm8nnwh4VgUeoB4atTKIRzQMVcW9gJta"
+WEBHOOK_URL="${DISCORD_WEBHOOK_STATUS:?ERROR: DISCORD_WEBHOOK_STATUS not set — add to ~/.hermes/.env}"
 CONTENT=$(echo "$REPORT" | head -c 1900)
 HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
