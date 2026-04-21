@@ -1,44 +1,48 @@
-# P306 Ship Verification — worker-5624 (pillar-researcher)
+# P306 Ship Verification — pillar-researcher (worker-6168)
 
-Date: 2026-04-22
-Proposal: P306 — Normalize proposal status casing
-Phase: ship
-Maturity: obsolete
+Date: 2026-04-21 13:15 UTC
+Role: pillar-researcher
+Agent: worker-6168 (agency-xiaomi)
 
-## AC Verification
+## Acceptance Criteria Verification
 
-| AC | Description | Result |
-|----|-------------|--------|
-| AC-1 | All proposal.status values UPPERCASE | PASS — 6 canonical values: COMPLETE(71), DEPLOYED(34), DEVELOP(30), DRAFT(35), MERGE(2), REVIEW(12) |
-| AC-2 | Migration SQL verified | PASS — migration 044 applied, data normalized |
-| AC-3 | LOWER() removed from proposal.status comparisons | PASS — grep confirms no LOWER(status) in orchestrator.ts or bootstrap-state-machine.ts |
-| AC-4 | CHECK constraint prevents mixed-case inserts | PASS — proposal_status_canonical constraint exists |
-| AC-5 | Trigger auto-upcases on INSERT/UPDATE | PASS — trg_normalize_proposal_status exists |
-| AC-6 | 6 distinct statuses | PASS — SELECT COUNT(DISTINCT status) = 6 |
-| AC-7 | roadmap.yaml statuses UPPERCASE | PASS — verified in prior ship commits |
-| AC-8 | Zero residual mixed-case | PASS — WHERE status != UPPER(status) = 0 |
+| AC | Description | Status |
+|---|---|---|
+| AC-1 | All proposal.status values UPPERCASE | ✅ PASS |
+| AC-2 | Migration SQL verified | ✅ PASS |
+| AC-3 | LOWER() removed from orchestrator.ts, bootstrap-state-machine.ts | ✅ PASS |
+| AC-4 | CHECK constraint proposal_status_canonical exists | ✅ PASS |
+| AC-5 | Trigger fn_normalize_proposal_status auto-uppers on INSERT/UPDATE | ✅ PASS |
+| AC-6 | COUNT(DISTINCT status) = 6 | ✅ PASS |
+| AC-7 | roadmap.yaml statuses UPPERCASE | ✅ PASS |
+| AC-8 | 0 rows where status != UPPER(status) | ✅ PASS |
 
-## DB State
+## Detailed Findings
 
-```
-status   | count
----------+------
-COMPLETE |    71
-DEPLOYED |    34
-DEVELOP |    30
-DRAFT   |    35
-MERGE   |     2
-REVIEW  |    12
-```
+### AC-1: Status Normalization
+Live DB contains only 6 canonical UPPERCASE statuses: DRAFT(36), REVIEW(11), DEVELOP(30), MERGE(1), COMPLETE(72), DEPLOYED(34).
 
-## Code Verification
+### AC-2: Migration DDL
+File: database/ddl/v4/044-normalize-proposal-status-casing.sql (52 lines)
+- UPDATE statements normalize title-case → UPPERCASE
+- Trigger function fn_normalize_proposal_status()
+- CHECK constraint proposal_status_canonical
 
-- scripts/orchestrator.ts: LOWER(status) removed (Phase 2)
-- scripts/bootstrap-state-machine.ts: LOWER(status) removed (Phase 2)
-- src/core/pipeline/pipeline-cron.ts:1278 — LOWER() preserved (intentional, compares against transition_queue.to_stage title-case)
-- Trigger: trg_normalize_proposal_status — active
-- CHECK: proposal_status_canonical — active
+### AC-3: LOWER() Cleanup
+- orchestrator.ts: No LOWER(status) found ✅
+- bootstrap-state-machine.ts: No LOWER(status) found ✅
+- pipeline-cron.ts: LOWER() preserved at L1278 for to_stage comparison (intentional — transition_queue.to_stage uses title-case)
 
-## Conclusion
+### AC-4-5: Trigger + CHECK
+- Trigger fires BEFORE INSERT OR UPDATE OF status, auto-UPPER() before CHECK evaluates
+- CHECK constraint accepts canonical reference_terms values
+- Defense-in-depth: trigger normalizes before CHECK sees data
 
-8/8 ACs PASS. No regression. P306 shipped and stable.
+### AC-6-8: Data Integrity
+- 6 distinct statuses confirmed
+- 0 residual mixed-case rows
+- No regression in existing workflows
+
+## Verdict: SHIP APPROVED
+
+No blockers. Implementation is complete and stable.
