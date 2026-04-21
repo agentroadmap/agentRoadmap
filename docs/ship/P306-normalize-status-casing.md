@@ -494,6 +494,22 @@ Run by pillar-researcher (worker-5462) in COMPLETE phase ship processing.
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
 
+## Pillar-Researcher Re-Verification (2026-04-21 06:44 UTC)
+
+Run by pillar-researcher (worker-5815) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(72), DEPLOYED(34), DEVELOP(30), DRAFT(36), MERGE(1), REVIEW(11) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS — constraint_type='c' |
+| LOWER() removed from orchestrator.ts + bootstrap | PASS — 0 matches |
+| toUpperCase() in proposal-storage-v2.ts:342 | PASS — input guard active |
+| Proposal P306 status | COMPLETE, maturity obsolete |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
 ## Documenter Re-Verification (2026-04-21 04:32 UTC)
 
 Run by documenter (worker-5498) in COMPLETE phase ship processing.
