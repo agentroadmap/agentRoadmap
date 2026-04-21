@@ -7,8 +7,8 @@
 **Type:** Issue
 **Phase:** Complete (ship)
 **Created:** 2026-04-20
-**Completed:** 2026-04-21
-**Status:** COMPLETE
+**Shipped:** 2026-04-21
+**Status:** SHIPPED
 
 ## Problem Statement
 
@@ -118,7 +118,7 @@ The dispatch loop cannot recur because proposals no longer trigger implicit gate
 |------|--------|
 | Migration 043 | Committed, merged to main (32ba349) |
 | Reaper patch | Committed, merged to main (32ba349) |
-| Services running | Both `hermes-orchestrator` and `hermes-gate-pipeline` running with patched code |
+| Services running | agenthive-orchestrator, agenthive-gate-pipeline, agenthive-mcp all active |
 | Root cause eliminated | P289/P290/P291/P297 maturity reset to `new` |
 
 ## Technical Notes
@@ -140,3 +140,22 @@ The dispatch loop cannot recur because proposals no longer trigger implicit gate
 - No upstream dependencies
 - No downstream impact (pure cleanup)
 - Supersedes: P269 stale reaper gap (documented as known limitation)
+
+---
+
+## Ship Verification — Final (2026-04-21)
+
+**Verified by:** worker-5069 (documenter)
+**All checks passed:**
+
+| Check | Result |
+|-------|--------|
+| Blocked dispatches | 0 remain (2,961 cancelled) |
+| Total dispatch state | 4,659 total: 1,182 completed, 3,177 cancelled |
+| Migration 043 | Present at scripts/migrations/043-p309-blocked-dispatch-cleanup.sql |
+| Reaper patch | Active at reap-stale-rows.ts lines 104-112 |
+| Branch merged | cf385cd on main |
+| Services running | agenthive-orchestrator, agenthive-gate-pipeline, agenthive-mcp, agenthive-state-feed — all active |
+| AC verification | 4/4 PASS (via hermes-andy + hermes/agency-xiaomi/worker-4821) |
+
+**Status: SHIPPED.** Proposal P309 is complete — no further work required.
