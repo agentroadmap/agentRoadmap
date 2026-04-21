@@ -15,6 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import { query } from "../../../infra/postgres/pool.ts";
+import { AUTHORITY_IDENTITIES, type TrustTier } from "../../../infra/trust/trust-model.ts";
 import type {
 	AgentRegistration,
 	DeregisterRequest,
@@ -39,6 +40,31 @@ function agentChannel(instanceId: string): string {
 const PERMANENT_AGENTS = new Set(["Gilbert", "Skeptic"]);
 function isPermanent(agentId: string): boolean {
 	return PERMANENT_AGENTS.has(agentId);
+}
+
+/**
+ * Determine default trust tier for an agent on registration.
+ * P208: Authority agents get 'authority'; permanent/system agents get 'known';
+ * everyone else defaults to 'restricted'.
+ */
+function defaultTrustTier(agentId: string, agentType: string): TrustTier {
+	// Check authority identities (orchestrator-agent, gary, system)
+	if (AUTHORITY_IDENTITIES.has(agentId)) return "authority";
+	for (const auth of AUTHORITY_IDENTITIES) {
+		if (agentId.startsWith(auth + "/") || agentId.startsWith(auth + "-")) {
+			return "authority";
+		}
+	}
+	// System/agency agents get known
+	if (agentType === "agency" || agentType === "system") return "known";
+	// Permanent agents (Gilbert, Skeptic) get known
+	if (isPermanent(agentId)) return "known";
+	// Tool agents get known
+	if (agentType === "tool") return "known";
+	// LLM agents get known
+	if (agentType === "llm") return "known";
+	// Everything else: restricted
+	return "restricted";
 }
 
 /** Map a DB row to AgentRegistration */
@@ -84,16 +110,18 @@ export async function registerAgent(
 	const now = new Date().toISOString();
 
 	const skills = { agentId, capabilities, channel, lastSeen: now };
+	const trustTier = defaultTrustTier(instanceId, agentType);
 
 	await query(
-		`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, role, skills, status)
-     VALUES ($1, $2, $3, $4::jsonb, 'online')
+		`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, role, skills, status, trust_tier)
+     VALUES ($1, $2, $3, $4::jsonb, 'online', $5)
      ON CONFLICT (agent_identity) DO UPDATE SET
        agent_type = EXCLUDED.agent_type,
        role       = EXCLUDED.role,
        skills     = agent_registry.skills || EXCLUDED.skills,
-       status     = 'online'`,
-		[instanceId, agentType, role ?? null, JSON.stringify(skills)],
+       status     = 'online',
+       trust_tier = COALESCE(NULLIF(agent_registry.trust_tier, 'authority'), EXCLUDED.trust_tier)`,
+		[instanceId, agentType, role ?? null, JSON.stringify(skills), trustTier],
 	);
 
 	await announcePresence(

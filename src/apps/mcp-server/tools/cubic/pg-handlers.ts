@@ -3,9 +3,12 @@
  *
  * Replaces the filesystem-based cubic storage with Postgres `cubics` table.
  * Handles cubic lifecycle: create, focus (lock), transition, recycle, list.
+ *
+ * P196: Added activity tracking (cubic_state updates) and lifecycle stats.
  */
 
 import { query } from "../../../../postgres/pool.ts";
+import { CubicIdleDetector } from "../../../../core/orchestration/cubic-idle-detector.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 
@@ -21,6 +24,8 @@ function errorResult(msg: string, err: unknown): CallToolResult {
 }
 
 export class PgCubicHandlers {
+	private readonly detector = new CubicIdleDetector();
+
 	constructor(private readonly core: McpServer) {}
 
 	async createCubic(args: {
@@ -163,29 +168,32 @@ export class PgCubicHandlers {
 					JSON.stringify({ currentTask: args.task }),
 				],
 			);
-			return {
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify(
-							{
-								success: true,
-								lock: {
-									holder: args.agent,
-									phase: args.phase ?? existing[0].status,
-									lockedAt: new Date().toISOString(),
-								},
+		// P196: Update cubic_state activity tracking
+		await this.detector.updateActivity(args.cubicId);
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify(
+						{
+							success: true,
+							lock: {
+								holder: args.agent,
+								phase: args.phase ?? existing[0].status,
+								lockedAt: new Date().toISOString(),
 							},
-							null,
-							2,
-						),
-					},
-				],
-			};
-		} catch (err) {
-			return errorResult("Failed to focus cubic", err);
-		}
+						},
+						null,
+						2,
+					),
+				},
+			],
+		};
+	} catch (err) {
+		return errorResult("Failed to focus cubic", err);
 	}
+}
 
 	async transitionCubic(args: {
 		cubicId: string;
@@ -254,30 +262,34 @@ export class PgCubicHandlers {
 					args.worktree_path ?? null,
 				],
 			);
-			const r = rows[0];
-			return {
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify(
-							{
-								success: true,
-								cubic_id: r.cubic_id,
-								was_recycled: r.was_recycled,
-								was_created: r.was_created,
-								status: r.status,
-								worktree_path: r.worktree_path,
-							},
-							null,
-							2,
-						),
-					},
-				],
-			};
-		} catch (err) {
-			return errorResult("Failed to acquire cubic", err);
-		}
+		const r = rows[0];
+
+		// P196: Update cubic_state activity tracking
+		await this.detector.updateActivity(r.cubic_id);
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify(
+						{
+							success: true,
+							cubic_id: r.cubic_id,
+							was_recycled: r.was_recycled,
+							was_created: r.was_created,
+							status: r.status,
+							worktree_path: r.worktree_path,
+						},
+						null,
+						2,
+					),
+				},
+			],
+		};
+	} catch (err) {
+		return errorResult("Failed to acquire cubic", err);
 	}
+}
 
 	async recycleCubic(args: {
 		cubicId: string;

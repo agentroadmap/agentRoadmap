@@ -103,7 +103,8 @@ export async function reapStaleRows(
 
 	// P309: Cancel blocked dispatches that have completed_at set.
 	// These escape the above reap (which requires completed_at IS NULL).
-	// Pre-P281 dead data from failed spawns and stale orchestrator runs.
+	// From 10hr dispatch loop (2026-04-19/20): implicit gate dispatched
+	// copilot-one to host bot, SpawnPolicyViolation on every attempt.
 	try {
 		const r = await pool.query(
 			`UPDATE roadmap_workforce.squad_dispatch
