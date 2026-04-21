@@ -479,3 +479,17 @@ Run by pillar-researcher (worker-5425) in COMPLETE phase ship processing.
 | Total proposals | 184 |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+## Pillar-Researcher Re-Verification (2026-04-21 04:17 UTC)
+
+Run by pillar-researcher (worker-5462) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(71), DEPLOYED(34), DEVELOP(30), DRAFT(34), MERGE(2), REVIEW(13) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS |
+| Proposal P306 status | COMPLETE, maturity obsolete |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
