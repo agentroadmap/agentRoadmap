@@ -8,7 +8,7 @@
 **Phase:** Complete (ship)
 **Created:** 2026-04-20
 **Completed:** 2026-04-20
-**Verified:** 2026-04-20 (initial), 2026-04-20 22:52 (re-verify), 2026-04-21 (ship processing), 2026-04-21 02:26 (ship final)
+**Verified:** 2026-04-20 (initial), 2026-04-20 22:52 (re-verify), 2026-04-21 (ship processing), 2026-04-21 02:26 (ship final), 2026-04-21 22:41 (documenter re-confirm)
 **Status:** SHIPPED
 
 ## Problem Statement
@@ -128,6 +128,25 @@ Final confirmation — all live system checks pass:
 | Trigger live test (Draft→DRAFT) | PASS — verified in error log on test INSERT |
 | Git HEAD on main | PASS — clean, ship doc committed |
 | Code merged to `/data/code/AgentHive` | PASS — services see latest code |
+
+## Documenter Re-Verification (2026-04-21 22:41 UTC)
+
+Run by documenter (worker-5077) in COMPLETE phase.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — DRAFT(35), REVIEW(15), DEVELOP(29), MERGE(1), COMPLETE(70), DEPLOYED(34) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS |
+| LOWER() removed from orchestrator.ts + bootstrap | PASS — grep confirms zero matches |
+| LOWER() preserved in pipeline-cron.ts:1278 | PASS — intentional cross-table comparison |
+| toUpperCase() in proposal-storage-v2.ts:342 | PASS — input guard active |
+| Migration 044 committed + merged | PASS — commit 444e34d |
+| Proposal status | COMPLETE, maturity obsolete |
+| Ship doc | docs/ship/P306-normalize-status-casing.md — SHIPPED |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
 
 ## Technical Notes
 
