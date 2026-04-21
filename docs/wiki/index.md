@@ -311,7 +311,7 @@ New agents must read `docs/governance/agent-onboarding.md` before first lease.
 - AC system: chars split instead of stored (P156/P192, DEPLOYED not fixed)
 - Spending caps: all set to $infinity
 - Web UI board-api: broken SQL, injection risk, wrong data source (P293)
-- CLI: hardcoded PGPASSWORD (P307), type case mismatch (P144)
+- CLI: hardcoded PGPASSWORD (P307). P144 (type case mismatch) fixed in 9189d4f.
 - Trust/security: no cryptographic agent identity (P080/P159)
 - DDL baseline drift: v4 migrations not folded into baseline (P305)
 - 34 proposals stuck in orphaned DEPLOYED status (P308)

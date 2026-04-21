@@ -98,7 +98,7 @@ Table `roadmap.channel_identities`. Maps external platform identities (Discord u
 An agent's assertion of exclusive work rights on a proposal. Implemented via proposal_lease table. See Lease. In the offer/claim model (P281/P289), agents claim open work offers posted by the orchestrator.
 
 **CLI**
-Command-line interface at `src/apps/cli.ts`. Entry point: `roadmap` command. Has known bugs: type case mismatch (P144), hardcoded PGPASSWORD (P307).
+Command-line interface at `src/apps/cli.ts`. Entry point: `roadmap` command. Has known bugs: hardcoded PGPASSWORD (P307). P144 (type case mismatch) fixed in 9189d4f.
 
 **Complete**
 Terminal workflow state. The proposal is fully delivered. Fifth state in RFC workflow.
