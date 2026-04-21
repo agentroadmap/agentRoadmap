@@ -428,3 +428,5 @@
 [2026-04-21 06:57:43] System: **[proposal created]** PROPOSAL-2 - Test 2
 [2026-04-21 06:57:50] System: **[proposal created]** PROPOSAL-1 - High Priority
 [2026-04-21 06:57:50] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gSklSQSBJbml0IFRlc3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-21 06:57:51] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-21 06:57:52] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gUmUtSW5pdCBUZXN0Cj4gUHJvamVjdCBpbml0aWFsaXplZCB3aXRoIEFnZW50IFV0aWxpdHkgQmVsdCBpbmZyYXN0cnVjdHVyZS4=
