@@ -79,12 +79,12 @@ initialStatus = initialStatus.toUpperCase();
 
 | AC | Criterion | Status | Evidence |
 |----|-----------|--------|----------|
-| AC-1 | All proposal.status values normalized to UPPERCASE in live DB | PASS | DRAFT(35), REVIEW(15), DEVELOP(30), MERGE(2), COMPLETE(68), DEPLOYED(34) |
+| AC-1 | All proposal.status values normalized to UPPERCASE in live DB | PASS | DRAFT(35), REVIEW(15), DEVELOP(29), MERGE(3), COMPLETE(68), DEPLOYED(34) |
 | AC-2 | Migration SQL verified | PASS | Migration 044 committed in 444e34d |
 | AC-3 | LOWER() removed from proposal.status comparisons | PASS | `grep -n "LOWER.*status" scripts/orchestrator.ts scripts/bootstrap-state-machine.ts` — zero matches |
 | AC-4 | CHECK constraint prevents future mixed-case inserts | PASS | `proposal_status_canonical` constraint active on `roadmap_proposal.proposal` |
 | AC-5 | Trigger auto-uppers status on INSERT/UPDATE | PASS | `trg_normalize_proposal_status` enabled (tgenabled='O') |
-| AC-6 | Exactly 6 distinct statuses | PASS | `SELECT COUNT(DISTINCT status) = 6` — DRAFT, REVIEW, DEVELOP, MERGE, COMPLETE, DEPLOYED (verified 2026-04-21) |
+| AC-6 | Exactly 6 distinct statuses | PASS | `SELECT COUNT(DISTINCT status) = 6` — DRAFT, REVIEW, DEVELOP, MERGE, COMPLETE, DEPLOYED (verified 2026-04-20, re-verified 2026-04-20 22:52) |
 | AC-7 | roadmap.yaml statuses UPPERCASE | PASS | All statuses in `roadmap.yaml` already UPPERCASE |
 | AC-8 | Zero residual mixed-case | PASS | `SELECT COUNT(*) WHERE status != UPPER(status) = 0` |
 
