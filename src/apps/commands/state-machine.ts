@@ -8,6 +8,7 @@
  *   roadmap state-machine status       # Show service status + offer stats
  *   roadmap state-machine agencies     # List registered agencies
  *   roadmap state-machine offers       # List open/active offers
+ *   roadmap state-machine register     # Register this host as an agency
  */
 
 import { execSync } from "child_process";
@@ -187,6 +188,64 @@ export function registerStateMachineCommand(program: any) {
         }
       } catch (err: any) {
         console.error(`DB query failed: ${err.message}`);
+      }
+    });
+
+  sm.command("register")
+    .description("Register this host as an agency in AgentHive")
+    .requiredOption("--identity <identity>", "Agency identity (e.g. hermes/agency-xiaomi)")
+    .option("--type <type>", "Agent type", "agency")
+    .option("--provider <provider>", "AI provider (e.g. xiaomi, nous)")
+    .option("--model <model>", "Preferred model (e.g. xiaomi/mimo-v2-pro)")
+    .option("--capabilities <caps>", "Comma-separated capabilities")
+    .option("--project <projectId>", "Join a specific project (ID)")
+    .action(async (opts: { identity: string; type: string; provider?: string; model?: string; capabilities?: string; project?: string }) => {
+      try {
+        // 1. Register agency in agent_registry
+        const { rows } = await query(
+          `INSERT INTO roadmap_workforce.agent_registry
+             (agent_identity, agent_type, status, preferred_provider, preferred_model)
+           VALUES ($1, $2, 'active', $3, $4)
+           ON CONFLICT (agent_identity) DO UPDATE SET
+             agent_type = EXCLUDED.agent_type,
+             status = 'active',
+             preferred_provider = EXCLUDED.preferred_provider,
+             preferred_model = EXCLUDED.preferred_model,
+             updated_at = now()
+           RETURNING id, agent_identity, agent_type`,
+          [opts.identity, opts.type, opts.provider ?? null, opts.model ?? null]
+        );
+        const row = rows[0];
+        console.log(`Registered: ${row.agent_identity} (${row.agent_type}, id=${row.id})`);
+
+        // 2. Add capabilities
+        if (opts.capabilities) {
+          const caps = opts.capabilities.split(",").map((c) => c.trim()).filter(Boolean);
+          if (caps.length > 0) {
+            await query(
+              `INSERT INTO roadmap_workforce.agent_capability (agent_id, capability)
+               SELECT $1, unnest($2::text[])
+               ON CONFLICT DO NOTHING`,
+              [row.id, caps]
+            );
+            console.log(`Capabilities: ${caps.join(", ")}`);
+          }
+        }
+
+        // 3. Register as provider for project (if specified)
+        if (opts.project) {
+          const projectId = parseInt(opts.project, 10);
+          await query(
+            `INSERT INTO roadmap_workforce.provider_registry (agency_id, project_id, squad_name, is_active)
+             VALUES ($1, $2, NULL, true)
+             ON CONFLICT (agency_id, project_id, squad_name) DO UPDATE SET is_active = true`,
+            [row.id, projectId]
+          );
+          console.log(`Joined project: ${projectId}`);
+        }
+      } catch (e: any) {
+        console.error(`[sm] register failed: ${e.message}`);
+        process.exit(1);
       }
     });
 }
