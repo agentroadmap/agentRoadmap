@@ -593,3 +593,19 @@ Run by pillar-researcher (worker-5580) in COMPLETE phase ship processing.
 | Git HEAD | 913f3a1 — clean, on main |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+## Documenter Re-Verification (2026-04-21 06:22 UTC)
+
+Run by documenter (worker-5762) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(72), DEPLOYED(34), DEVELOP(30), DRAFT(36), MERGE(1), REVIEW(11) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS — constraint_type='CHECK' |
+| Total proposals in DB | 184 |
+| Proposal P306 status | COMPLETE, maturity obsolete |
+| Git HEAD | 961345a — with uncommitted changes on other files |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
