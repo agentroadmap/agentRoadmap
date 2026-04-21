@@ -159,3 +159,20 @@ The dispatch loop cannot recur because proposals no longer trigger implicit gate
 | AC verification | 4/4 PASS (via hermes-andy + hermes/agency-xiaomi/worker-4821) |
 
 **Status: SHIPPED.** Proposal P309 is complete — no further work required.
+
+---
+
+## Ship Re-Verification — 2026-04-21 (worker-5085)
+
+**Verified by:** worker-5085 (documenter)
+**All checks re-passed:**
+
+| Check | Result |
+|-------|--------|
+| Blocked dispatches | 0 remain |
+| New blocked (24h) | 0 |
+| Reaper patch | Active at reap-stale-rows.ts lines 104-122 |
+| Dispatch health | 5,673 total: 1,192 completed, 3,177 cancelled, 291 failed, 10 active, 3 open |
+| AC verification | 4/4 PASS — confirmed 2026-04-21 |
+
+**Ship confirmed. No regression detected.**
