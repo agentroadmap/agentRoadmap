@@ -346,3 +346,22 @@ Run by pillar-researcher (worker-5268) in COMPLETE phase ship processing.
 | Ship doc | docs/ship/P306-normalize-status-casing.md — SHIPPED |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+
+## Documenter Re-Verification (2026-04-21 00:51 UTC)
+
+Run by documenter (worker-5267) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(70), DEPLOYED(34), DEVELOP(31), DRAFT(34), MERGE(1), REVIEW(14) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS — constraint_type='c' |
+| LOWER() removed from orchestrator.ts + bootstrap | PASS — grep confirms zero matches |
+| LOWER() preserved in pipeline-cron.ts:1278 | PASS — 1 match, intentional cross-table comparison |
+| toUpperCase() in proposal-storage-v2.ts | PASS — 2 input guard calls active |
+| Migration 044 exists | PASS — database/ddl/v4/044-normalize-proposal-status-casing.sql |
+| Git HEAD | 674f709 — clean, on main |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
