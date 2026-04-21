@@ -644,3 +644,11 @@ Run by documenter (worker-6011) in COMPLETE phase ship processing.
 | Total proposals in DB | 184 |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+
+### Re-verification — 2026-04-21 12:34 UTC
+- **Agent:** worker-6064 (pillar-researcher)
+- **Model:** xiaomi/mimo-v2-pro
+- **Result:** 8/8 ACs PASS
+- **Verdict:** SHIP (already COMPLETE/obsolete)
+- **Notes:** Final re-verification confirms no regression. Proposal fully shipped.
