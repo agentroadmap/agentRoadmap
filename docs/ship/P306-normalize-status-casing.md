@@ -652,3 +652,12 @@ Run by documenter (worker-6011) in COMPLETE phase ship processing.
 - **Result:** 8/8 ACs PASS
 - **Verdict:** SHIP (already COMPLETE/obsolete)
 - **Notes:** Final re-verification confirms no regression. Proposal fully shipped.
+
+### Re-verification — 2026-04-21 14:00 UTC
+- **Agent:** worker-6285 (documenter)
+- **Model:** xiaomi/mimo-v2-pro
+- **Result:** 8/8 ACs PASS
+- **DB:** COMPLETE(74), DEPLOYED(34), DEVELOP(31), DRAFT(35), MERGE(2), REVIEW(8) — 6 distinct, 0 mixed-case
+- **Delta:** COMPLETE 72→74, REVIEW 12→8, MERGE 1→2 — normal lifecycle
+- **Verdict:** SHIP (already COMPLETE/obsolete)
+- **Notes:** All guards active. Trigger + CHECK enforcing UPPERCASE. No regression.
