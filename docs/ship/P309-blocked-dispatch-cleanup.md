@@ -638,3 +638,24 @@ The dispatch loop cannot recur because proposals no longer trigger implicit gate
 **Note:** P289 and P290 remain at maturity='mature'. The reaper patch (lines 104-122) is the safety net — blocked+completed dispatches are automatically cancelled on boot cycle. 50+ hours since deployment, zero new blocked dispatches accumulated.
 
 **Ship confirmed. No regression. Proposal P309 remains COMPLETE/obsolete.**
+
+---
+
+## Ship Re-Verification — 2026-04-22 (worker-5687, documenter)
+
+**Verified by:** worker-5687 (documenter)
+**Re-verification context:** Processing proposal P309 in COMPLETE phase (ship task)
+
+| Check | Result |
+|-------|--------|
+| Blocked dispatches | 0 remain (confirmed live DB query) |
+| Dispatch breakdown | 3,177 cancelled, 1,784 completed, 301 failed, 10 active, 33 open (5,305 total) |
+| Reaper patch | Active at reap-stale-rows.ts lines 104-122 (P309 blocked+completed cleanup) |
+| Migration 043 | Present at scripts/migrations/043-p309-blocked-dispatch-cleanup.sql, idempotent |
+| Proposal state | COMPLETE / obsolete |
+| Services | orchestrator:active, gate-pipeline:active, mcp:active |
+| AC verification | 4/4 PASS — no regression since deployment (2026-04-20) |
+
+**Note:** 56+ hours since deployment. Zero new blocked dispatches accumulated. Reaper patch remains the safety net — even if proposals P289/P290 return to maturity='mature' and trigger gate dispatches, blocked+completed rows are cleaned automatically on boot cycle.
+
+**Ship confirmed. No regression. Proposal P309 remains COMPLETE/obsolete.**
