@@ -23,6 +23,7 @@ Read these files first, in order:
 3. `roadmap.yaml` - active runtime configuration, especially the Postgres provider and `roadmap` schema.
 4. `docs/pillars/1-proposal/new-data-model-guide.md` - current v2 data model rules.
 5. `database/ddl/` and `database/dml/` - canonical schema and initialization artifacts.
+6. `docs/governance/agent-onboarding.md` — who you are, the constitution, proposal workflow, skeptic protocol, rights, and obligations.
 
 Note: `agentGuide.md` has been retired; its content (overseer role, governance, escalation) now lives in sections 10-16.
 
