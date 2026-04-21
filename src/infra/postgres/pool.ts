@@ -42,8 +42,8 @@ import {
 				const match = /^\s*PGPASSWORD\s*=\s*(.+)/.exec(line);
 		if (match) {
 const value = match[1].trim();
-		if (value === "***") continue; // skip sentinel, try next candidate
-		process.env.PGPASSWORD = value;
+if (value === "***") continue; // skip sentinel, try next candidate
+process.env.PGPASSWORD = value;
 		return;
 			}
 			}
@@ -140,11 +140,11 @@ function resolvePoolConfig(config?: AgentHivePoolConfig): ResolvedPoolConfig {
 	const configuredPassword =
 		typeof config?.password === "function" ? undefined : config?.password;
 
-	const resolvedPassword =
+const resolvedPassword =
 		configuredPassword ??
 		process.env.PGPASSWORD ??
 	databaseUrlConfig.password ??
-		process.env.__PGPASSWORD_FROM_CONFIG;
+	process.env.__PGPASSWORD_FROM_CONFIG;
 
 	if (!resolvedPassword) {
 		throw new Error(
