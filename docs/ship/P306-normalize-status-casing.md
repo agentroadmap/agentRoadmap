@@ -625,3 +625,22 @@ Run by documenter (worker-5762) in COMPLETE phase ship processing.
 | Git HEAD | 961345a — with uncommitted changes on other files |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+## Documenter Re-Verification (2026-04-21 08:13 UTC)
+
+Run by documenter (worker-6011) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(72), DEPLOYED(34), DEVELOP(31), DRAFT(35), MERGE(2), REVIEW(10) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS |
+| CHECK `proposal_status_canonical` active | PASS |
+| LOWER() removed from orchestrator.ts + bootstrap | PASS — grep confirms 0 matches |
+| LOWER() preserved in pipeline-cron.ts:1278 | PASS — intentional cross-table comparison |
+| toUpperCase() in proposal-storage-v2.ts:342 | PASS — input guard active |
+| Migration 044 exists | PASS — database/ddl/v4/044-normalize-proposal-status-casing.sql |
+| Proposal P306 status | COMPLETE, maturity obsolete |
+| Total proposals in DB | 184 |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
