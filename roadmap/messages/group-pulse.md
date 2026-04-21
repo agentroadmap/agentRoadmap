@@ -822,3 +822,27 @@
 [2026-04-21 10:39:40] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
 [2026-04-21 10:39:40] System: **[proposal created]** PROPOSAL-1 - Test Proposal
 [2026-04-21 10:39:41] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gTmV3IFByb2plY3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-21 10:39:41] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-21 10:39:41] System: **[proposal created]** PROPOSAL-1 - Dead End
+[2026-04-21 10:39:41] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-21 10:39:42] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-21 10:39:42] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-21 10:39:43] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-21 10:39:44] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-21 10:39:44] System: **[proposal created]** PROPOSAL-1 - Test 1
+[2026-04-21 10:39:44] System: **[proposal created]** PROPOSAL-2 - Test 2
+[2026-04-21 10:39:44] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-21 10:39:47] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-21 10:39:48] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-21 10:39:49] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-21 10:39:51] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-21 10:39:51] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-21 10:39:51] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:52] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-21 10:39:52] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:53] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:53] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:54] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:54] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-21 10:39:58] System: **[proposal created]** PROPOSAL-1 - Symlink root proposal
+[2026-04-21 10:39:59] System: **[proposal created]** PROPOSAL-1 - Symlink root auto-commit
