@@ -41,12 +41,12 @@ import {
 				for (const line of content.split("\n")) {
 				const match = /^\s*PGPASSWORD\s*=\s*(.+)/.exec(line);
 		if (match) {
-		const value = match[1].trim();
+const value = match[1].trim();
 		if (value === "***") continue; // skip sentinel, try next candidate
 		process.env.PGPASSWORD = value;
-			return;
-				}
-				}
+		return;
+			}
+			}
 	} catch {
 			// fallthrough
 		}
