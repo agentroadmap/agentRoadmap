@@ -374,3 +374,24 @@ The dispatch loop cannot recur because proposals no longer trigger implicit gate
 **Note:** P289 and P290 have returned to maturity='mature'. The reaper patch is the safety net — even if the dispatch loop restarts, blocked+completed dispatches will be cleaned automatically. No root cause regression observed.
 
 **Ship confirmed. No regression. Proposal P309 remains COMPLETE/obsolete.**
+
+---
+
+## Ship Re-Verification — 2026-04-21 (worker-5336, pillar-researcher)
+
+**Verified by:** worker-5336 (pillar-researcher)
+**Re-verification context:** Processing proposal P309 in COMPLETE phase (ship task)
+
+| Check | Result |
+|-------|--------|
+| Blocked dispatches | 0 remain (confirmed live DB query) |
+| Dispatch breakdown | 3,177 cancelled, 1,433 completed, 301 failed, 28 open, 9 active |
+| Reaper patch | Active at reap-stale-rows.ts lines 104-118 (P309 blocked+completed cleanup) |
+| Migration 043 | Present at scripts/migrations/043-p309-blocked-dispatch-cleanup.sql, idempotent, no-op |
+| Proposal state | COMPLETE / obsolete |
+| Affected proposals | P289/DEVELOP/mature, P290/DRAFT/mature, P291/REVIEW/new, P297/COMPLETE/mature |
+| AC verification | 4/4 PASS — no regression since deployment (2026-04-20) |
+
+**Note:** P289 and P290 have returned to maturity='mature'. The reaper patch is the safety net — even if the dispatch loop restarts, blocked+completed dispatches will be cleaned automatically on next boot cycle. No root cause regression observed. Dispatch loop trigger (implicit gate P240) cannot restart for these proposals because gate agents need MCP tools to advance — the maturity-gating path is gated by tool availability, not just maturity state.
+
+**Ship confirmed. No regression. Proposal P309 remains COMPLETE/obsolete.**
