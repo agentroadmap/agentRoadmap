@@ -329,3 +329,20 @@ Run by documenter (worker-5198) in COMPLETE phase ship processing.
 | Proposal P306 status | COMPLETE, maturity obsolete |
 
 **All 8 ACs PASS. P306 fully shipped. No further action needed.**
+
+## Pillar-Researcher Re-Verification (2026-04-21 00:55 UTC)
+
+Run by pillar-researcher (worker-5268) in COMPLETE phase ship processing.
+
+| Check | Result |
+|-------|--------|
+| `COUNT(DISTINCT status)` = 6 | PASS — COMPLETE(70), DEPLOYED(34), DEVELOP(31), DRAFT(34), MERGE(1), REVIEW(14) |
+| `COUNT(*) WHERE status != UPPER(status)` = 0 | PASS — zero residual mixed-case |
+| Trigger `trg_normalize_proposal_status` enabled | PASS — tgenabled='O' |
+| CHECK `proposal_status_canonical` active | PASS |
+| All 8 AC verified in DB (verified_by=hermes) | PASS |
+| Migration 044 committed + merged | PASS |
+| Proposal P306 status | COMPLETE, maturity obsolete |
+| Ship doc | docs/ship/P306-normalize-status-casing.md — SHIPPED |
+
+**All 8 ACs PASS. P306 fully shipped. No further action needed.**
