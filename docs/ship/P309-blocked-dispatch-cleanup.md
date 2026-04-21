@@ -156,3 +156,16 @@ Verified by 39+ workers across documenter and pillar-researcher roles from 2026-
 | Root cause eliminated | P289/P290/P291/P297 maturity reset — dispatch loop cannot recur |
 
 **Status: SHIPPED. Proposal P309 is complete — no further work required.**
+
+### Re-verification — pillar-researcher (2026-04-21 12:15 EDT)
+
+| AC | Check | Result |
+|----|-------|--------|
+| AC-1 | All 2961 blocked dispatches cancelled | 0 blocked remain (DB: 6252 total, 3177 cancelled) |
+| AC-2 | Reaper updated for blocked+completed cleanup | Confirmed `reap-stale-rows.ts:104-120` has UPDATE with WHERE `dispatch_status='blocked' AND completed_at IS NOT NULL` |
+| AC-3 | Code pattern matches existing reap pattern | Confirmed: try/catch, `result.dispatches += rowCount`, metadata tagging (`reaped_at`, `reaped_reason`), `logger.warn` on error |
+| AC-4 | No new blocked dispatches accumulate | 0 blocked; ~48h+ since deployment with no regression |
+
+**Verdict: SHIP** — 4/4 AC PASS. Fix has been on main for 48h+. Migration 043 + reaper patch both present. No new work required.
+
+Worker: worker-6609 (pillar-researcher)
