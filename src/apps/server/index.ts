@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { appendFileSync, createReadStream, readFileSync } from "node:fs";
+import { appendFileSync, createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -24,6 +24,7 @@ import type {
 } from "../../types/index.ts";
 import { watchConfig } from "../../utils/config-watcher.ts";
 import { formatVersionLabel, getVersionInfo } from "../../utils/version.ts";
+import { query } from "../../infra/postgres/pool.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
@@ -95,7 +96,26 @@ function findProposalByLooseId(
 
 // Asset paths (will be read from disk)
 const faviconPath = join(import.meta.dirname, "../web/favicon.png");
-const indexHtmlPath = join(import.meta.dirname, "../web/index.html");
+// Resolve index.html relative to project root, not module location
+// Works both when bundled (scripts/cli.cjs.js) and when running via jiti
+const indexHtmlPath = (() => {
+	// If running from scripts/, ../web/ works
+	const fromScripts = join(import.meta.dirname, "../web/index.html");
+	if (existsSync(fromScripts)) return fromScripts;
+	// If running from src/apps/server/, ../../../web/ works
+	const fromSource = join(import.meta.dirname, "../../../web/index.html");
+	if (existsSync(fromSource)) return fromSource;
+	// Fallback to CWD
+	return join(process.cwd(), "web/index.html");
+})();
+// Resolve web directory relative to project root
+const webDir = (() => {
+	const fromScripts = join(import.meta.dirname, "../web");
+	if (existsSync(fromScripts)) return fromScripts;
+	const fromSource = join(import.meta.dirname, "../../../web");
+	if (existsSync(fromSource)) return fromSource;
+	return join(process.cwd(), "web");
+})();
 let indexHtml = "";
 try {
 	indexHtml = readFileSync(indexHtmlPath, "utf-8");
@@ -110,6 +130,8 @@ export class RoadmapServer {
 	private projectName = "Untitled Project";
 	private sockets = new Set<WebSocket>();
 	private channelSubscriptions = new Map<WebSocket, Map<string, () => void>>();
+	// Table subscriptions for frontend protocol: { ws -> Set<table> }
+	private tableSubscriptions = new Map<WebSocket, Set<string>>();
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
@@ -314,9 +336,18 @@ export class RoadmapServer {
 	}
 
 	private broadcastProposalsUpdated() {
+		// Send proper protocol messages to table-subscribed clients
+		// Also keep backward compat for simple string subscribers
 		for (const ws of this.sockets) {
 			try {
-				ws.send("proposals-updated");
+				const tables = this.tableSubscriptions.get(ws);
+				if (tables?.has("proposal")) {
+					// Frontend protocol: send snapshot for full refresh
+					void this.sendProposalSnapshot(ws);
+				} else {
+					// Legacy: simple notification string
+					ws.send("proposals-updated");
+				}
 			} catch {}
 		}
 	}
@@ -327,6 +358,27 @@ export class RoadmapServer {
 				ws.send("config-updated");
 			} catch {}
 		}
+	}
+
+	// Poll for external DB changes (cron, MCP, direct SQL)
+	private lastProposalCheck = new Date(0);
+	private startChangePolling() {
+		const POLL_INTERVAL = 30000; // 30 seconds
+		setInterval(async () => {
+			try {
+				const result = await query(
+					`SELECT MAX(updated_at) as latest FROM roadmap_proposal.proposal`
+				);
+				const latest = result.rows[0]?.latest;
+				if (latest && new Date(latest) > this.lastProposalCheck) {
+					this.lastProposalCheck = new Date(latest);
+					this.broadcastProposalsUpdated();
+				}
+			} catch (err) {
+				// Silently continue on polling errors
+			}
+		}, POLL_INTERVAL);
+		console.log(`📊 Change polling started (every ${POLL_INTERVAL/1000}s)`);
 	}
 
 	private async handleSubscribe(ws: WebSocket, channel: string) {
@@ -361,6 +413,86 @@ export class RoadmapServer {
 			unsub();
 		}
 		subs.clear();
+	}
+
+	// Frontend table subscription protocol
+	private async handleTableSubscribe(ws: WebSocket, tables: string[]) {
+		const subscribedTables = this.tableSubscriptions.get(ws);
+		if (!subscribedTables) return;
+
+		for (const table of tables) {
+			subscribedTables.add(table);
+			console.log(`[WS] Client subscribed to table: ${table}`);
+
+			// Send initial snapshot for each subscribed table
+			if (table === "proposal") {
+				await this.sendProposalSnapshot(ws);
+			}
+			// Other tables (workforce_registry, etc.) can be added here
+		}
+	}
+
+	// Transform API proposal to frontend WebSocketProposal format
+	private proposalToWsFormat(p: any): any {
+		return {
+			id: p.id || `#${p.display_id || ""}`,
+			displayId: p.id || p.display_id || "",
+			parentId: p.parentProposalId || null,
+			proposalType: p.proposalType || p.type || "feature",
+			category: p.category || "",
+			domainId: p.domainId || "",
+			title: p.title || "(no title)",
+			status: p.status || "DRAFT",
+			priority: p.priority || "",
+			bodyMarkdown: p.description || p.rawContent || null,
+			processLogic: p.implementationPlan || null,
+			maturityLevel: p.maturity === "new" ? 0 : p.maturity === "mature" ? 5 : p.maturity === "obsolete" ? 10 : null,
+			repositoryPath: p.filePath || null,
+			budgetLimitUsd: p.budgetLimitUsd || 0,
+			tags: Array.isArray(p.labels) ? p.labels.join(",") : (p.tags || null),
+			createdAt: p.createdDate || p.createdAt || "",
+			updatedAt: p.updatedDate || p.updatedAt || "",
+		};
+	}
+
+	// Send proposal snapshot to a WebSocket client
+	private async sendProposalSnapshot(ws: WebSocket) {
+		try {
+			console.log("[WS] Sending proposal snapshot...");
+			const store = await this.getContentStoreInstance();
+			const proposals = await this.core.queryProposals({ includeCrossBranch: true });
+			console.log(`[WS] Got ${proposals.length} proposals from query`);
+			const wsProposals = proposals.map((p) => this.proposalToWsFormat(p));
+			console.log(`[WS] Transformed to ${wsProposals.length} WS proposals`);
+
+			const msg = JSON.stringify({
+				type: "proposal_snapshot",
+				data: wsProposals,
+			});
+			console.log(`[WS] Sending message (${msg.length} bytes)`);
+			ws.send(msg);
+			console.log("[WS] Snapshot sent successfully");
+		} catch (err) {
+			console.error("[WS] Failed to send proposal snapshot:", err);
+			// Send empty snapshot on error so frontend doesn't hang
+			ws.send(JSON.stringify({
+				type: "proposal_snapshot",
+				data: [],
+			}));
+		}
+	}
+
+	// Broadcast proposal update to all subscribed clients
+	private broadcastProposalUpdate(type: "proposal_update" | "proposal_insert" | "proposal_delete", data: any) {
+		const wsData = type === "proposal_delete" ? data : this.proposalToWsFormat(data);
+		const msg = JSON.stringify({ type, data: wsData });
+
+		for (const ws of this.sockets) {
+			const tables = this.tableSubscriptions.get(ws);
+			if (tables?.has("proposal")) {
+				try { ws.send(msg); } catch {}
+			}
+		}
 	}
 
 	async start(port?: number, openBrowser = true): Promise<void> {
@@ -404,15 +536,21 @@ export class RoadmapServer {
 			this.wss.on("connection", (ws) => {
 				this.sockets.add(ws);
 				this.channelSubscriptions.set(ws, new Map());
+				this.tableSubscriptions.set(ws, new Set());
 				ws.on("message", (msg) => {
 					const text = msg.toString();
 					if (text === "ping") {
 						ws.send("pong");
 						return;
 					}
-					// Try JSON protocol for channel subscribe/unsubscribe
+					// Try JSON protocol for table/channel subscribe
 					try {
 						const data = JSON.parse(text);
+						// Frontend table subscription: { type: "subscribe", tables: ["proposal", ...] }
+						if (data.type === "subscribe" && Array.isArray(data.tables)) {
+							this.handleTableSubscribe(ws, data.tables);
+							return;
+						}
 						if (data.type === "subscribe" && data.channel) {
 							this.handleSubscribe(ws, data.channel);
 							return;
@@ -428,13 +566,18 @@ export class RoadmapServer {
 				ws.on("close", () => {
 					this.cleanupSubscriptions(ws);
 					this.channelSubscriptions.delete(ws);
+					this.tableSubscriptions.delete(ws);
 					this.sockets.delete(ws);
 				});
 			});
 
 			await new Promise<void>((resolve, reject) => {
-				this.server?.listen(finalPort, () => resolve());
-				this.server?.on("error", (err) => reject(err));
+				const httpServer = this.server;
+				if (httpServer) {
+					(httpServer as any).once("listening", () => resolve());
+					(httpServer as any).once("error", (err: any) => reject(err));
+					httpServer.listen({ port: finalPort, reusePort: true });
+				}
 			});
 
 			const url = `http://localhost:${finalPort}`;
@@ -453,6 +596,9 @@ export class RoadmapServer {
 			} else {
 				console.log("💡 Open your browser and navigate to the URL above");
 			}
+
+			// Start polling for external DB changes (cron, MCP, direct SQL)
+			this.startChangePolling();
 		} catch (error) {
 			// Handle port already in use error
 			const errorCode = (error as { code?: string })?.code;
@@ -564,7 +710,7 @@ export class RoadmapServer {
 			req.url || "/",
 			`http://${req.headers.host || "localhost"}`,
 		);
-		appendFileSync("/tmp/mcp-debug.log", `[HTTP] ${req.method} ${req.url}\n`);
+		try { appendFileSync("/tmp/mcp-debug.log", `[HTTP] ${req.method} ${req.url}\n`); } catch {}
 		const _pathname = url.pathname;
 		const method = req.method || "GET";
 
@@ -615,25 +761,63 @@ export class RoadmapServer {
 		const pathname = url.pathname;
 		const method = req.method;
 
-		// Static routes returning indexHtml
-		if (
-			method === "GET" &&
-			(pathname === "/" ||
-				[
-					"/proposals",
-					"/directives",
-					"/drafts",
-					"/documentation",
-					"/decisions",
-					"/statistics",
-					"/settings",
-					"/dashboard",
-				].some((p) => pathname === p || pathname.startsWith(`${p}/`)))
-		) {
-			return new Response(indexHtml, {
-				headers: { "Content-Type": "text/html" },
+	// Static file serving from webDir
+	const staticExtensions = [".js", ".mjs", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".json"];
+	if (method === "GET" && staticExtensions.some(ext => pathname.endsWith(ext))) {
+		const staticPath = join(webDir, pathname);
+		console.log(`[Static] Looking for: ${staticPath}, exists: ${existsSync(staticPath)}`);
+		if (existsSync(staticPath) && statSync(staticPath).isFile()) {
+			const ext = staticPath.split(".").pop() || "";
+			const mimeTypes: Record<string, string> = {
+				js: "application/javascript",
+				mjs: "application/javascript",
+				css: "text/css",
+				html: "text/html",
+				json: "application/json",
+				png: "image/png",
+				jpg: "image/jpeg",
+				jpeg: "image/jpeg",
+				svg: "image/svg+xml",
+				ico: "image/x-icon",
+				woff: "font/woff",
+				woff2: "font/woff2",
+			};
+			const content = readFileSync(staticPath);
+			return new Response(content, {
+				headers: { "Content-Type": mimeTypes[ext] || "application/octet-stream" },
 			});
 		}
+	}
+
+	// Static routes returning indexHtml
+	if (
+		method === "GET" &&
+		(pathname === "/" ||
+			[
+				"/board",
+				"/proposals",
+				"/directives",
+				"/drafts",
+				"/documentation",
+				"/decisions",
+				"/statistics",
+				"/settings",
+				"/dashboard",
+				"/agents",
+				"/teams",
+				"/channels",
+				"/agent-dashboard",
+				"/knowledge",
+				"/documents",
+				"/map",
+				"/routes",
+				"/achievements",
+			].some((p) => pathname === p || pathname.startsWith(`${p}/`)))
+	) {
+		return new Response(indexHtml, {
+			headers: { "Content-Type": "text/html" },
+		});
+	}
 
 		if (
 			method === "POST" &&
@@ -659,11 +843,11 @@ export class RoadmapServer {
 				return await this.handleListMessages(req);
 
 			if (pathname === "/api/mcp/sse" && method === "GET") {
-				appendFileSync("/tmp/mcp-debug.log", "[Server] MCP SSE request\n");
+				try { appendFileSync("/tmp/mcp-debug.log", "[Server] MCP SSE request\n"); } catch {}
 				return await this.handleMcpSse(req);
 			}
 			if (pathname === "/api/mcp/message" && method === "POST") {
-				appendFileSync("/tmp/mcp-debug.log", "[Server] MCP POST request\n");
+				try { appendFileSync("/tmp/mcp-debug.log", "[Server] MCP POST request\n"); } catch {}
 				return await this.handleMcpMessage(req);
 			}
 
@@ -699,6 +883,26 @@ export class RoadmapServer {
 				const parts = pathname.split("/");
 				const id = parts[3]!; // /api/proposals/{id}/notes
 				if (method === "GET") return await this.handleGetProposalNotes(id, req);
+			}
+
+			// GET /api/proposals/:id/decisions
+			if (
+				pathname.startsWith("/api/proposals/") &&
+				pathname.endsWith("/decisions")
+			) {
+				const parts = pathname.split("/");
+				const id = parts[3]!;
+				if (method === "GET") return await this.handleGetProposalDecisions(id);
+			}
+
+			// GET /api/proposals/:id/reviews
+			if (
+				pathname.startsWith("/api/proposals/") &&
+				pathname.endsWith("/reviews")
+			) {
+				const parts = pathname.split("/");
+				const id = parts[3]!;
+				if (method === "GET") return await this.handleGetProposalReviews(id);
 			}
 
 			if (pathname === "/api/statuses" && method === "GET")
@@ -1111,18 +1315,50 @@ export class RoadmapServer {
 		try {
 			const url = new URL(req.url);
 			const noteType = url.searchParams.get("type");
-			const notes = (await this.core.listPulse(200))
-				.filter((event) => event.id === proposalId)
-				.filter((event) => !noteType || event.type === noteType)
-				.map((event, index) => ({
-					id: `${proposalId}-${index}`,
-					proposal_id: proposalId,
-					agent_identity: event.agent,
-					content: event.impact || event.title,
-					note_type: event.type,
-					created_at: event.timestamp,
-				}));
-			return Response.json({ notes, proposal_id: proposalId });
+			const isNumeric = /^\d+$/.test(proposalId);
+			let sql = `SELECT id, proposal_id, author_identity, context_prefix, COALESCE(body, body_markdown) as body_markdown, created_at
+				FROM roadmap_proposal.proposal_discussions
+				WHERE proposal_id = ${isNumeric ? "$1" : "(SELECT id FROM roadmap_proposal.proposal WHERE display_id = $1)"}`;
+			const params: unknown[] = [isNumeric ? parseInt(proposalId, 10) : proposalId];
+			if (noteType) {
+				sql += ` AND context_prefix = $2`;
+				params.push(noteType);
+			}
+			sql += ` ORDER BY created_at DESC LIMIT 50`;
+			const { rows } = await query(sql, params);
+			return Response.json({ notes: rows || [] });
+		} catch (error) {
+			return Response.json({ error: String(error) }, { status: 500 });
+		}
+	}
+
+	private async handleGetProposalDecisions(proposalId: string): Promise<Response> {
+		try {
+			const isNumeric = /^\d+$/.test(proposalId);
+			const { rows } = await query(
+				`SELECT id, decision, authority, rationale, binding, decided_at
+				 FROM roadmap_proposal.proposal_decision
+				 WHERE proposal_id = ${isNumeric ? "$1" : "(SELECT id FROM roadmap_proposal.proposal WHERE display_id = $1)"}
+				 ORDER BY decided_at DESC`,
+				[isNumeric ? parseInt(proposalId, 10) : proposalId],
+			);
+			return Response.json({ decisions: rows || [] });
+		} catch (error) {
+			return Response.json({ error: String(error) }, { status: 500 });
+		}
+	}
+
+	private async handleGetProposalReviews(proposalId: string): Promise<Response> {
+		try {
+			const isNumeric = /^\d+$/.test(proposalId);
+			const { rows } = await query(
+				`SELECT id, reviewer_identity, verdict, notes, findings, is_blocking, reviewed_at
+				 FROM roadmap_proposal.proposal_reviews
+				 WHERE proposal_id = ${isNumeric ? "$1" : "(SELECT id FROM roadmap_proposal.proposal WHERE display_id = $1)"}
+				 ORDER BY reviewed_at DESC`,
+				[isNumeric ? parseInt(proposalId, 10) : proposalId],
+			);
+			return Response.json({ reviews: rows || [] });
 		} catch (error) {
 			return Response.json({ error: String(error) }, { status: 500 });
 		}
@@ -2169,7 +2405,7 @@ export class RoadmapServer {
 	}
 
 	private async handleMcpMessage(req: Request): Promise<Response> {
-		appendFileSync("/tmp/mcp-debug.log", "[MCP] handleMcpMessage called\n");
+		try { appendFileSync("/tmp/mcp-debug.log", "[MCP] handleMcpMessage called\n"); } catch {}
 		await this.ensureServicesReady();
 		if (!this.mcpServer) {
 			return Response.json(
@@ -2207,17 +2443,17 @@ export class RoadmapServer {
 				? parsedBody.method
 				: "unknown";
 
-		appendFileSync(
-			"/tmp/mcp-debug.log",
-			`[MCP] POST message: ${parsedMethod} sessionId: ${sessionId}\n`,
-		);
+	try { appendFileSync(
+		"/tmp/mcp-debug.log",
+		`[MCP] POST message: ${parsedMethod} sessionId: ${sessionId}\n`,
+	); } catch {}
 
 		// Handle message through SSE transport
 		try {
-			appendFileSync(
+			try { appendFileSync(
 				"/tmp/mcp-debug.log",
 				"[MCP] Calling transport.handlePostMessage\n",
-			);
+			); } catch {}
 
 			// Create mock response that captures status
 			let responseStatus = 202;
@@ -2233,10 +2469,10 @@ export class RoadmapServer {
 				},
 				end: (chunk?: any) => {
 					if (chunk) responseBody += Buffer.from(chunk).toString();
-					appendFileSync(
+					try { appendFileSync(
 						"/tmp/mcp-debug.log",
 						`[MCP] Response status: ${responseStatus} body: ${responseBody.slice(0, 100)}\n`,
-					);
+					); } catch {}
 					return mockRes;
 				},
 				flushHeaders: () => {},
@@ -2264,7 +2500,7 @@ export class RoadmapServer {
 			}
 			return Response.json({ ok: true });
 		} catch (e) {
-			appendFileSync("/tmp/mcp-debug.log", `[MCP] POST error: ${String(e)}\n`);
+			try { appendFileSync("/tmp/mcp-debug.log", `[MCP] POST error: ${String(e)}\n`); } catch {}
 			return Response.json({ error: String(e) }, { status: 500 });
 		}
 	}

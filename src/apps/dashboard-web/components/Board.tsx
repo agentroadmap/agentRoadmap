@@ -51,7 +51,7 @@ const Board: React.FC<BoardProps> = ({
 
 	// Filtered proposals (hide complete if toggled)
 	const visibleStatuses = useMemo(
-		() => (hideComplete ? statuses.filter((s) => s !== "Complete") : statuses),
+		() => (hideComplete ? statuses.filter((s) => s.toUpperCase() !== "COMPLETE") : statuses),
 		[statuses, hideComplete],
 	);
 

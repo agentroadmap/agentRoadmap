@@ -19,6 +19,7 @@ import MapPage from "./components/MapPage";
 import NotFoundPage from "./components/NotFoundPage";
 import ProposalDetailsModal from "./components/ProposalDetailsModal";
 import ProposalsPage from "./components/ProposalsPage";
+import RoutesPage from "./components/RoutesPage";
 import SettingsPage from "./components/SettingsPage";
 import StatisticsPage from "./components/StatisticsPage";
 import TeamsPage from "./components/TeamsPage";
@@ -30,11 +31,12 @@ import {
 } from "./hooks/useWebSocket";
 
 const STATUSES = [
-	"Draft",
-	"Review",
-	"Develop",
-	"Merge",
-	"Complete",
+	"DRAFT",
+	"REVIEW",
+	"DEVELOP",
+	"MERGE",
+	"COMPLETE",
+	"DEPLOYED",
 ];
 
 function toSharedProposal(proposal: WebSocketProposal): Proposal {
@@ -57,7 +59,16 @@ function toSharedProposal(proposal: WebSocketProposal): Proposal {
 			proposal.priority === "low"
 				? proposal.priority
 				: undefined,
-	};
+		// Pass through full proposal data for detail modal
+		implementationPlan: proposal.implementationPlan,
+		implementationNotes: proposal.implementationNotes,
+		finalSummary: proposal.finalSummary,
+		acceptanceCriteriaItems: proposal.acceptanceCriteriaItems,
+		parentProposalId: proposal.parentProposalId,
+		parentProposalTitle: proposal.parentProposalTitle,
+		maturity: proposal.maturity,
+		rawContent: proposal.rawContent,
+	} as Proposal & Record<string, unknown>;
 }
 
 function toSharedAgent(agent: WebSocketAgent): SharedAgent {
@@ -139,6 +150,9 @@ export default function App() {
 						</Route>
 						<Route path="/map">
 							<MapPage />
+						</Route>
+						<Route path="/routes">
+							<RoutesPage />
 						</Route>
 						<Route path="/achievements">
 							<AchievementsView />

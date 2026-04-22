@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
@@ -340,6 +341,18 @@ export class McpServer extends Core {
 		res: SseTransportResponse,
 	): Promise<SSEServerTransport> {
 		const transport = new SSEServerTransport(endpoint, res);
+		await this.server.connect(transport);
+		return transport;
+	}
+
+	/**
+	 * Create a new StreamableHTTP transport for a connection.
+	 * Compatible with hermes MCP client and other StreamableHTTP clients.
+	 */
+	public async createStreamableHttpTransport(): Promise<StreamableHTTPServerTransport> {
+		const transport = new StreamableHTTPServerTransport({
+			sessionIdGenerator: undefined, // stateless
+		});
 		await this.server.connect(transport);
 		return transport;
 	}
@@ -934,7 +947,42 @@ export async function createMcpServer(
 				},
 				required: ["cubicId"],
 			},
-			handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
+		handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
+	});
+		server.addTool({
+			name: "cubic_acquire",
+			description:
+				"Atomic cubic acquisition: find-or-create for agent, recycle if locked elsewhere, focus on proposal. One call replaces cubic_list + cubic_recycle + cubic_focus.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					agent_identity: {
+						type: "string",
+						description: "Agent identity (e.g. 'architect', 'developer', 'skeptic-alpha')",
+					},
+					proposal_id: {
+						type: "number",
+						description: "Proposal ID to focus the cubic on",
+					},
+					phase: {
+						type: "string",
+						description: "Cubic phase (design, build, test, ship). Default: design",
+					},
+					budget_usd: {
+						type: "number",
+						description: "Optional budget allocation for this cubic session",
+					},
+					worktree_path: {
+						type: "string",
+						description: "Optional worktree path override",
+					},
+				},
+				required: ["agent_identity", "proposal_id"],
+			},
+			handler: (a) =>
+				cubic.acquireCubic(
+					a as Parameters<typeof cubic.acquireCubic>[0],
+				),
 		});
 
 		// Pulse Fleet Observability tools (P063) — Postgres-backed
@@ -1193,6 +1241,144 @@ export async function createMcpServer(
 		registerConsolidatedTools(server);
 		server.setConsolidatedToolSurface(true);
 	}
+
+	// P289: Workforce management tools (agency registration, provider registry, dispatches)
+	const workforce = await import("./tools/workforce/handlers.ts");
+	const workforceSchemas = await import("./tools/workforce/schemas.ts");
+	const smHandlers = await import("./tools/workforce/state-machine-handlers.ts");
+	server.addTool({
+		name: "agency_register",
+		description: "Register an agency (long-lived identity) in agent_registry. Call this first before registering as a provider.",
+		inputSchema: workforceSchemas.agencyRegisterSchema,
+		handler: (a) => workforce.agencyRegisterHandler(a),
+	});
+	server.addTool({
+		name: "provider_register",
+		description: "Register an agency as a provider for a project/squad with capabilities. Agency must be registered first via agency_register.",
+		inputSchema: workforceSchemas.providerRegisterSchema,
+		handler: (a) => workforce.providerRegisterHandler(a),
+	});
+	server.addTool({
+		name: "dispatch_list",
+		description: "List squad_dispatch offers with status filter. Shows agency, worker, offer status, and lease info.",
+		inputSchema: workforceSchemas.dispatchListSchema,
+		handler: (a) => workforce.dispatchListHandler(a),
+	});
+	server.addTool({
+		name: "worker_register",
+		description: "Register an ephemeral worker agent under a parent agency. Called on spawn.",
+		inputSchema: workforceSchemas.workerRegisterSchema,
+		handler: (a) => workforce.workerRegisterHandler(a),
+	});
+
+	// P297: State machine management tools
+	server.addTool({
+		name: "state_machine_start",
+		description: "Start orchestrator and gate-pipeline services",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStartHandler({}),
+	});
+	server.addTool({
+		name: "state_machine_stop",
+		description: "Stop orchestrator and gate-pipeline services",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStopHandler({}),
+	});
+	server.addTool({
+		name: "state_machine_status",
+		description: "Show state machine status: services, agencies, offers, active dispatches",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.stateMachineStatusHandler({}),
+	});
+	server.addTool({
+		name: "agencies_list",
+		description: "List registered agencies and their capabilities",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => smHandlers.agenciesListHandler({}),
+	});
+	server.addTool({
+		name: "offers_list",
+		description: "List dispatch offers, optionally filtered by status",
+		inputSchema: {
+			type: "object",
+			properties: {
+				status: { type: "string", enum: ["open", "claimed", "active", "delivered", "failed", "expired"] },
+			},
+			additionalProperties: false,
+		},
+		handler: (a) => smHandlers.offersListHandler(a),
+	});
+
+	// P297: Project management tools (multi-project agency routing)
+	const projectHandlers = await import("./tools/workforce/project-handlers.ts");
+	server.addTool({
+		name: "project_list",
+		description: "List all projects with agency counts",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => projectHandlers.projectListHandler({}),
+	});
+	server.addTool({
+		name: "project_create",
+		description: "Create a new project",
+		inputSchema: {
+			type: "object",
+			properties: {
+				name: { type: "string", description: "Project name (unique)" },
+				description: { type: "string", description: "What this project is about" },
+				owner: { type: "string", description: "Who created it" },
+			},
+			required: ["name"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectCreateHandler(a),
+	});
+	server.addTool({
+		name: "project_join",
+		description: "Agency joins a project. Call agency_register first.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agencyIdentity: { type: "string", description: "Agency identity" },
+				projectName: { type: "string", description: "Project to join" },
+				capabilities: { type: "array", items: { type: "string" }, description: "Caps for this project" },
+			},
+			required: ["agencyIdentity", "projectName"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectJoinHandler(a),
+	});
+	server.addTool({
+		name: "project_leave",
+		description: "Agency leaves a project",
+		inputSchema: {
+			type: "object",
+			properties: {
+				agencyIdentity: { type: "string" },
+				projectName: { type: "string" },
+			},
+			required: ["agencyIdentity", "projectName"],
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectLeaveHandler(a),
+	});
+	server.addTool({
+		name: "project_agencies",
+		description: "List agencies in a project (or all projects)",
+		inputSchema: {
+			type: "object",
+			properties: {
+				projectName: { type: "string", description: "Filter by project name" },
+			},
+			additionalProperties: false,
+		},
+		handler: (a) => projectHandlers.projectAgenciesHandler(a),
+	});
+	server.addTool({
+		name: "project_overview",
+		description: "Full overview: all projects with their agencies and capabilities",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		handler: () => projectHandlers.projectOverviewHandler({}),
+	});
 
 	// Start background maintenance tasks
 	const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes

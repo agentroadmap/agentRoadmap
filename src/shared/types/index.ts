@@ -133,6 +133,29 @@ export interface Proposal {
 	onStatusChange?: string;
 	/** Budget limit in USD for this proposal */
 	budgetLimitUsd?: number;
+	/**
+	 * Live activity snapshot from roadmap.v_proposal_activity (P272).
+	 * Populated only when the backend is Postgres and the view returns a row.
+	 * All fields are optional — absent means no active lease / dispatch / heartbeat.
+	 */
+	liveActivity?: {
+		/** Active lease holder (preferred "currently working" indicator) */
+		leaseHolder?: string;
+		/** Fallback: agent dispatched by the gate when no lease is held */
+		gateDispatchAgent?: string;
+		/** Gate dispatch role (e.g. reviewer/gater), when applicable */
+		gateDispatchRole?: string;
+		/** Dispatch status (assigned | active) */
+		gateDispatchStatus?: string;
+		/** Cubic the current worker is executing in (agent_health.current_cubic) */
+		activeCubic?: string;
+		/** Model the current worker is using (agent_health.active_model) */
+		activeModel?: string;
+		/** Seconds since the current worker's last heartbeat */
+		heartbeatAgeSeconds?: number;
+		/** Most recent proposal_event type (e.g. lease_claimed, stage_transition) */
+		lastEventType?: string;
+	};
 }
 
 export type ProposalMaturity =

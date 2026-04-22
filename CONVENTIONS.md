@@ -1,20 +1,41 @@
 # AgentHive Conventions and Onboarding
 
-This document is the fast, practical onboarding guide for new AI agents working in AgentHive. Read it before making code, database, MCP, or Git changes.
+This document is the **canonical, single source of truth** for all agent-facing conventions in AgentHive. If any other instruction file (AGENTS.md, CLAUDE.md, agentGuide.md, copilot-instructions.md) conflicts with this document, **this document wins**.
+
+## 0. Precedence and Instruction File Map
+
+| File | Role |
+| :--- | :--- |
+| **CONVENTIONS.md** (this file) | Canonical source. All shared rules: workflow, MCP, DB, Git, governance. |
+| AGENTS.md | Thin shim for Codex/similar tools. Points here for details. |
+| CLAUDE.md | Thin shim for Claude Code. Claude-specific memory + pointer here. |
+| agentGuide.md | Retired. Content merged into this file. Pointer only. |
+| .github/copilot-instructions.md | Redirect to `docs/reference/schema-migration-guide.md`. |
+
+If you are reading AGENTS.md, CLAUDE.md, or agentGuide.md, follow their pointer to this file for the full context.
 
 ## 1. Start Here
 
 Read these files first, in order:
 
 1. `README.md` - project vision and the current proposal lifecycle.
-2. `agentGuide.md` - agent operating rules and behavioral guardrails.
+2. This file (CONVENTIONS.md) — the canonical source for all conventions.
 3. `roadmap.yaml` - active runtime configuration, especially the Postgres provider and `roadmap` schema.
 4. `docs/pillars/1-proposal/new-data-model-guide.md` - current v2 data model rules.
 5. `database/ddl/` and `database/dml/` - canonical schema and initialization artifacts.
+6. `docs/governance/agent-onboarding.md` — who you are, the constitution, proposal workflow, skeptic protocol, rights, and obligations.
+
+Note: `agentGuide.md` has been retired; its content (overseer role, governance, escalation) now lives in sections 10-16.
 
 If your task touches the proposal workflow, also read `docs/pillars/1-proposal/data-model-change.md`.
 
-## 2. Current Operating Reality
+## 2. File Precedence and Current Operating Reality
+
+### File Precedence
+
+See §0 above for the full instruction file map and precedence rules. **CONVENTIONS.md is always canonical.**
+
+### Current Operating Reality
 
 AgentHive is not a greenfield repo. Work against the system that exists today.
 
@@ -56,7 +77,7 @@ Use the real repo layout, not an imagined one:
 
 ## 4. Daily Working Rules
 
-- Use a dedicated Git worktree for your task, typically under `/data/code/worktree/<agent-name>`.
+- Use a dedicated Git worktree for your task, typically under a sibling worktree directory resolved from CWD.
 - Keep changes surgical. Do not opportunistically refactor unrelated code while fixing something else.
 - Put logs, scratch files, dumps, and temporary outputs in `tmp/` or your session workspace, not in tracked source folders.
 - Prefer existing patterns and helpers over inventing parallel abstractions.
@@ -68,6 +89,51 @@ Use the real repo layout, not an imagined one:
 ## 5. Proposal and RFC Workflow Through MCP
 
 AgentHive work is proposal-driven. Participate through MCP, not through chat-only side channels.
+
+### Precedence
+- Proposal type decides the workflow.
+- Workflow decides the allowed states.
+- Maturity applies inside every state.
+
+### Proposal Types
+
+| Type | Category | Workflow | Description |
+| :--- | :--- | :--- | :--- |
+| **product** | Type A (Design) | Standard RFC | Top-level product vision, pillars, constraints |
+| **component** | Type A (Design) | Standard RFC | Major subsystem or architectural pillar |
+| **feature** | Type B (Impl) | Standard RFC | Concrete capability to build |
+| **issue** | Type B (Impl) | Standard RFC | Problem in the product requiring code changes |
+| **hotfix** | Type C (Ops) | Hotfix | Localized operational fix to running instance |
+
+### Standard RFC Workflow (product, component, feature, issue)
+
+| State | Phase | Description |
+| :--- | :--- | :--- |
+| **Draft** | Architecture | Initial idea. If too broad or incoherent, **split it** into smaller proposals. |
+| **Review** | Gating | Gating review for feasibility, coherence, and architectural fit. |
+| **Develop** | Building | Building, coding and testing. |
+| **Merge** | Integration | Merging branch to `main`. Focus on compatibility and stability. |
+| **Complete** | Stable | Temporary stable state until the next evolution cycle begins. |
+
+### Hotfix Workflow (hotfix)
+
+| State | Phase | Description |
+| :--- | :--- | :--- |
+| **TRIAGE** | Confirm | Confirm the problem exists and is a localized operational fix |
+| **FIX** | Apply | Specialist/ops claims and applies the fix (often higher privilege) |
+| **DEPLOYED** | Verified | Fix applied and verified working |
+
+**Terminal states:** DEPLOYED, WONT_FIX, NON_ISSUE
+**Escape:** ESCALATE → creates a new issue proposal (Standard RFC)
+
+### Maturity Levels
+
+| Maturity | Description |
+| :--- | :--- |
+| **New** | Just entered the state. Waiting for an agent to claim or lease it, or for dependencies to clear. |
+| **Active** | Under lease and being worked on with fast iteration. |
+| **Mature** | Work in this state is complete enough to request a gate decision to advance. |
+| **Obsolete** | No longer relevant because the structure or direction has changed. |
 
 ### Proposal-first rule of thumb
 
@@ -318,9 +384,86 @@ Before you finish:
 6. Record durable workflow state in MCP, not only in chat.
 7. If the work revealed a follow-up improvement or cleanup opportunity, create the next proposal instead of leaving a hidden TODO behind.
 
-## 10. Default Escalation Rule
+## 10. Agent Responsibilities & Rules
 
-Escalate instead of improvising when:
+* **The Leasing Model:** Use the MCP to **Claim/Lease** a proposal before starting work (Enhance, Review, Develop, or Merge).
+* **The RFC Standard:** For a proposal to advance, it must be **Coherent**, **Economically/Architecturally optimized**, and have **Structurally defined Acceptance Criteria (AC)** with clear functions/tests.
+* **Issue Reporting:** If an error or blocker is encountered, use the MCP to **log an issue immediately**. Do not attempt to bypass fundamental architectural constraints without a formal issue log.
+* **The "Cubic" Context:** When spawning agents in a "Cubic" environment, ensure they are passed the relevant MCP context for their specific task.
+
+## 11. Overseer Role: Hermes (Andy)
+
+Hermes (Andy) is the **overseer** of the AgentHive autonomous system. This role is distinct from squad agents — Hermes does not execute proposals directly.
+
+### Responsibilities
+* **Orchestrator Onboarding**: Teach the orchestrator processes, conventions, and workflow rules so it can organize the workforce without human intervention.
+* **System Oversight**: Monitor state machine health, gate pipeline integrity, agent dispatch, model routing, spending, and workflow compliance.
+* **Convention Enforcement**: Ensure all agents follow CONVENTIONS.md, proposal lifecycle rules, and governance decisions.
+* **Human Interface**: Bridge between the project owner (Gary) and the autonomous workforce.
+* **Knowledge Transfer**: Ensure spawned agents inherit correct and complete context.
+
+### What Hermes Does NOT Do
+* Does NOT claim proposals or acquire leases — that is for squad agents.
+* Does NOT execute code changes directly — delegates to developer agents.
+* Does NOT advance proposals through gates — that is the gate pipeline's job.
+* Does NOT make governance decisions alone — escalates for strategic calls.
+
+### Orchestrator Relationship
+The orchestrator (`scripts/orchestrator.ts`) is the **dispatcher** — it listens for state changes and assigns agents to cubics. Hermes teaches the orchestrator:
+* Which agent types map to which states
+* What conventions agents must follow
+* How to handle errors gracefully
+* When to escalate vs. retry
+
+The orchestrator handles the "how" of dispatch. Hermes handles the "what" and "why" of the system.
+
+## 12. Model-to-Workflow Phase Mapping
+
+> **NOTE:** The authoritative model-to-phase mapping lives in the DB (`model_routes` table). The table below is a **design intent** reference, not operational fact. Models listed may not be available on every host — check your host's actual model availability before relying on this.
+
+**Current host constraint:** Only `xiaomi/mimo-v2-pro` and `xiaomi/mimo-v2-omni` (Nous subscription) are available. No Claude, GPT-4, or Gemini models are configured.
+
+| Cubic Phase | Design Intent | Why | Cost Tier |
+| :--- | :--- | :--- | :--- |
+| **Design** (DRAFT, REVIEW, TRIAGE) | Deep reasoning model | Architecture, adversarial review | Premium |
+| **Build** (DEVELOP, FIX) | Code generation model | Implementation, balanced cost | Standard |
+| **Test** (MERGE) | Balanced model | Integration testing, validation | Standard |
+| **Ship** (COMPLETE, DEPLOYED) | Fast economy model | Documentation, finalization, low-cost | Economy |
+
+**To see actual routed models:** Query `model_routes` in the DB or check `roadmap.yaml`. Do not hardcode model names from this table into code — the DB is the source of truth.
+
+## 13. Financial Governance & Budget Control
+
+Every agent is accountable for **Token ROI** and **Burn Rate**.
+
+* **Budget Estimation**: Prior to high-cost sequences (deep research, large-scale refactoring), provide a budget estimate.
+* **Threshold Monitoring**:
+  * If spending exceeds 80% of the allocated task budget, pause and alert to request a budget adjustment or contingency approval.
+  * If the system detects significant over-budget, a **Circuit Breaker** may be triggered.
+* **Efficiency**: Prioritize local **Context Caching** and **Team Memory** to minimize fresh token consumption.
+
+## 14. Anomaly & Loop Detection
+
+You are responsible for identifying and breaking unproductive execution cycles.
+
+* **Inertia Loops**: If you repeat the same three steps without progress (e.g., failing to fix a build error), stop and escalate.
+* **DAG Loops**: Monitor for Directed Acyclic Graph (DAG) cycles. If a proposal oscillates between states without advancing, examine the claim log and escalate for structural intervention.
+* **Reporting**: Log all detected loops for audit.
+
+## 15. Escalation Matrix
+
+When a blocker is out of control, follow the formal hierarchy:
+
+| Issue Type | Primary Escalation | Secondary Escalation |
+| :--- | :--- | :--- |
+| **Technical Blocker** | Superior Agent (e.g., Architect Squad) | Project Owner (Gary) |
+| **Budget Exhaustion** | Auditor Agent | Project Owner (Gary) |
+| **Workflow Loop** | Skeptic Squad | Project Owner (Gary) |
+| **Security/ACL Denial** | Security Agent | Project Owner (Gary) |
+
+**The Gary Rule**: Direct intervention from the Project Owner (Gary) or designated HITL (Derek/Nolan) is reserved for high-level strategic pivots or final "Accepted" state transitions.
+
+General escalation triggers:
 
 - a schema change needs live deployment and you do not have DB access
 - you find conflicting live/runtime assumptions
@@ -335,3 +478,24 @@ When blocked, leave the next agent a better surface:
 - exact validation still missing
 
 That is the standard for blending into AgentHive quickly without creating drift.
+
+## 16. Definitions for Agents
+
+* **Universal Maturity Model**: Fresh entries are **new** (White), work in progress is **active** (Yellow), and ready for transition is **mature** (Green).
+* **Zero-Trust**: You have no "root" access. Every action is recorded in the `proposal_version` ledger with a Git-style delta.
+* **Staging**: All code must pass "Pre-flight Checks" in an isolated environment before promotion to the main branch.
+
+## 17. Completed Capabilities
+
+| Proposal | Capability | Description |
+| :--- | :--- | :--- |
+| **P050** | DAG Dependency Engine | Enforces dependency ordering across proposals; detects cycles; validates all blockers resolved before state promotion |
+| **P055** | Team & Squad Composition | Dynamic agent squad assembly based on skills, availability, and role requirements |
+| **P058** | Cubic Orchestration | Isolated execution environments ("cubics") with dedicated agent slots, resource budgets, and Git worktrees |
+| **P059** | Model Registry & Cost Routing | Centralized LLM catalog with cost/capability metadata; optimal model selection per task |
+| **P061** | Knowledge Base & Vector Search | Persistent store of decisions and patterns; pgvector semantic search for reuse across sessions |
+| **P062** | Team Memory | Session-persistent key-value store scoped per agent/team; fast named retrieval |
+| **P063** | Fleet Observability | Real-time heartbeats, spending correlation, efficiency metrics (tokens/proposal, cache hit rate) |
+| **P078** | Escalation Management | Obstacle detection, severity routing, compressed lifecycle for urgent issues |
+| **P090** | Token Efficiency | Three-tier cost reduction: semantic cache, prompt caching, context management + model routing |
+| **P148** | Auto-merge Worktrees | Automated merge from agent worktrees to main with back-sync to other agents |

@@ -14,6 +14,10 @@
  */
 
 import { query } from "../../../../postgres/pool.ts";
+import {
+	validateLease,
+	formatValidationError,
+} from "../../../../core/proposal/proposal-integrity.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 
@@ -298,15 +302,28 @@ export async function transitionProposal(args: {
 			};
 		}
 
-		if (
-			transitionNeedsAcceptanceCriteria(transition) &&
-			(await hasOutstandingAcceptanceCriteria(proposal.id))
-		) {
+	if (
+		transitionNeedsAcceptanceCriteria(transition) &&
+		(await hasOutstandingAcceptanceCriteria(proposal.id))
+	) {
+		return {
+			content: [
+				{
+					type: "text",
+					text: `❌ Cannot transition ${args.proposal_id}: acceptance criteria must all pass first.`,
+				},
+			],
+		};
+	}
+
+		// AC-3: Require active lease before allowing transition
+		const leaseResult = await validateLease(proposal.id, args.decided_by);
+		if (!leaseResult.valid) {
 			return {
 				content: [
 					{
 						type: "text",
-						text: `❌ Cannot transition ${args.proposal_id}: acceptance criteria must all pass first.`,
+						text: `🔒 ${formatValidationError(leaseResult.error!)}`,
 					},
 				],
 			};
@@ -914,6 +931,22 @@ export async function submitReview(args: {
 				],
 			);
 		}
+
+		// Emit review_submitted event for state feed visibility
+		await query(
+			`INSERT INTO roadmap_proposal.proposal_event (proposal_id, event_type, payload)
+       VALUES ($1, 'review_submitted', $2::jsonb)`,
+			[
+				proposalId,
+				JSON.stringify({
+					reviewer: args.reviewer,
+					verdict: args.verdict,
+					has_notes: !!args.notes,
+					has_findings: !!args.findings,
+					ts: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+				}),
+			],
+		);
 
 		return {
 			content: [

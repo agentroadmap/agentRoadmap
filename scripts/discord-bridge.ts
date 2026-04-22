@@ -1,19 +1,20 @@
 /**
  * AgentHive Discord Bridge — Two-way communication with agent routing.
- * 
+ * Uses discord.js for WebSocket connection (bot shows online).
+ *
  * PUSH: State changes → Discord channel
  * RECEIVE: Discord messages → Route to registered agents
- * 
+ *
  * Agent routing:
  *   @claude/andy  → claude/andy agent
- *   @claude/one   → claude/one agent  
+ *   @claude/one   → claude/one agent
  *   @codex/andy   → codex/andy agent
  *   @xiaomi       → xiaomi agent
  *   @skeptic      → skeptic agent
  *   @architect    → architect agent
  *   @reviewer     → reviewer agent
  *   @developer    → developer agent
- * 
+ *
  * Usage in Discord:
  *   "@claude/andy review P149" → routes to claude/andy
  *   "@xiaomi enhance P080" → routes to xiaomi
@@ -21,10 +22,18 @@
  *   "status" → show pipeline status
  */
 
+import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import { getPool, query } from "../src/infra/postgres/pool.ts";
+import { execFile } from "child_process";
 
 const DISCORD_CHANNEL_ID = "1480366428325548200";
+const DISCORD_DM_CHANNEL_ID = "1481167953348137084";
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
+
+// Allowed user IDs (only these users can send commands)
+const ALLOWED_USER_IDS: Set<string> = new Set([
+  "361693793973436428", // xiaomi
+]);
 
 // Agent mention mapping
 const AGENT_MENTIONS: Record<string, string> = {
@@ -54,21 +63,26 @@ const logger = {
   error: (...args: unknown[]) => console.error("[DiscordBridge]", ...args),
 };
 
-// Send message to Discord
-async function sendToDiscord(content: string): Promise<boolean> {
-  if (!DISCORD_BOT_TOKEN) return false;
+// Discord client
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+  ],
+});
 
+// Send message to Discord channel
+async function sendToDiscord(content: string): Promise<boolean> {
   try {
-    const url = `https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bot ${DISCORD_BOT_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ content }),
-    });
-    return response.ok;
+    const channel = client.channels.cache.get(DISCORD_CHANNEL_ID) as TextChannel | undefined;
+    if (!channel) {
+      logger.error("Channel not found:", DISCORD_CHANNEL_ID);
+      return false;
+    }
+    await channel.send(content);
+    return true;
   } catch (error) {
     logger.error("Failed to send to Discord:", error);
     return false;
@@ -112,8 +126,39 @@ async function routeToAgent(agent: string, message: string): Promise<string> {
   }
 }
 
+// Spawn hermes CLI and get response
+function askHermes(message: string): Promise<string> {
+  return new Promise((resolve) => {
+    const hermesBin = "/home/xiaomi/.local/bin/hermes";
+    logger.log(`Spawning hermes for: ${message.substring(0, 50)}...`);
+
+    execFile(
+      hermesBin,
+      ["--no-banner", "--quiet", message],
+      {
+        timeout: 120_000,
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          HOME: "/home/xiaomi",
+          PATH: "/home/xiaomi/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        },
+      },
+      (err, stdout, stderr) => {
+        if (err) {
+          logger.error("Hermes error:", err.message);
+          resolve(`❌ Hermes error: ${err.message}`);
+          return;
+        }
+        const output = (stdout || "").trim();
+        resolve(output || "🤷 Hermes returned empty response.");
+      }
+    );
+  });
+}
+
 // Handle incoming Discord message
-async function handleDiscordMessage(content: string, author: string): Promise<string | null> {
+async function handleDiscordMessage(content: string, author: string): Promise<string | string[] | null> {
   // Check for status command
   if (content.toLowerCase() === "status") {
     return await getPipelineStatus();
@@ -122,12 +167,21 @@ async function handleDiscordMessage(content: string, author: string): Promise<st
   // Check for help command
   if (content.toLowerCase() === "help") {
     return `**AgentHive Discord Bridge — Commands:**
-• \`@agent message\` — Route message to agent (e.g., \`@claude/andy review P149\`)
+• \`@hermes message\` — Talk to Hermes directly
+• \`@agent message\` — Route to agent (e.g., \`@claude/andy review P149\`)
 • \`status\` — Show pipeline status
 • \`help\` — Show this help
 
 **Available agents:**
-${Object.keys(AGENT_MENTIONS).join(", ")}`;
+@hermes, ${Object.keys(AGENT_MENTIONS).join(", ")}`;
+  }
+
+  // Check for @hermes — spawn hermes CLI directly
+  if (content.toLowerCase().startsWith("@hermes")) {
+    const message = content.substring(7).trim();
+    if (!message) return "Usage: @hermes <your message>";
+    const response = await askHermes(message);
+    return response;
   }
 
   // Check for agent mention
@@ -140,35 +194,88 @@ ${Object.keys(AGENT_MENTIONS).join(", ")}`;
   return null;
 }
 
-// Get pipeline status
-async function getPipelineStatus(): Promise<string> {
+// Get pipeline status grouped by proposal type, ordered by workflow state
+async function getPipelineStatus(): Promise<string[]> {
   try {
-    const result = await query(
-      `SELECT current_stage, COUNT(*) as count
-       FROM roadmap.workflows
-       WHERE completed_at IS NULL
-       GROUP BY current_stage
-       ORDER BY
-         CASE current_stage
+    const { rows } = await query<{
+      type: string;
+      display_id: string;
+      status: string;
+      maturity: string;
+    }>(
+      `SELECT p.type,
+              p.display_id,
+              p.status,
+              p.maturity
+       FROM roadmap_proposal.proposal p
+       WHERE p.status NOT IN ('COMPLETE','REJECTED','DISCARDED','ABANDONED')
+         AND p.maturity != 'obsolete'
+       ORDER BY p.type,
+         CASE UPPER(p.status)
            WHEN 'DRAFT' THEN 1
            WHEN 'REVIEW' THEN 2
-           WHEN 'TRIAGE' THEN 3
-           WHEN 'FIX' THEN 4
-           WHEN 'DEVELOP' THEN 5
-           WHEN 'MERGE' THEN 6
-           WHEN 'COMPLETE' THEN 7
-           WHEN 'DEPLOYED' THEN 8
-           ELSE 9
-         END`
+           WHEN 'REVIEWING' THEN 3
+           WHEN 'DEVELOP' THEN 4
+           WHEN 'MERGE' THEN 5
+           WHEN 'COMPLETE' THEN 6
+           WHEN 'DEPLOYED' THEN 7
+           ELSE 8
+         END,
+         p.display_id`,
     );
 
-    let status = "**AgentHive Pipeline Status:**\n";
-    for (const row of result.rows) {
-      status += `• ${row.current_stage}: ${row.count} workflows\n`;
+    // Group by type → status
+    const byType: Record<string, Record<string, string[]>> = {};
+    const typeOrder = ["product", "component", "feature", "issue", "hotfix"];
+
+    for (const row of rows) {
+      const t = row.type ?? "unknown";
+      const s = (row.status ?? "?").toUpperCase();
+      if (!byType[t]) byType[t] = {};
+      if (!byType[t][s]) byType[t][s] = [];
+
+      // Compact: ID + maturity glyph
+      const glyph = row.maturity === "mature" ? "🟢"
+        : row.maturity === "active" ? "🔵"
+        : row.maturity === "new" ? "⚪"
+        : row.maturity === "obsolete" ? "⚫"
+        : "⚪";
+      byType[t][s].push(`${glyph}${row.display_id}`);
     }
-    return status;
+
+    const stateOrder = ["DRAFT", "REVIEW", "REVIEWING", "DEVELOP", "MERGE", "COMPLETE", "DEPLOYED"];
+
+    // Build messages, splitting if over 1900 chars per chunk
+    const chunks: string[] = [];
+    let current = "";
+
+    for (const type of typeOrder) {
+      const statuses = byType[type];
+      if (!statuses) continue;
+
+      let section = `\n**${type.toUpperCase()}**\n`;
+      for (const state of stateOrder) {
+        const ids = statuses[state];
+        if (!ids || ids.length === 0) continue;
+        section += `  ${state}: ${ids.join(" ")}\n`;
+      }
+
+      if (current.length + section.length > 1900) {
+        chunks.push(current);
+        current = section;
+      } else {
+        current += section;
+      }
+    }
+
+    if (current.length > 0) chunks.push(current);
+    if (chunks.length === 0) return ["No active proposals."];
+
+    // Prepend header to first chunk
+    chunks[0] = "**AgentHive Pipeline Status:**\n" + chunks[0];
+    return chunks;
   } catch (error) {
-    return "Failed to get pipeline status";
+    return [`❌ Failed to get pipeline status: ${error instanceof Error ? error.message : String(error)}`];
   }
 }
 
@@ -181,9 +288,19 @@ function formatNotification(channel: string, payload: string): string {
       return `🚪 **GATE READY** — Proposal ${data.proposal_id || data.id} is ready for gate evaluation`;
     }
 
+    if (channel === "proposal_state_changed") {
+      const from = data.from_state ?? "?";
+      const to = data.to_state ?? "?";
+      const by = data.transitioned_by ? ` by ${data.transitioned_by}` : "";
+      const reason = data.reason ? ` (${data.reason})` : "";
+      return `🔄 **STATE** — ${data.display_id ?? data.proposal_id}: ${from} → ${to}${by}${reason}`;
+    }
+
     if (channel === "proposal_maturity_changed") {
-      const maturity = data.maturity_state || data.maturity;
-      return `📊 **MATURITY CHANGE** — ${data.display_id || data.proposal_id} → ${maturity}`;
+      const from = data.from_maturity ?? "?";
+      const to = data.to_maturity ?? data.maturity_state ?? data.maturity ?? "?";
+      const by = data.transitioned_by ? ` by ${data.transitioned_by}` : "";
+      return `📊 **MATURITY** — ${data.display_id ?? data.proposal_id}: ${from} → ${to}${by}`;
     }
 
     if (channel === "transition_queued") {
@@ -208,64 +325,19 @@ function formatNotification(channel: string, payload: string): string {
   }
 }
 
-// Poll Discord for new messages
-async function pollDiscordMessages(lastMessageId: string | null): Promise<string | null> {
-  if (!DISCORD_BOT_TOKEN) return null;
-
-  try {
-    const url = `https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages${lastMessageId ? `?after=${lastMessageId}` : "?limit=1"}`;
-    const response = await fetch(url, {
-      headers: { "Authorization": `Bot ${DISCORD_BOT_TOKEN}` },
-    });
-
-    if (!response.ok) return null;
-
-    const messages = (await response.json()) as any[];
-    if (messages.length === 0) return null;
-
-    // Sort by ID (chronological)
-    messages.sort((a, b) => a.id.localeCompare(b.id));
-
-    let newLastId = lastMessageId;
-
-    for (const msg of messages) {
-      newLastId = msg.id;
-
-      // Skip bot messages
-      if (msg.author.bot) continue;
-      if (msg.webhook_id) continue;
-
-      const author = msg.author.global_name || msg.author.username;
-      const content = msg.content;
-
-      logger.log(`Received Discord message from ${author}: ${content.substring(0, 50)}...`);
-
-      // Handle the message
-      const response = await handleDiscordMessage(content, author);
-      if (response) {
-        await sendToDiscord(response);
-      }
-    }
-
-    return newLastId;
-  } catch (error) {
-    logger.error("Failed to poll Discord:", error);
-    return null;
-  }
-}
-
-async function main() {
-  logger.log("Starting Discord Bridge (two-way)...");
-  logger.log(`Channel: ${DISCORD_CHANNEL_ID}`);
+// Discord event: bot ready
+client.once("ready", async () => {
+  logger.log(`Connected as ${client.user?.tag}`);
+  logger.log(`Guilds: ${client.guilds.cache.size}, Channels: ${client.channels.cache.size}`);
 
   const pool = getPool();
   const pgClient = await pool.connect();
 
   // Listen for state change notifications
+  await pgClient.query("LISTEN proposal_state_changed");
   await pgClient.query("LISTEN proposal_gate_ready");
   await pgClient.query("LISTEN proposal_maturity_changed");
   await pgClient.query("LISTEN transition_queued");
-  // Listen for outbound messages from agents → Discord
   await pgClient.query("LISTEN discord_send");
 
   logger.log("Listening for pg_notify events");
@@ -277,31 +349,115 @@ async function main() {
     await sendToDiscord(notification);
   });
 
-  // Poll Discord for incoming messages (every 5 seconds)
-  let lastMessageId: string | null = null;
+  // REST polling for messages (DMs + server channel)
+  // WebSocket messageCreate isn't reliable for DMs in some setups
+  let lastServerMsgId: string | null = null;
+  let lastDmMsgId: string | null = null;
+
+  async function pollChannel(channelId: string, label: string, lastId: string | null): Promise<string | null> {
+    if (!DISCORD_BOT_TOKEN) return lastId;
+    try {
+      const url = `https://discord.com/api/v10/channels/${channelId}/messages?limit=${lastId ? "5" : "1"}${lastId ? `&after=${lastId}` : ""}`;
+      const response = await fetch(url, {
+        headers: { "Authorization": `Bot ${DISCORD_BOT_TOKEN}` },
+      });
+      if (!response.ok) return lastId;
+      const messages = (await response.json()) as any[];
+      if (messages.length === 0) return lastId;
+
+      messages.sort((a: any, b: any) => a.id.localeCompare(b.id));
+      let newLastId = lastId;
+
+      for (const msg of messages) {
+        newLastId = msg.id;
+        if (msg.author.bot) continue;
+        if (!ALLOWED_USER_IDS.has(msg.author.id)) continue;
+
+        const author = msg.author.global_name || msg.author.username;
+        const content = msg.content;
+        logger.log(`[REST:${label}] Received from ${author}: ${content.substring(0, 50)}...`);
+
+        const response = await handleDiscordMessage(content, author);
+        if (response) {
+          // Send reply via discord.js (keeps WebSocket connection alive)
+          const channel = client.channels.cache.get(channelId);
+          if (channel && "send" in channel) {
+            const chunks = Array.isArray(response) ? response : [response];
+            for (const chunk of chunks) {
+              await (channel as any).send(chunk);
+            }
+          }
+        }
+      }
+      return newLastId;
+    } catch (error) {
+      logger.error(`[REST:${label}] Poll error:`, error);
+      return lastId;
+    }
+  }
+
+  // Poll every 3 seconds
   setInterval(async () => {
-    lastMessageId = await pollDiscordMessages(lastMessageId);
-  }, 5000);
+    lastServerMsgId = await pollChannel(DISCORD_CHANNEL_ID, "server", lastServerMsgId);
+    lastDmMsgId = await pollChannel(DISCORD_DM_CHANNEL_ID, "dm", lastDmMsgId);
+  }, 3000);
 
   // Send startup message
   await sendToDiscord("🟢 **AgentHive Discord Bridge** — Two-way communication active.\n\n**Commands:**\n• `@agent message` — Route to agent\n• `status` — Show pipeline status\n• `help` — Show help");
 
   logger.log("Discord Bridge running (two-way)...");
+});
 
-  // Graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.log(`Received ${signal}, shutting down...`);
-    await sendToDiscord("🔴 **AgentHive Discord Bridge** — Shutting down.");
-    pgClient.release();
-    await pool.end();
-    process.exit(0);
-  };
+// Discord event: message received
+client.on("messageCreate", async (msg) => {
+  // Debug: log ALL messages
+  logger.log(`[DEBUG] messageCreate: channel=${msg.channel.id} type=${msg.channel.type} author=${msg.author.id}/${msg.author.username} bot=${msg.author.bot} guild=${msg.guild?.id ?? "DM"}`);
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  // Skip bot messages
+  if (msg.author.bot) return;
+
+  // Accept: server channel OR DM from allowed user
+  const isServerChannel = msg.channel.id === DISCORD_CHANNEL_ID;
+  const isDM = !msg.guild && msg.channel.type === 1; // DMChannel
+  if (!isServerChannel && !isDM) return;
+
+  // Skip unauthorized users
+  if (!ALLOWED_USER_IDS.has(msg.author.id)) {
+    if (!isDM) logger.log(`Ignoring message from unauthorized user ${msg.author.id} (${msg.author.username})`);
+    return;
+  }
+
+  const author = msg.author.globalName || msg.author.username;
+  const content = msg.content;
+
+  logger.log(`Received Discord message from ${author}: ${content.substring(0, 50)}...`);
+
+  const response = await handleDiscordMessage(content, author);
+  if (response) {
+    const chunks = Array.isArray(response) ? response : [response];
+    for (const chunk of chunks) {
+      await msg.channel.send(chunk);
+    }
+  }
+});
+
+// Graceful shutdown
+const shutdown = async (signal: string) => {
+  logger.log(`Received ${signal}, shutting down...`);
+  client.destroy();
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+// Login
+if (!DISCORD_BOT_TOKEN) {
+  logger.error("DISCORD_BOT_TOKEN not set");
+  process.exit(1);
 }
 
-main().catch((err) => {
-  console.error("[DiscordBridge] Fatal error:", err);
+client.login(DISCORD_BOT_TOKEN).catch((err) => {
+  logger.error("Failed to login:", err);
   process.exit(1);
 });

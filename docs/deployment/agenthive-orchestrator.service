@@ -1,7 +1,7 @@
 [Unit]
 Description=AgentHive Orchestrator — Event-driven agent dispatcher
 Documentation=https://github.com/agentroadmap/agentRoadmap
-After=network-online.target postgresql.service hermes-gate-pipeline.service
+After=network-online.target postgresql.service agenthive-gate-pipeline.service
 Wants=network-online.target
 
 [Service]
@@ -10,9 +10,13 @@ WorkingDirectory=/data/code/AgentHive
 ExecStart=/usr/bin/env node --import jiti/register scripts/orchestrator.ts
 Restart=on-failure
 RestartSec=10
+# P254: 5min stop window covers the orchestrator's 600s spawn timeout's
+# tail so dispatchImplicitGate can finish before SIGKILL.
+TimeoutStopSec=300
+KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=hermes-orchestrator
+SyslogIdentifier=agenthive-orchestrator
 
 # Environment file for database credentials
 EnvironmentFile=-%h/.agenthive.env

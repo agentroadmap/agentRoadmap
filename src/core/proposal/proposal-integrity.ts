@@ -239,7 +239,7 @@ async function validateACGate(
  * AC-LEASE: Check that the agent holds a valid active lease on the proposal.
  * If another agent holds the lease, return LEASE_CONFLICT.
  */
-async function validateLease(
+export async function validateLease(
 	proposalId: number,
 	agentIdentity: string,
 ): Promise<TransitionValidationResult> {
@@ -253,19 +253,38 @@ async function validateLease(
 	);
 
 	if (rows.length === 0) {
-		// No active lease — allow (some workflows don't require leases)
-		return { valid: true };
+		return {
+			valid: false,
+			error: {
+				code: "LEASE_CONFLICT",
+				message: `No active lease on proposal ${proposalId}. Agent '${agentIdentity}' must claim a lease before transitioning.`,
+				context: {
+					proposalId,
+					requestingAgent: agentIdentity,
+					reason: "no_lease",
+				},
+			},
+		};
 	}
 
 	const lease = rows[0];
 
-	// Check if lease is expired
 	if (lease.expires_at && new Date(lease.expires_at) < new Date()) {
-		// Lease expired — allow
-		return { valid: true };
+		return {
+			valid: false,
+			error: {
+				code: "LEASE_CONFLICT",
+				message: `Lease on proposal ${proposalId} has expired (expired: ${lease.expires_at}). Agent '${agentIdentity}' must renew or re-claim.`,
+				context: {
+					proposalId,
+					requestingAgent: agentIdentity,
+					expiresAt: lease.expires_at,
+					reason: "lease_expired",
+				},
+			},
+		};
 	}
 
-	// Check if the agent holds the lease
 	if (lease.agent_identity !== agentIdentity) {
 		return {
 			valid: false,

@@ -22,6 +22,7 @@ export default function BoardPage({
 	const [laneMode, setLaneMode] = useState<LaneMode>("none");
 	const [typeFilter, setTypeFilter] = useState<string | null>(null);
 	const [domainFilter, setDomainFilter] = useState<string | null>(null);
+	const [searchText, setSearchText] = useState("");
 	const laneStorageKey = "roadmap.board.lane";
 
 	useEffect(() => {
@@ -85,10 +86,16 @@ export default function BoardPage({
 		);
 	};
 
-	// Filter proposals by type/domain if active
+	// Filter proposals by type/domain/text if active
 	const filteredProposals = proposals.filter((p) => {
 		if (typeFilter && p.proposalType !== typeFilter) return false;
 		if (domainFilter && p.domainId !== domainFilter) return false;
+		if (searchText) {
+			const q = searchText.toLowerCase();
+			const idMatch = p.displayId?.toLowerCase().includes(q);
+			const titleMatch = p.title?.toLowerCase().includes(q);
+			if (!idMatch && !titleMatch) return false;
+		}
 		return true;
 	});
 
@@ -105,6 +112,15 @@ export default function BoardPage({
 		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
 			{/* Lane Controls */}
 			<div className="mb-4 flex items-center gap-4">
+				{/* Search filter */}
+				<input
+					id="board-search"
+					type="text"
+					placeholder="Filter by # or title…"
+					value={searchText}
+					onChange={(e) => setSearchText(e.target.value)}
+					className="rounded border px-3 py-1.5 text-sm w-64 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400"
+				/>
 				<div className="flex items-center gap-2">
 					<label
 						htmlFor={laneSelectId}

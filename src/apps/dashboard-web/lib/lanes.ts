@@ -119,7 +119,7 @@ export function groupProposalsByLaneAndStatus(
 			statusMap = new Map();
 			map.set(key, statusMap);
 		}
-		const status = proposal.status || "New";
+		const status = (proposal.status || "new").toUpperCase();
 		let list = statusMap.get(status);
 		if (!list) {
 			list = [];

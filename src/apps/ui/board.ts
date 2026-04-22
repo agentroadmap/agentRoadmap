@@ -456,9 +456,32 @@ export function formatProposalListItem(
 	proposal: Proposal,
 	isMoving = false,
 ): string {
-	const assignee = proposal.assignee?.[0]
-		? ` {cyan-fg}${proposal.assignee[0].startsWith("@") ? proposal.assignee[0] : `@${proposal.assignee[0]}`}{/}`
-		: "";
+	// P270: render assignee from live activity when available. Prefer lease
+	// holder (cyan), fall back to gate dispatch agent (magenta + "gate"),
+	// fall back to static proposal.assignee (plain cyan). Append cubic/model
+	// in dim gray when agent_health reports them.
+	const live = proposal.liveActivity;
+	const rawAssignee = proposal.assignee?.[0];
+	let assignee = "";
+	if (rawAssignee) {
+		const handle = rawAssignee.startsWith("@") ? rawAssignee : `@${rawAssignee}`;
+		if (live?.leaseHolder && rawAssignee === live.leaseHolder) {
+			assignee = ` {cyan-fg}●${handle}{/}`;
+		} else if (
+			live?.gateDispatchAgent &&
+			rawAssignee === live.gateDispatchAgent
+		) {
+			assignee = ` {magenta-fg}◐${handle} (gate){/}`;
+		} else {
+			assignee = ` {cyan-fg}${handle}{/}`;
+		}
+	}
+	const liveDetail =
+		live?.activeCubic || live?.activeModel
+			? ` {gray-fg}${live.activeCubic ? `⬢${live.activeCubic}` : ""}${
+					live.activeCubic && live.activeModel ? " " : ""
+				}${live.activeModel ? `✦${live.activeModel}` : ""}{/}`
+			: "";
 	const labels = proposal.labels?.length
 		? ` {yellow-fg}[${proposal.labels.join(", ")}]{/}`
 		: "";
@@ -495,7 +518,7 @@ export function formatProposalListItem(
 
 	// Cross-branch proposals are dimmed to indicate read-only status
 	const displayId = proposal.id.replace(/^STATE-/, "STEP-");
-	const content = `${statusColor}${statusStyle.icon}{/} ${maturityColor}${maturityIcon}{bold}${displayId} - ${proposal.title}{/bold}{/}${assignee}${labels}${branch}${mergeSuffix}`;
+	const content = `${statusColor}${statusStyle.icon}{/} ${maturityColor}${maturityIcon}{bold}${displayId} - ${proposal.title}{/bold}{/}${assignee}${liveDetail}${labels}${branch}${mergeSuffix}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -678,7 +701,7 @@ export async function renderBoardTui(
 		});
 
 		// Live event stream sidebar (right panel)
-		const eventPanel = box({
+		const eventPanel = list({
 			parent: container,
 			top: 0,
 			right: 0,
@@ -686,8 +709,9 @@ export async function renderBoardTui(
 			height: "100%-1",
 			border: { type: "line" },
 			label: " 📰 Feed ",
-			style: { border: { fg: "cyan" } },
+			style: { border: { fg: "cyan" }, selected: { bg: undefined, fg: "white" } },
 			tags: true,
+			mouse: true,
 			scrollable: true,
 			alwaysScroll: true,
 			keys: true,
@@ -808,6 +832,7 @@ export async function renderBoardTui(
 			targetIndex: number;
 		};
 		let moveOp: MoveOperation | null = null;
+		let lastEscapeTime = 0;
 		const undoStack: Array<() => Promise<void>> = [];
 		const pushUndo = (undo: () => Promise<void>): void => {
 			undoStack.push(undo);
@@ -941,6 +966,24 @@ export async function renderBoardTui(
 			);
 		};
 
+		// Screen-level mouse handlers for kanban
+		let dragProposalId: string | null = null;
+		let dragSourceCol = -1;
+		let lastMouseDownCol = -1;
+		let lastMouseDownTime = 0;
+		const hitTest = (data: any, el: any): boolean => {
+			const pos = el.lpos;
+			if (!pos) return false;
+			return data.x >= pos.xi && data.x < pos.xl && data.y >= pos.yi && data.y < pos.yl;
+		};
+
+		const findColumnAt = (data: any): number => {
+			for (let i = 0; i < columns.length; i++) {
+				if (hitTest(data, columns[i].box)) return i;
+			}
+			return -1;
+		};
+
 		const createColumnViews = (data: ColumnData[]) => {
 			clearColumns();
 			const layouts = getColumnLayout(data.length);
@@ -955,6 +998,7 @@ export async function renderBoardTui(
 					height: "100%",
 					border: { type: "line" },
 					style: { border: { fg: "gray" } },
+					mouse: true,
 					label: formatColumnLabel(
 						columnData.status,
 						columnData.proposals.length,
@@ -996,6 +1040,112 @@ export async function renderBoardTui(
 				});
 			});
 		};
+
+		// All mouse interaction via mousedown/mouseup (screen doesn't emit "click")
+		screen.on("mousedown", (data: any) => {
+			if (popupOpen || filterPopupOpen || feedOnlyMode) return;
+			const colIdx = findColumnAt(data);
+			if (colIdx < 0) return;
+			// Track for drag
+			if (!moveOp) {
+				const col = columns[colIdx];
+				const sel = col.list.selected ?? 0;
+				const proposal = col.proposals[sel];
+				if (proposal) {
+					dragProposalId = proposal.id;
+					dragSourceCol = colIdx;
+				}
+			}
+			// Track for click/double-click
+			lastMouseDownCol = colIdx;
+			lastMouseDownTime = Date.now();
+		});
+
+		screen.on("mouseup", async (data: any) => {
+			if (popupOpen || filterPopupOpen || feedOnlyMode) return;
+			const colIdx = findColumnAt(data);
+			if (colIdx < 0) {
+				dragProposalId = null;
+				dragSourceCol = -1;
+				return;
+			}
+
+			// Drag: mousedown on one column, mouseup on another
+			if (dragProposalId && dragSourceCol >= 0 && colIdx !== dragSourceCol) {
+				const proposal = currentProposals.find(p => p.id === dragProposalId);
+				const sourceCol = columns[dragSourceCol];
+				const targetCol = columns[colIdx];
+				dragProposalId = null;
+				dragSourceCol = -1;
+				if (proposal && sourceCol && targetCol) {
+					moveOp = {
+						proposalId: proposal.id,
+						fromStatus: proposal.status,
+						targetStatus: targetCol.status,
+						proposal,
+						originalStatus: proposal.status,
+						originalIndex: sourceCol.proposals.indexOf(proposal),
+						targetIndex: 0,
+					};
+					await performProposalMove();
+				}
+				return;
+			}
+
+			dragProposalId = null;
+			dragSourceCol = -1;
+
+			// Click: same column mousedown and mouseup
+			if (colIdx !== currentCol) {
+				setColumnActiveProposal(columns[currentCol], false);
+				currentCol = colIdx;
+				setColumnActiveProposal(columns[currentCol], true);
+				columns[currentCol].list.focus();
+				currentFocus = "board";
+				updateFooter();
+				screen.render();
+			}
+
+			// Double-click: two clicks within 400ms on same column
+			const now = Date.now();
+			if (now - lastMouseDownTime < 400 && lastMouseDownCol === colIdx) {
+				const col = columns[colIdx];
+				const sel = col.list.selected ?? 0;
+				const proposal = col.proposals[sel];
+				if (proposal) await openQuickEdit(proposal, "title");
+				lastMouseDownTime = 0;
+			} else {
+				lastMouseDownTime = now;
+				lastMouseDownCol = colIdx;
+			}
+		});
+
+		// Wheel on columns
+		screen.on("wheeldown", (data: any) => {
+			if (popupOpen || filterPopupOpen || feedOnlyMode) return;
+			const colIdx = findColumnAt(data);
+			if (colIdx < 0) return;
+			const list = columns[colIdx].list;
+			const sel = list.selected ?? 0;
+			const total = columns[colIdx].proposals.length;
+			if (sel < total - 1) {
+				list.select(sel + 1);
+				updateFooter();
+				screen.render();
+			}
+		});
+		screen.on("wheelup", (data: any) => {
+			if (popupOpen || filterPopupOpen || feedOnlyMode) return;
+			const colIdx = findColumnAt(data);
+			if (colIdx < 0) return;
+			const list = columns[colIdx].list;
+			const sel = list.selected ?? 0;
+			if (sel > 0) {
+				list.select(sel - 1);
+				updateFooter();
+				screen.render();
+			}
+		});
 
 		const setColumnActiveProposal = (
 			column: ColumnView | undefined,
@@ -1527,7 +1677,6 @@ export async function renderBoardTui(
 			feedOnlyMode = !feedOnlyMode;
 			if (feedOnlyMode) {
 				feedPinnedToLatest = true;
-				feedWindowStart = Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
 				renderFeedPanel();
 			}
 			showTransientFooter(
@@ -1537,6 +1686,28 @@ export async function renderBoardTui(
 			);
 			syncBoardAreaLayout();
 			updateFooter();
+			screen.render();
+		});
+
+		screen.key(["t", "T"], () => {
+			if (popupOpen || filterPopupOpen || moveOp || currentFocus === "filters")
+				return;
+			if (!feedOnlyMode) return; // t is for title edit in board mode
+			feedThreadMode = !feedThreadMode;
+			if (feedThreadMode) {
+				// Rebuild feed as threads from accumulated events
+				feedLines = buildThreadLines(_allFeedEvents);
+			} else {
+				// Rebuild as flat chronological list
+				feedLines = _allFeedEvents.map(formatEventLine);
+			}
+			feedPinnedToLatest = true;
+			renderFeedPanel();
+			showTransientFooter(
+				feedThreadMode
+					? " {cyan-fg}Thread mode: grouped by proposal{/}"
+					: " {cyan-fg}Chronological mode{/}",
+			);
 			screen.render();
 		});
 
@@ -1588,34 +1759,32 @@ export async function renderBoardTui(
 			renderView();
 		};
 
-		// V = show all columns
-		screen.key(["v", "V"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
-			previousVisibility = [...currentStatuses]; // Save current proposal
+	// V = show all columns / toggle restore
+	let vPressCount = 0;
+	screen.key(["v", "V"], () => {
+		if (popupOpen || filterPopupOpen || moveOp) return;
+		vPressCount++;
+		if (vPressCount === 1 && previousVisibility) {
+			// Restore previous visibility
+			hiddenColumns.clear();
+			currentStatuses.forEach((s) => {
+				if (!previousVisibility?.includes(s)) hiddenColumns.add(s);
+			});
+			applyColumnVisibility();
+			showTransientFooter(
+				" {green-fg}Previous column visibility restored{/}",
+			);
+		} else {
+			// Save current and show all
+			previousVisibility = [...currentStatuses];
 			hiddenColumns.clear();
 			applyColumnVisibility();
+			vPressCount = 0;
 			showTransientFooter(
 				" {green-fg}All columns shown{/} (V again to restore previous)",
 			);
-		});
-
-		// Press V again to restore previous visibility
-		let vPressCount = 0;
-		screen.key(["v", "V"], () => {
-			if (popupOpen || filterPopupOpen || moveOp) return;
-			vPressCount++;
-			if (vPressCount === 1 && previousVisibility) {
-				// Restore previous proposal
-				hiddenColumns.clear();
-				currentStatuses.forEach((s) => {
-					if (!previousVisibility?.includes(s)) hiddenColumns.add(s);
-				});
-				applyColumnVisibility();
-				showTransientFooter(
-					" {green-fg}Previous column visibility restored{/}",
-				);
-			}
-		});
+		}
+	});
 
 		// H = hide current (focused) column
 		screen.key(["h", "H"], () => {
@@ -1925,10 +2094,11 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.min(
-					feedWindowStart + FEED_PAGE_SIZE,
-					Math.max(feedLines.length - FEED_PAGE_SIZE, 0),
-				);
+				const sel = eventPanel.selected ?? 0;
+				const total = feedLines.length;
+				if (sel < total - 1) {
+					eventPanel.select(Math.min(sel + getFeedPageSize(), total - 1));
+				}
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -1954,7 +2124,10 @@ export async function renderBoardTui(
 
 			if (feedOnlyMode) {
 				feedPinnedToLatest = false;
-				feedWindowStart = Math.max(feedWindowStart - FEED_PAGE_SIZE, 0);
+				const sel = eventPanel.selected ?? 0;
+				if (sel > 0) {
+					eventPanel.select(Math.max(sel - getFeedPageSize(), 0));
+				}
 				renderFeedPanel();
 				screen.render();
 				return;
@@ -2057,45 +2230,50 @@ export async function renderBoardTui(
 			}
 		};
 
-		screen.key(["enter"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+	screen.key(["enter"], () => {
+		if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
 
-			// In move mode, Enter confirms the move
-			if (moveOp) {
-				await performProposalMove();
-				return;
-			}
+		// In move mode, Enter confirms the move
+		if (moveOp) {
+			void performProposalMove();
+			return;
+		}
 
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			if (idx < 0 || idx >= column.proposals.length) return;
-			const proposal = column.proposals[idx];
-			if (!proposal) return;
-			popupOpen = true;
+		const column = columns[currentCol];
+		if (!column) return;
+		const idx = column.list.selected ?? 0;
+		if (idx < 0 || idx >= column.proposals.length) return;
+		const proposal = column.proposals[idx];
+		if (!proposal) return;
+		popupOpen = true;
 
-			const popup = await createProposalPopup(
-				screen,
-				proposal,
-				resolveDirectiveLabel,
-			);
-			if (!popup) {
+		createProposalPopup(screen, proposal, resolveDirectiveLabel)
+			.then((popup) => {
+				if (!popup) {
+					popupOpen = false;
+					screen.render();
+					return;
+				}
+				const { contentArea, close } = popup;
+				contentArea.key(["escape", "q"], () => {
+					popupOpen = false;
+					close();
+					focusColumn(currentCol);
+					return false;
+				});
+				popup.background.setFront?.();
+				popup.popup.setFront?.();
+				contentArea.focus();
+				screen.render();
+			})
+			.catch((err) => {
 				popupOpen = false;
-				return;
-			}
-
-			const { contentArea, close } = popup;
-			contentArea.key(["escape", "q"], () => {
-				popupOpen = false;
-				close();
-				focusColumn(currentCol);
-				return false;
+				showTransientFooter(` {red-fg}Error: ${String(err).slice(0, 80)}{/}`);
+				screen.render();
 			});
+	});
 
-			screen.render();
-		});
-
-		const openQuickEdit = async (
+	const openQuickEdit = async (
 			proposal: Proposal,
 			field: "title" | "assignee" | "labels",
 		) => {
@@ -2157,6 +2335,7 @@ export async function renderBoardTui(
 		};
 
 		screen.key(["t", "T"], async () => {
+			if (feedOnlyMode) return; // t is for thread mode in feed view
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
@@ -2195,7 +2374,7 @@ export async function renderBoardTui(
 		});
 
 		screen.key(["tab"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+			if (popupOpen || filterPopupOpen || currentFocus === "filters" || moveOp) return;
 			const column = columns[currentCol];
 			if (column) {
 				const idx = column.list.selected ?? 0;
@@ -2258,9 +2437,18 @@ export async function renderBoardTui(
 			}
 
 			if (!popupOpen) {
-				clearFooterTimer();
-				screen.destroy();
-				resolve();
+				// Require double-press within 2s to exit
+				const now = Date.now();
+				if (lastEscapeTime && now - lastEscapeTime < 2000) {
+					clearFooterTimer();
+					screen.destroy();
+					resolve();
+				} else {
+					lastEscapeTime = now;
+					showTransientFooter(
+						" {yellow-fg}Press ESC again within 2s to exit{/}",
+					);
+				}
 			}
 		});
 
@@ -2268,28 +2456,149 @@ export async function renderBoardTui(
 		let _currentEvents: StreamEvent[] = [];
 		const seenFeedEventIds = new Set<string>();
 		let feedLines: string[] = [];
-		const FEED_PAGE_SIZE = 12;
-		const FEED_HISTORY_LIMIT = 200;
-		let feedWindowStart = 0;
+		const FEED_HISTORY_LIMIT = 500;
 		let feedPinnedToLatest = true;
-		const getFeedMaxWindowStart = () =>
-			Math.max(feedLines.length - FEED_PAGE_SIZE, 0);
-		const renderFeedPanel = () => {
-			if (feedPinnedToLatest) {
-				feedWindowStart = getFeedMaxWindowStart();
-			}
-			const visibleLines = feedLines.slice(
-				feedWindowStart,
-				feedWindowStart + FEED_PAGE_SIZE,
-			);
-			eventPanel.setContent(
-				visibleLines.length > 0
-					? visibleLines.join("\n")
-					: "{gray-fg}No recent feed items{/}",
-			);
+		let feedThreadMode = false;
+		let _allFeedEvents: StreamEvent[] = []; // kept for thread mode rebuild
+		const getFeedPageSize = () => {
+			// Use screen rows minus overhead (header=1, footer=2, borders=2)
+			return Math.max((screen.rows as number) - 5, 5);
 		};
+		const renderFeedPanel = () => {
+			if (feedLines.length > 0) {
+				eventPanel.setItems(feedLines);
+			} else {
+				eventPanel.setItems(["{gray-fg}No recent feed items{/}"]);
+			}
+			if (feedPinnedToLatest) {
+				const maxIdx = Math.max(feedLines.length - 1, 0);
+				eventPanel.select(maxIdx);
+			}
+		};
+		// Board-style icons matching status-icon.ts
+		const stateIconMap: Record<string, string> = {
+			draft: "○", review: "◆", develop: "◒", merge: "▣", complete: "✓",
+			rejected: "✖", discard: "●", replaced: "⇄", building: "◒",
+			accepted: "▣", abandoned: "●", obsolete: "✖", blocked: "●",
+		};
+		const maturityIconMap: Record<string, string> = {
+			new: "○", active: "▶", mature: "✓", obsolete: "✖",
+		};
+		const stateColorMap: Record<string, string> = {
+			draft: "white", review: "yellow", develop: "cyan", merge: "magenta", complete: "green",
+			rejected: "red", discard: "gray", replaced: "blue", building: "cyan",
+		};
+		const maturityColorMap: Record<string, string> = {
+			new: "white", active: "cyan", mature: "green", obsolete: "red",
+		};
+		const getFeedIcon = (e: StreamEvent): string => {
+			// State transition: "P289 state draft -> review"
+			if (e.message.includes(" state ")) {
+				const m = e.message.match(/state\s+\S+\s+->\s+(\S+)/);
+				if (m) {
+					const state = m[1].toLowerCase();
+					const icon = stateIconMap[state] ?? "S";
+					const color = stateColorMap[state] ?? "white";
+					return `{${color}-fg}${icon}{/}`;
+				}
+				return "S";
+			}
+			// Maturity transition: "P289 maturity new -> active"
+			if (e.message.includes(" maturity ")) {
+				const m = e.message.match(/maturity\s+\S+\s+->\s+(\S+)/);
+				if (m) {
+					const mat = m[1].toLowerCase();
+					const icon = maturityIconMap[mat] ?? "M";
+					const color = maturityColorMap[mat] ?? "white";
+					return `{${color}-fg}${icon}{/}`;
+				}
+				return "M";
+			}
+			// Other event types with colors
+			const typeMap: Record<string, [string, string]> = {
+				proposal_accepted: ["▣", "green"], proposal_claimed: ["◆", "yellow"],
+				proposal_coding: ["◒", "cyan"], review_requested: ["?", "yellow"],
+				proposal_reviewing: ["◆", "yellow"], review_passed: ["✓", "green"],
+				review_failed: ["✖", "red"], proposal_complete: ["✓", "green"],
+				proposal_merged: ["▣", "magenta"], proposal_pushed: ["P", "cyan"],
+				agent_online: ["+", "green"], agent_offline: ["-", "red"],
+				heartbeat: ["$", "gray"], cubic_phase_change: ["~", "blue"],
+				custom: [".", "white"], message: ["@", "cyan"],
+			};
+			const entry = typeMap[e.type];
+			if (entry) return `{${entry[1]}-fg}${entry[0]}{/}`;
+			return `{white-fg}.{/}`;
+		};
+
+		const buildThreadLines = (events: StreamEvent[]): string[] => {
+			const byProposal = new Map<string, StreamEvent[]>();
+			const global: StreamEvent[] = [];
+			for (const e of events) {
+				if (e.proposalId) {
+					const arr = byProposal.get(e.proposalId);
+					if (arr) arr.push(e);
+					else byProposal.set(e.proposalId, [e]);
+				} else {
+					global.push(e);
+				}
+			}
+			const lines: string[] = [];
+			// Sort proposals by most recent event first
+			const sortedEntries = [...byProposal.entries()].sort((a, b) => {
+				const lastA = Math.max(...a[1].map((e) => e.timestamp));
+				const lastB = Math.max(...b[1].map((e) => e.timestamp));
+				return lastB - lastA;
+			});
+			for (const [pid, evts] of sortedEntries) {
+				// Proposal header with latest state icon
+				const latestState = evts.reduce((best, e) => {
+					if (e.message.includes(" state ")) {
+						const m = e.message.match(/state\s+\S+\s+->\s+(\S+)/);
+						if (m && e.timestamp > best.ts) return { state: m[1], ts: e.timestamp };
+					}
+					return best;
+				}, { state: "", ts: 0 });
+				const headerIcon = latestState.state
+					? (stateIconMap[latestState.state.toLowerCase()] ?? "○")
+					: "○";
+				lines.push(
+					`{white-bg}{black-fg} ${headerIcon} ${pid} {/} {gray-fg}(${evts.length} events){/}`,
+				);
+				for (const e of evts) {
+					const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+						hour: "2-digit", minute: "2-digit", second: "2-digit",
+					});
+					const icon = getFeedIcon(e);
+					// Indent thread items
+					lines.push(`  {cyan-fg}${time}{/} ${icon} ${e.message}`);
+				}
+				lines.push(""); // blank line between threads
+			}
+			if (global.length > 0) {
+				lines.push(
+					"{white-bg}{black-fg} $ global {/} {gray-fg}(" + global.length + " events){/}",
+				);
+				for (const e of global) {
+					const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+						hour: "2-digit", minute: "2-digit", second: "2-digit",
+					});
+					const icon = getFeedIcon(e);
+					lines.push(`  {cyan-fg}${time}{/} ${icon} ${e.message}`);
+				}
+			}
+			return lines;
+		};
+
+		const formatEventLine = (e: StreamEvent): string => {
+			const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
+				hour: "2-digit", minute: "2-digit", second: "2-digit",
+			});
+			const icon = getFeedIcon(e);
+			return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
+		};
+
 		const updateEventPanel = async () => {
-			const events = await getBoardLiveFeed(30);
+			const events = await getBoardLiveFeed(200);
 			_currentEvents = events;
 			const unseenEvents = events.filter((event) => !seenFeedEventIds.has(event.id));
 			if (unseenEvents.length === 0 && feedLines.length > 0) {
@@ -2300,44 +2609,26 @@ export async function renderBoardTui(
 				seenFeedEventIds.add(event.id);
 			}
 
-			const formattedLines = unseenEvents
-				.slice()
-				.reverse()
-				.map((e) => {
-				const time = new Date(e.timestamp).toLocaleTimeString("en-US", {
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-				});
-				const icon =
-					{
-						proposal_accepted: "+",
-						proposal_claimed: "C",
-						proposal_coding: ">",
-						review_requested: "?",
-						proposal_reviewing: "R",
-						review_passed: "✓",
-						review_failed: "!",
-						proposal_complete: "*",
-						proposal_merged: "M",
-						proposal_pushed: "P",
-						agent_online: "+",
-						agent_offline: "-",
-						handoff: "S",
-						heartbeat: "$",
-						cubic_phase_change: "~",
-						custom: ".",
-						message: "@",
-					}[e.type] || ".";
-				return `{cyan-fg}${time}{/} ${icon} ${e.message}`;
-			});
-			feedLines = [...feedLines, ...formattedLines].slice(
-				-FEED_HISTORY_LIMIT,
-			);
-			if (feedPinnedToLatest) {
-				feedWindowStart = getFeedMaxWindowStart();
+			// Accumulate all events for thread mode rebuild
+			for (const e of unseenEvents) {
+				if (!_allFeedEvents.find((x) => x.id === e.id)) {
+					_allFeedEvents.push(e);
+				}
+			}
+			_allFeedEvents.sort((a, b) => a.timestamp - b.timestamp);
+			if (_allFeedEvents.length > FEED_HISTORY_LIMIT) {
+				_allFeedEvents = _allFeedEvents.slice(-FEED_HISTORY_LIMIT);
+			}
+
+			if (feedThreadMode) {
+				// Rebuild entire thread view from accumulated events
+				feedLines = buildThreadLines(_allFeedEvents);
 			} else {
-				feedWindowStart = Math.min(feedWindowStart, getFeedMaxWindowStart());
+				const newLines = unseenEvents
+					.slice()
+					.reverse()
+					.map(formatEventLine);
+				feedLines = [...feedLines, ...newLines].slice(-FEED_HISTORY_LIMIT);
 			}
 			renderFeedPanel();
 			screen.render();
@@ -2347,8 +2638,21 @@ export async function renderBoardTui(
 			void updateEventPanel();
 		}, 3000);
 
+		// Auto-refresh proposals from DB every 5s
+		const proposalRefreshTimer = setInterval(async () => {
+			try {
+				const fresh = await core.queryProposals({
+					includeCrossBranch: false,
+				});
+				currentProposals = fresh;
+				renderView();
+				screen.render();
+			} catch {}
+		}, 5000);
+
 		screen.on("destroy", () => {
 			clearInterval(eventPanelTimer);
+			clearInterval(proposalRefreshTimer);
 			clearFooterTimer();
 		});
 

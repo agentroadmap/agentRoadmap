@@ -28,17 +28,12 @@ const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 
 // P245: host identity used for host-level spawn policy lookup.
 // Resolved once at module load; systemd units set AGENTHIVE_HOST explicitly
-// (e.g. hermes-orchestrator → AGENTHIVE_HOST=hermes).
+// (e.g. agenthive-orchestrator on hermes → AGENTHIVE_HOST=hermes).
 const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? hostname();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type AgentProvider =
-	| "claude"
-	| "gemini"
-	| "copilot"
-	| "openclaw"
-	| "codex";
+export type AgentProvider = string;
 
 export interface WorktreeConfig {
 	/** Worktree directory name (e.g. "claude-andy") */
@@ -68,6 +63,10 @@ export interface SpawnRequest {
 	maxTokens?: number;
 	/** Wall-clock timeout in milliseconds (default 300 000 = 5 min) */
 	timeoutMs?: number;
+	/** P300: Project-aware worktree root (defaults to WORKTREE_ROOT) */
+	worktreeRoot?: string;
+	/** Display label for context package (e.g. "worker-4620 (skeptic-alpha)") */
+	agentLabel?: string;
 }
 
 export interface SpawnResult {
@@ -89,6 +88,7 @@ export interface ModelRoute {
 	modelName: string;
 	routeProvider: string;
 	agentProvider: string;
+	agentCli: string;
 	apiSpec: "anthropic" | "openai" | "google";
 	baseUrl: string;
 	planType: string | null;
@@ -142,9 +142,9 @@ export function buildSpawnProcessEnv(input: {
 	})();
 
 	const baseEnv: Record<string, string> = {
-		// Carry through essential PATH
-		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-		HOME: process.env.HOME ?? "/root",
+		// Carry through essential PATH — always include hermes bin
+		PATH: ["/home/xiaomi/.local/bin", process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"].filter(Boolean).join(":"),
+		HOME: process.env.HOME ?? "/home/xiaomi",
 		// Agent-specific overrides from .env.agent
 		DATABASE_URL: input.agentEnv.DATABASE_URL ?? "",
 		AGENT_WORKTREE: input.worktree,
@@ -194,6 +194,27 @@ function buildClaudeArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 }
 
 /**
+ * Build argv + env for the Hermes CLI.
+ * Used when agent_cli = 'hermes' — the native AgentHive agent framework.
+ * Uses `hermes chat -q <prompt> -m <model> --provider <provider> --yolo`.
+ */
+function buildHermesArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
+	const argv = [
+		"hermes",
+		"chat",
+		"-q",
+		req.task,
+		"-m",
+		route.modelName,
+		"--provider",
+		route.routeProvider,
+		"--yolo",
+		"-Q", // quiet mode: no spinner/activity
+	];
+	return { argv, env: {} };
+}
+
+/**
  * Build argv + env for the OpenAI Codex CLI.
  * Used when agent_provider = 'codex' (openai spec, `codex` terminal tool).
  * https://github.com/openai/codex
@@ -240,16 +261,20 @@ function buildGeminiArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 	return { argv, env: {} };
 }
 
-/** Dispatch to the correct builder based on route.apiSpec and agent_provider. */
+/** Dispatch to the correct builder based on route.agentCli (DB is source of truth). */
 function buildArgsBySpec(req: SpawnRequest, route: ModelRoute): CommandSpec {
-	// Codex CLI gets its own builder regardless of api_spec (always openai spec)
-	if (route.agentProvider === "codex") return buildCodexArgs(req, route);
-	switch (route.apiSpec) {
-		case "anthropic":
+	// agent_cli from DB determines which CLI to use
+	switch (route.agentCli) {
+		case "codex":
+			return buildCodexArgs(req, route);
+		case "claude":
 			return buildClaudeArgs(req, route);
-		case "google":
+		case "gemini":
 			return buildGeminiArgs(req, route);
-		case "openai":
+		case "hermes":
+			return buildHermesArgs(req, route);
+		default:
+			// copilot, llm, or any other → openai-compatible CLI
 			return buildOpenAICompatArgs(req, route);
 	}
 }
@@ -356,12 +381,14 @@ async function supportsPerMillionRoutePricing(): Promise<boolean> {
 /** Parse .env.agent file — returns key/value pairs. */
 async function loadEnvAgent(
 	worktreeName: string,
+	worktreeRoot: string = WORKTREE_ROOT,
 ): Promise<Record<string, string>> {
-	const path = join(WORKTREE_ROOT, worktreeName, ".env.agent");
+	const path = join(worktreeRoot, worktreeName, ".env.agent");
 	let raw: string;
 	try {
 		raw = await readFile(path, "utf8");
-	} catch {
+	} catch (err: any) {
+		if (err?.code === "ENOENT") return {}; // No .env.agent — creds from $HOME
 		throw new Error(
 			`Cannot read .env.agent for worktree "${worktreeName}" at ${path}`,
 		);
@@ -384,14 +411,30 @@ async function loadEnvAgent(
 	return env;
 }
 
-/** Detect provider from worktree name prefix. */
-function detectProvider(worktreeName: string): AgentProvider {
-	if (worktreeName.startsWith("claude")) return "claude";
-	if (worktreeName.startsWith("gemini")) return "gemini";
-	if (worktreeName.startsWith("copilot")) return "copilot";
-	if (worktreeName.startsWith("openclaw")) return "openclaw";
-	if (worktreeName.startsWith("codex")) return "codex";
-	throw new Error(`Unknown provider prefix for worktree "${worktreeName}"`);
+/**
+ * Detect a worktree's true provider by reading its `.env.agent` (AGENT_PROVIDER).
+ * Falls back to 'hermes' if the file doesn't exist — creds come from $HOME, not worktree.
+ * Host policy is enforced by the caller, not here.
+ */
+export async function detectProvider(worktreeName: string, worktreeRoot: string = WORKTREE_ROOT): Promise<AgentProvider> {
+	const envPath = join(worktreeRoot, worktreeName, ".env.agent");
+	try {
+		const content = await readFile(envPath, "utf8");
+		for (const line of content.split("\n")) {
+			const trimmed = line.trim();
+			if (!trimmed || trimmed.startsWith("#")) continue;
+			const eq = trimmed.indexOf("=");
+			if (eq < 0) continue;
+			const key = trimmed.slice(0, eq).trim();
+			if (key !== "AGENT_PROVIDER") continue;
+			const value = trimmed.slice(eq + 1).trim().replace(/^[\"']|[\"']$/g, "");
+			if (value) return value;
+		}
+	} catch (err: any) {
+		if (err?.code !== "ENOENT") throw err;
+		// No .env.agent — fall back to hermes (creds from $HOME)
+	}
+	return "hermes";
 }
 
 // ─── P235: Platform-Aware Model Constraints ──────────────────────────────────
@@ -417,6 +460,7 @@ async function resolveModelRoute(
 		model_name: string;
 		route_provider: string;
 		agent_provider: string;
+		agent_cli: string;
 		api_spec: string;
 		base_url: string;
 		plan_type: string | null;
@@ -431,7 +475,7 @@ async function resolveModelRoute(
 		if (perMillionPricing) {
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE model_name = $1
@@ -445,7 +489,7 @@ async function resolveModelRoute(
 
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
-              api_spec, base_url, plan_type,
+              agent_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output
        FROM roadmap.model_routes
@@ -462,6 +506,7 @@ async function resolveModelRoute(
 		modelName: r.model_name,
 		routeProvider: r.route_provider,
 		agentProvider: r.agent_provider,
+		agentCli: r.agent_cli ?? r.agent_provider,
 		apiSpec: r.api_spec as ModelRoute["apiSpec"],
 		baseUrl: r.base_url,
 		planType: r.plan_type,
@@ -489,7 +534,7 @@ async function resolveModelRoute(
 	const { rows } = perMillionPricing
 		? await query<RouteRow>(
 				`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE agent_provider = $1
@@ -500,12 +545,12 @@ async function resolveModelRoute(
 			)
 		: await query<RouteRow>(
 				`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
-               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-               NULL::numeric AS cost_per_million_output
-        FROM roadmap.model_routes
-        WHERE agent_provider = $1
-          AND is_enabled = true
+              agent_cli, api_spec, base_url, plan_type,
+              cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+              NULL::numeric AS cost_per_million_output
+       FROM roadmap.model_routes
+       WHERE agent_provider = $1
+         AND is_enabled = true
         ORDER BY priority ASC, cost_per_1k_input ASC
         LIMIT 1`,
 				[provider],
@@ -522,7 +567,7 @@ async function resolveModelRoute(
 		const { rows: defaultRows } = perMillionPricing
 			? await query<RouteRow>(
 					`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
+               agent_cli, api_spec, base_url, plan_type,
                cost_per_1k_input, cost_per_million_input, cost_per_million_output
         FROM roadmap.model_routes
         WHERE model_name = $1
@@ -534,13 +579,13 @@ async function resolveModelRoute(
 				)
 			: await query<RouteRow>(
 					`SELECT model_name, route_provider, agent_provider,
-               api_spec, base_url, plan_type,
-               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-               NULL::numeric AS cost_per_million_output
-        FROM roadmap.model_routes
-        WHERE model_name = $1
-          AND agent_provider = $2
-          AND is_enabled = true
+              agent_cli, api_spec, base_url, plan_type,
+              cost_per_1k_input, NULL::numeric AS cost_per_million_input,
+              NULL::numeric AS cost_per_million_output
+       FROM roadmap.model_routes
+       WHERE model_name = $1
+         AND agent_provider = $2
+         AND is_enabled = true
         ORDER BY priority ASC, cost_per_1k_input ASC
         LIMIT 1`,
 					[fallbackModel, provider],
@@ -634,21 +679,22 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		stage,
 		model: modelHint,
 		timeoutMs = 300_000,
+		worktreeRoot = WORKTREE_ROOT,
 	} = req;
 
-	const provider = detectProvider(worktree);
+	const provider = await detectProvider(worktree, worktreeRoot);
 	// P235/M026: resolve full route (model + api_spec + base_url) from model_routes
 	const route = await resolveModelRoute(provider, modelHint);
 	// P245: enforce host-level spawn policy before launching any CLI subprocess.
 	await assertSpawnAllowed(AGENTHIVE_HOST, route, proposalId, worktree);
-	const agentEnv = await loadEnvAgent(worktree);
+	const agentEnv = await loadEnvAgent(worktree, worktreeRoot);
 	let assembledTask = task;
 
 	if (proposalId !== undefined) {
 		const contextPackage = await buildProposalContextPackage({
 			proposalId,
 			taskType: stage ?? "unknown",
-			agentIdentity: worktree,
+			agentIdentity: req.agentLabel ?? worktree,
 			maxTokens: 2000,
 		});
 		assembledTask = `${contextPackage}\n\n## Task\n${task}`;
@@ -664,7 +710,10 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		worktree,
 		route,
 		agentEnv,
-		extraEnv,
+		extraEnv: {
+			...extraEnv,
+			MCP_URL: process.env.MCP_URL ?? "http://127.0.0.1:6421/sse",
+		},
 	});
 
 	// Insert agent_runs row (status = running)
@@ -676,7 +725,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		[
 			proposalId ?? null,
 			`wt:${worktree}`,
-			worktree,
+			req.agentLabel ?? worktree,
 			stage ?? "unknown",
 			route.modelName,
 		],
@@ -684,7 +733,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const agentRunId = String(rows[0].id);
 
 	const startMs = Date.now();
-	const cwd = join(WORKTREE_ROOT, worktree);
+	const cwd = join(worktreeRoot, worktree);
 
 	const { stdout, stderr, exitCode } = await runProcess(
 		argv,
@@ -785,7 +834,7 @@ export async function escalateOrNotify(
 	result: SpawnResult,
 	proposalId?: number,
 ): Promise<SpawnResult | null> {
-	const provider = detectProvider(req.worktree);
+	const provider = await detectProvider(req.worktree, req.worktreeRoot ?? WORKTREE_ROOT);
 
 	// P235/M026: build escalation ladder from model_routes for this agent_provider.
 	// Per model: pick best (lowest priority) route. Then sort models cheap → expensive.

@@ -15,11 +15,13 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
-import { getPool, query } from "../src/infra/postgres/pool.ts";
+import { spawnAgent, detectProvider } from "../src/core/orchestration/agent-spawner.ts";
+import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
+import { getPool, query, PoolManager } from "../src/infra/postgres/pool.ts";
 import { mcpText } from "./mcp-result.ts";
 
 const MCP_URL = "http://127.0.0.1:6421/sse";
+const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? "default";
 const WORKTREE_ROOT =
 	process.env.AGENTHIVE_WORKTREE_ROOT ?? "/data/code/worktree";
 const DEFAULT_EXECUTOR_WORKTREE =
@@ -30,6 +32,19 @@ const logger = {
 	warn: (...args: unknown[]) => console.warn("[Orchestrator]", ...args),
 	error: (...args: unknown[]) => console.error("[Orchestrator]", ...args),
 };
+
+// P266: graceful-shutdown bookkeeping. New dispatches are refused once
+// `stopping` is true; in-flight ones are awaited (bounded) before exit.
+let stopping = false;
+const inFlight = new Set<Promise<unknown>>();
+function trackInFlight<T>(p: Promise<T>): Promise<T> {
+	inFlight.add(p);
+	p.finally(() => inFlight.delete(p)).catch(() => {});
+	return p;
+}
+const SHUTDOWN_DRAIN_MS = Number(
+	process.env.AGENTHIVE_ORCHESTRATOR_DRAIN_MS ?? 240_000,
+);
 
 // State → cubic phase mapping
 const STATE_TO_PHASE: Record<string, string> = {
@@ -97,6 +112,98 @@ const AGENT_PROMPTS: Record<string, string> = {
 		"You are a Triage Agent. Evaluate issues and decide what to work on.",
 	"fix-agent": "You are a Fix Agent. Implement code changes to resolve issues.",
 };
+
+// ─── Provider Health & Dynamic Control ─────────────────────────────────────
+
+const RATE_LIMIT_PATTERNS = [
+	/rate.?limit/i,
+	/429/,
+	/too many requests/i,
+	/throttle/i,
+	/retry.?after/i,
+	/rpm.?exceeded/i,
+	/tpm.?exceeded/i,
+];
+
+const CREDIT_PATTERNS = [
+	/credit/i,
+	/insufficient.?funds/i,
+	/billing/i,
+	/quota.?exceeded/i,
+	/usage.?limit/i,
+	/budget.?exceeded/i,
+];
+
+/**
+ * Classify an error string into rate_limit, credit_exhausted, or unknown.
+ */
+function classifyProviderError(stderr: string): {
+	type: "rate_limit" | "credit_exhausted" | "unknown";
+	matched: string;
+} | null {
+	for (const pat of RATE_LIMIT_PATTERNS) {
+		const m = stderr.match(pat);
+		if (m) return { type: "rate_limit", matched: m[0] };
+	}
+	for (const pat of CREDIT_PATTERNS) {
+		const m = stderr.match(pat);
+		if (m) return { type: "credit_exhausted", matched: m[0] };
+	}
+	return null;
+}
+
+/**
+ * Check if a provider is in cooldown. Returns true if provider should NOT be used.
+ */
+async function isProviderInCooldown(provider: string): Promise<boolean> {
+	const { rows } = await query<{ in_cooldown: boolean }>(
+		`SELECT (cooldown_until IS NOT NULL AND cooldown_until > now()) AS in_cooldown
+       FROM roadmap.provider_health
+       WHERE provider_name = $1`,
+		[provider],
+	);
+	return rows[0]?.in_cooldown ?? false;
+}
+
+/**
+ * Set cooldown on a provider. rate_limit: 2min backoff, credit_exhausted: 30min.
+ */
+async function setProviderCooldown(
+	provider: string,
+	errorType: "rate_limit" | "credit_exhausted",
+	errorMsg: string,
+): Promise<void> {
+	const cooldownMinutes = errorType === "rate_limit" ? 2 : 30;
+	await query(
+		`INSERT INTO roadmap.provider_health
+       (provider_name, status, last_error_at, last_error_msg, error_count, cooldown_until, updated_at)
+     VALUES ($1, $2, now(), $3, 1, now() + interval '${cooldownMinutes} minutes', now())
+     ON CONFLICT (provider_name) DO UPDATE SET
+       status = EXCLUDED.status,
+       last_error_at = now(),
+       last_error_msg = EXCLUDED.last_error_msg,
+       error_count = roadmap.provider_health.error_count + 1,
+       cooldown_until = now() + interval '${cooldownMinutes} minutes',
+       updated_at = now()`,
+		[provider, errorType === "rate_limit" ? "rate_limited" : "credit_exhausted", errorMsg.slice(0, 500)],
+	);
+	logger.warn(
+		`⏱ Provider ${provider} → ${errorType}, cooldown ${cooldownMinutes}min: ${errorMsg.slice(0, 100)}`,
+	);
+}
+
+/**
+ * Record a successful run for a provider (resets error_count, clears cooldown).
+ */
+async function recordProviderSuccess(provider: string): Promise<void> {
+	await query(
+		`UPDATE roadmap.provider_health
+        SET status = 'healthy', error_count = 0, cooldown_until = NULL,
+            last_success_at = now(), updated_at = now()
+      WHERE provider_name = $1`,
+		[provider],
+	);
+}
 
 type TransitionQueueRow = {
 	id: number;
@@ -250,15 +357,6 @@ async function selectExecutorWorktree(
        FROM roadmap_workforce.agent_registry
       WHERE status = 'active'
         AND agent_type IN ('llm', 'tool')
-        AND (
-          role ILIKE '%gate%'
-          OR role ILIKE '%developer%'
-          OR agent_identity ILIKE 'codex%'
-          OR agent_identity ILIKE 'openclaw%'
-          OR agent_identity ILIKE 'gemini%'
-          OR agent_identity ILIKE 'copilot%'
-          OR agent_identity ILIKE 'claude%'
-        )
       ORDER BY
         CASE WHEN role ILIKE '%gate%' THEN 0 ELSE 1 END,
         updated_at DESC NULLS LAST,
@@ -281,7 +379,40 @@ async function selectExecutorWorktree(
 			deduped.set(candidate.worktree, candidate);
 		}
 	}
-	const ranked = [...deduped.values()].sort(
+
+	// Filter out worktrees whose provider is forbidden by host policy
+	const filtered: ExecutorCandidate[] = [];
+	for (const candidate of deduped.values()) {
+		try {
+			const provider = await detectProvider(candidate.worktree);
+			// Look up route_provider (what fn_check_spawn_policy validates)
+			const { rows: routeRows } = await query<{ route_provider: string }>(
+				`SELECT mr.route_provider
+           FROM roadmap.model_routes mr
+           WHERE mr.agent_provider = $1 AND mr.is_enabled = true
+           ORDER BY mr.priority ASC LIMIT 1`,
+				[provider],
+			);
+			const routeProvider = routeRows[0]?.route_provider ?? provider;
+			const { rows } = await query<{ allowed: boolean }>(
+				`SELECT roadmap.fn_check_spawn_policy($1, $2) AS allowed`,
+				[AGENTHIVE_HOST, routeProvider],
+			);
+			if (rows[0]?.allowed) {
+				filtered.push(candidate);
+			} else {
+				logger.log(
+					`Skipping executor ${candidate.worktree} — provider "${routeProvider}" forbidden by host policy (${AGENTHIVE_HOST})`,
+				);
+			}
+		} catch (err) {
+			logger.warn(
+				`Skipping executor ${candidate.worktree} — provider detection failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
+	const ranked = filtered.sort(
 		(a, b) => b.score - a.score || a.worktree.localeCompare(b.worktree),
 	);
 	const selected = ranked[0];
@@ -318,7 +449,7 @@ function safeParseMcpResponse(text: string | undefined): any {
 	}
 }
 
-// Dispatch agent to cubic — ONE cubic per agent type, reused across proposals
+// Dispatch agent to cubic — uses cubic_acquire for atomic find-or-create + focus
 async function dispatchAgent(
 	agent: string,
 	proposalId: string,
@@ -331,76 +462,35 @@ async function dispatchAgent(
 	try {
 		await client.connect(transport);
 
-		// Step 1: Find existing cubic for this agent (locked OR idle)
-		let cubicId: string | null = null;
-		const existing = await client.callTool({
-			name: "cubic_list",
-			arguments: {},
-		});
-		const data = safeParseMcpResponse(mcpText(existing));
-
-		if (data?.cubics) {
-			for (const cubic of data.cubics) {
-				const agents = cubic.agents || [];
-				if (agents.includes(agent)) {
-					cubicId = cubic.id;
-					break;
-				}
-			}
-		}
-
-		// Step 2: If cubic exists, release its lock first (may be working on old proposal)
-		if (cubicId) {
-			await client.callTool({
-				name: "cubic_recycle",
-				arguments: { cubicId, resetCode: false },
-			});
-			logger.log(`♻️ Recycled ${agent} cubic ${cubicId.substring(0, 8)}`);
-		}
-
-		// Step 3: Create new only if no cubic exists for this agent
-		if (!cubicId) {
-			const created = await client.callTool({
-				name: "cubic_create",
-				arguments: {
-					name: `${agent}`,
-					agents: [agent],
-					proposals: [proposalId],
-				},
-			});
-			const createdData = safeParseMcpResponse(mcpText(created));
-			if (createdData?.success && createdData?.cubic?.id) {
-				const newCubicId = String(createdData.cubic.id);
-				cubicId = newCubicId;
-				logger.log(`📦 New cubic ${newCubicId.substring(0, 8)} for ${agent}`);
-			}
-		}
-
-		if (!cubicId) {
-			logger.warn(`No cubic for ${agent} on P${proposalId}`);
-			return null;
-		}
-
-		// Step 4: Focus with the phase. Model selection is handled by
-		// agent-spawner/model_routes (P235); do not hardcode cross-provider models here.
-		await client.callTool({
-			name: "cubic_focus",
+		// Single MCP call replaces: cubic_list → cubic_recycle → cubic_focus
+		const acquired = await client.callTool({
+			name: "cubic_acquire",
 			arguments: {
-				cubicId,
-				agent,
-				task: `${AGENT_PROMPTS[agent] || ""} Proposal ${proposalId}: ${task}`,
+				agent_identity: agent,
+				proposal_id: Number(proposalId),
 				phase,
 			},
 		});
+		const data = safeParseMcpResponse(mcpText(acquired));
 
+		if (!data?.success || !data?.cubic_id) {
+			logger.warn(`cubic_acquire failed for ${agent} on P${proposalId}: ${mcpText(acquired)?.substring(0, 120)}`);
+			return null;
+		}
+
+		const cubicId = data.cubic_id as string;
+		const verb = data.was_created ? "📦 New" : data.was_recycled ? "♻️ Recycled" : "🔄 Reused";
 		logger.log(
-			`🚀 ${agent} → ${cubicId.substring(0, 8)} | ${phase} | platform-routed | P${proposalId}`,
+			`${verb} cubic ${cubicId.substring(0, 8)} for ${agent} → P${proposalId} (${phase})`,
 		);
 
-		// Step 5: Actually spawn the agent process
+		// Spawn the agent process
 		const taskPrompt = `${AGENT_PROMPTS[agent] || ""}\n\nProposal P${proposalId}: ${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
+		// AC-7: Use worktree_path from cubic_acquire instead of re-scanning filesystem.
+		// The cubic already knows its worktree — respect it.
+		const worktree = data.worktree_path ?? await selectExecutorWorktree(null);
 		const result = await spawnAgent({
-			worktree: await selectExecutorWorktree(null),
+			worktree,
 			task: taskPrompt,
 			proposalId: Number(proposalId),
 			stage: phase,
@@ -411,10 +501,24 @@ async function dispatchAgent(
 			logger.log(
 				`✅ ${agent} completed (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			// Record provider success — clears any cooldown
+			try {
+				const provider = await detectProvider(worktree);
+				await recordProviderSuccess(provider);
+			} catch {}
 		} else {
 			logger.warn(
 				`⚠️ ${agent} exited ${result.exitCode} (run=${result.agentRunId}) for P${proposalId}`,
 			);
+			// Dynamic control: classify error, set cooldown
+			const fullError = [result.stderr, result.stdout].filter(Boolean).join("\n");
+			const classified = classifyProviderError(fullError);
+			if (classified) {
+				try {
+					const provider = await detectProvider(worktree);
+					await setProviderCooldown(provider, classified.type, fullError);
+				} catch {}
+			}
 		}
 
 		return cubicId;
@@ -426,34 +530,139 @@ async function dispatchAgent(
 	}
 }
 
-// Handle state change and dispatch agents
-async function handleStateChange(proposalId: string, newState: string) {
+// Handle state change and dispatch agents via offer/claim pipeline
+async function handleStateChange(proposalId: string, _newState: string) {
+	// Always read actual proposal state — workflows table may be stale
+	const { rows: propRows } = await query<{
+		display_id: string;
+		title: string;
+		status: string;
+		maturity: string;
+	}>(
+		`SELECT display_id, title, status, maturity FROM roadmap_proposal.proposal WHERE id = $1`,
+		[proposalId],
+	);
+	const proposal = propRows[0];
+	if (!proposal) {
+		logger.log(`Proposal ${proposalId} not found`);
+		return;
+	}
+
+	const newState = proposal.status;
 	const normalizedState = normalizeState(newState);
 	const agents = AGENT_DISPATCH[normalizedState];
 
 	if (!agents || agents.length === 0) {
-		logger.log(`No agents for state: ${newState}`);
 		return;
 	}
 
 	const phase = STATE_TO_PHASE[normalizedState] || "design";
 
+	// Check unresolved dependencies — skip dispatch if blockers exist
+	const { rows: depRows } = await query<{ unresolved: number }>(
+		`SELECT COUNT(*)::int AS unresolved
+       FROM roadmap.proposal_dependencies
+      WHERE from_proposal_id = $1
+        AND resolved = false`,
+		[proposalId],
+	);
+	const unresolved = depRows[0]?.unresolved ?? 0;
+	if (unresolved > 0) {
+		logger.log(
+			`⏳ P${proposalId} → ${newState}: ${unresolved} unresolved dependencies, skipping dispatch`,
+		);
+		return;
+	}
+
+	// Check for existing active/open dispatches for this proposal
+	const { rows: existing } = await query<{ id: number }>(
+		`SELECT id FROM roadmap_workforce.squad_dispatch
+      WHERE proposal_id = $1 AND dispatch_status IN ('active', 'open')
+      LIMIT 1`,
+		[proposalId],
+	);
+	if (existing.length > 0) {
+		logger.log(
+			`⏭ P${proposalId} → ${newState}: active dispatch already exists, skipping`,
+		);
+		return;
+	}
+
+	const displayId = proposal.display_id ?? `P${proposalId}`;
+	const title = proposal.title ?? "";
+
 	logger.log(`📢 P${proposalId} → ${newState} (${phase})`);
 	logger.log(`   Squad: ${agents.join(", ")}`);
 
-	// Release any locked cubics for this proposal from previous phases
-	await releaseStaleCubics(proposalId);
+	// Build task prompt
+	const task = [
+		`Process proposal ${displayId} in ${newState} phase.`,
+		`Title: ${title}`,
+		`Phase: ${phase}`,
+		``,
+		`Agents in squad: ${agents.join(", ")}`,
+		``,
+		`Use MCP proposal tools to read the full YAML+Markdown projection, discussions, acceptance criteria.`,
+		`Connect to http://127.0.0.1:6421/sse for proposal management.`,
+	].join("\n");
 
-	// Dispatch all agents for this state (parallel, tolerate individual failures)
-	const results = await Promise.allSettled(
-		agents.map((agent) =>
-			dispatchAgent(agent, proposalId, `Handle ${newState}`, phase),
-		),
-	);
-	const dispatched = results.filter(
-		(r) => r.status === "fulfilled" && r.value,
-	).length;
-	logger.log(`   ${dispatched}/${agents.length} dispatched`);
+	const squadName = `${displayId}-${phase}`;
+
+	// Create open offers for each agent in the squad
+	for (const role of agents) {
+		const requiredCaps = roleToCapabilities(role);
+		try {
+		const { rows: dispatchRows } = await query<{ id: number }>(
+			`INSERT INTO roadmap_workforce.squad_dispatch
+           (proposal_id, project_id, squad_name, dispatch_role, dispatch_status,
+            offer_status, agent_identity, assigned_by,
+            required_capabilities, metadata)
+         VALUES ($1,
+           (SELECT COALESCE(project_id, 1) FROM roadmap_proposal.proposal WHERE id = $1),
+           $2, $3, 'open', 'open', NULL, 'orchestrator',
+           $4::jsonb,
+           jsonb_build_object(
+             'source', 'state_change',
+             'state', $5::text,
+             'phase', $6::text,
+             'task', $7::text,
+             'worktree_root', (SELECT p.git_root || '/worktrees' FROM roadmap_workforce.projects p
+                               WHERE p.id = (SELECT COALESCE(pr.project_id, 1) FROM roadmap_proposal.proposal pr WHERE pr.id = $1))
+           ))
+         RETURNING id`,
+			[
+				proposalId,
+				squadName,
+				role,
+				JSON.stringify(requiredCaps),
+				newState,
+				phase,
+				task,
+			],
+		);
+			const dispatchId = dispatchRows[0]?.id;
+			if (dispatchId) {
+				await query(
+					`SELECT pg_notify('work_offers', $1)`,
+					[
+						JSON.stringify({
+							event: "emitted",
+							dispatch_id: dispatchId,
+							proposal_id: proposalId,
+							role,
+						}),
+					],
+				);
+				logger.log(
+					`   Emitted offer ${dispatchId} for ${displayId} (${role}/${phase})`,
+				);
+			}
+		} catch (err) {
+			logger.warn(
+				`   Failed to emit offer for ${role}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
 }
 
 async function ensureAgentIdentity(
@@ -548,18 +757,83 @@ async function releaseDispatchLease(
 	);
 }
 
+// Maps each gate to the dispatch role that should review it and a framing line
+// for the task. D1 uses a skeptic to challenge Draft RFCs; D2 uses an architect
+// to validate design; D3 uses a skeptic to review implementation; D4 validates
+// integration and deployment readiness.
+const GATE_ROLES: Record<string, { role: string; framing: string }> = {
+	D1: {
+		role: "skeptic-alpha",
+		framing:
+			"You are SKEPTIC ALPHA. Challenge this Draft RFC hard. Demand evidence. Question every assumption. " +
+			"Verify ACs are measurable and complete. Only advance if the RFC is coherent, economically sound, and structurally ready for Review.",
+	},
+	D2: {
+		role: "architecture-reviewer",
+		framing:
+			"You are the Architecture Reviewer. Validate design completeness, scalability, integration constraints, and dependency health. " +
+			"Only advance if the proposal is ready to be built.",
+	},
+	D3: {
+		role: "skeptic-beta",
+		framing:
+			"You are SKEPTIC BETA. Review implementation quality: test coverage, error handling, edge cases, and AC verification. " +
+			"Only advance if all ACs are met and the implementation is production-ready.",
+	},
+	D4: {
+		role: "gate-reviewer",
+		framing:
+			"You are the Integration Reviewer. Validate that the merge is clean, tests pass, and the feature is deployable. " +
+			"Only advance if the integration is stable.",
+	},
+};
+
+// Map dispatch roles to required capabilities for offer matching.
+// Returns {"all": ["cap1", "cap2"]} — an agency needs ALL listed caps to claim.
+// Empty array = any agency can claim (no capability requirement).
+function roleToCapabilities(role: string): Record<string, string[]> {
+	const ROLE_CAP_MAP: Record<string, string[]> = {
+		"developer": ["code"],
+		"senior-developer": ["code"],
+		"architect": ["design"],
+		"reviewer": ["review"],
+		"gate-reviewer": ["review"],
+		"tester": ["testing"],
+		"devops": ["devops"],
+		"pm": ["management"],
+		"skeptic": ["review"],
+		"skeptic-alpha": ["design", "review"],
+		"skeptic-beta": ["review"],
+		"architecture-reviewer": ["design", "review"],
+		"researcher": ["research"],
+		"documenter": ["docs"],
+		"triage-agent": ["triage"],
+		"fix-agent": ["code"],
+		"merge-agent": ["code"],
+		"enhancer": ["code"],
+	};
+
+	const mapped = ROLE_CAP_MAP[role.toLowerCase()];
+	return mapped && mapped.length > 0 ? { all: [...mapped] } : {};
+}
+
+function gateRole(gate: GateDefinition): string {
+	return GATE_ROLES[gate.gate]?.role ?? "gate-reviewer";
+}
+
 function buildImplicitGateTask(
 	proposal: GateReadyProposal,
 	gate: GateDefinition,
 ): string {
+	const roleConfig = GATE_ROLES[gate.gate];
 	return [
-		`Process implicit maturity gate ${gate.gate} for ${proposal.display_id}.`,
+		roleConfig ? roleConfig.framing : `Process implicit maturity gate ${gate.gate} for ${proposal.display_id}.`,
 		"",
 		`Proposal: ${proposal.display_id}`,
 		`Title: ${proposal.title}`,
 		`Current state: ${proposal.status}`,
 		`Current maturity: ${proposal.maturity}`,
-		`Successful transition: ${proposal.status} -> ${gate.toStage}`,
+		`Target transition: ${proposal.status} -> ${gate.toStage}`,
 		"",
 		proposal.summary ? `Summary: ${proposal.summary}` : null,
 		"",
@@ -606,13 +880,12 @@ async function claimImplicitGateReady(
          SELECT sd.id
            FROM roadmap_workforce.squad_dispatch sd
           WHERE sd.proposal_id = p.id
-            AND sd.dispatch_role = 'gate-reviewer'
-            AND sd.dispatch_status = 'active'
+            AND sd.dispatch_status IN ('active', 'open')
           ORDER BY sd.assigned_at DESC
           LIMIT 1
        ) dispatch ON true
       WHERE p.maturity = 'mature'
-        AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge')
+        AND p.status IN ('DRAFT', 'REVIEW', 'DEVELOP', 'MERGE')
         AND ($1::bigint IS NULL OR p.id = $1)
       ORDER BY p.modified_at ASC, p.id ASC
       LIMIT $2`,
@@ -649,167 +922,70 @@ async function dispatchImplicitGate(
 		return;
 	}
 
-	const worktree = await selectExecutorWorktree(null);
-	await ensureAgentIdentity("orchestrator", "State Machine Orchestrator");
-	await ensureAgentIdentity(worktree, "Gate Executor");
+	const role = gateRole(gate);
+	const task = buildImplicitGateTask(proposal, gate);
+	const squadName = `gate-${proposal.display_id}-${gate.gate}`;
+	const requiredCaps = roleToCapabilities(role);
 
-	const { rows: dispatchRows } = await query<{ id: number }>(
-		`INSERT INTO roadmap_workforce.squad_dispatch
-       (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
-        assigned_by, metadata)
-     VALUES ($1, $2, $3, 'gate-reviewer', 'active', 'orchestrator',
+const { rows: dispatchRows } = await query<{ id: number }>(
+	`INSERT INTO roadmap_workforce.squad_dispatch
+       (proposal_id, project_id, squad_name, dispatch_role, dispatch_status,
+        offer_status, agent_identity, assigned_by,
+        required_capabilities, metadata)
+     VALUES ($1,
+       (SELECT COALESCE(project_id, 1) FROM roadmap_proposal.proposal WHERE id = $1),
+       $2, $3, 'open', 'open', NULL, 'orchestrator',
+       $4::jsonb,
        jsonb_build_object(
          'source', 'implicit_maturity_gating',
-         'reason', $4::text,
-         'gate', $5::text,
-         'from_stage', $6::text,
-         'to_stage', $7::text
+         'reason', $5::text,
+         'gate', $6::text,
+         'from_stage', $7::text,
+         'to_stage', $8::text,
+         'task', $9::text,
+         'worktree_root', (SELECT p.git_root || '/worktrees' FROM roadmap_workforce.projects p
+                           WHERE p.id = (SELECT COALESCE(pr.project_id, 1) FROM roadmap_proposal.proposal pr WHERE pr.id = $1))
        ))
      RETURNING id`,
 		[
 			proposal.id,
-			worktree,
-			`gate-${proposal.display_id}-${gate.gate}`,
+			squadName,
+			role,
+			JSON.stringify(requiredCaps),
 			reason,
 			gate.gate,
 			proposal.status,
 			gate.toStage,
+			task,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;
-	logger.log(
-		`Implicit gate dispatch ${dispatchId} -> ${worktree} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${gate.gate})`,
-	);
-
-	const result = await spawnAgent({
-		worktree,
-		task: buildImplicitGateTask(proposal, gate),
-		proposalId: proposal.id,
-		stage: gate.toStage,
-		timeoutMs: 600_000,
-	});
-
-	const proposalState = await query<{ status: string; maturity: string }>(
-		`SELECT status, maturity
-       FROM roadmap_proposal.proposal
-      WHERE id = $1`,
-		[proposal.id],
-	);
-	const current = proposalState.rows[0];
-	const reachedTarget =
-		current && normalizeState(current.status) === normalizeState(gate.toStage);
-
-	if (result.exitCode === 0 && reachedTarget) {
-		await setProposalMaturity(
-			proposal.id,
-			"new",
-			worktree,
-			`gate ${gate.gate} advanced to ${gate.toStage}`,
-		);
-		await query(
-			`UPDATE roadmap_workforce.squad_dispatch
-          SET dispatch_status = 'completed',
-              completed_at = now(),
-              metadata = COALESCE(metadata, '{}'::jsonb) ||
-                jsonb_build_object('agent_run_id', $2::text, 'gate_decision', 'advance', 'proposal_status', $3::text, 'proposal_maturity', 'new')
-        WHERE id = $1`,
-			[dispatchId, result.agentRunId, gate.toStage],
-		);
-		await releaseDispatchLease(
-			dispatchId,
-			`gate ${gate.gate} advanced to ${gate.toStage}`,
-		);
-		logger.log(
-			`Implicit gate dispatch ${dispatchId} advanced ${proposal.display_id} to ${gate.toStage}/new`,
-		);
+	if (!dispatchId) {
+		logger.warn(`Failed to create offer for ${proposal.display_id}`);
 		return;
 	}
 
-	if (result.exitCode === 0 && current) {
-		const finalMaturity =
-			normalizeState(current.maturity) === "OBSOLETE" ? "obsolete" : "new";
-		if (finalMaturity === "new") {
-			await setProposalMaturity(
-				proposal.id,
-				"new",
-				worktree,
-				`gate ${gate.gate} sent back or held`,
-			);
-		}
-		const decisionMessage = `gate decision completed without state transition: proposal is ${current.status}/${finalMaturity}`;
-		await recordGateCommunication({
-			proposalId: proposal.id,
-			author: worktree,
-			toAgent: "orchestrator",
-			channel: "direct",
-			contextPrefix: "feedback:",
-			body: [
-				`Gate ${gate.gate} held ${proposal.display_id}.`,
-				`Target transition: ${proposal.status} -> ${gate.toStage}`,
-				`Current proposal state: ${current.status}/${finalMaturity}`,
-				"",
-				"The gate agent made a non-transition decision. Continue the conversation through MCP discussions/messages, revise the proposal, then set maturity back to mature when it is ready for another gate attempt.",
-			].join("\n"),
-			metadata: {
-				gate: gate.gate,
-				gate_decision: finalMaturity === "obsolete" ? "obsolete" : "hold",
-				proposal_status: current.status,
-				proposal_maturity: finalMaturity,
-				agent_run_id: result.agentRunId,
-				source: "implicit_maturity_gating",
-			},
-		});
-		await query(
-			`UPDATE roadmap_workforce.squad_dispatch
-          SET dispatch_status = 'completed',
-              completed_at = now(),
-              metadata = COALESCE(metadata, '{}'::jsonb) ||
-                jsonb_build_object('agent_run_id', $2::text, 'gate_decision', $3::text, 'proposal_status', $4::text, 'proposal_maturity', $5::text)
-        WHERE id = $1`,
-			[
-				dispatchId,
-				result.agentRunId,
-				finalMaturity === "obsolete" ? "obsolete" : "hold",
-				current.status,
-				finalMaturity,
-			],
-		);
-		await releaseDispatchLease(dispatchId, decisionMessage);
-		logger.log(
-			`Implicit gate dispatch ${dispatchId} held ${proposal.display_id}: ${decisionMessage}`,
-		);
-		return;
-	}
-
-	const errorMessage =
-		result.exitCode === 0
-			? `gate agent completed but proposal state could not be read`
-			: `gate agent exited ${result.exitCode}: ${[result.stderr, result.stdout].filter(Boolean).join("\n").slice(0, 2000)}`;
 	await query(
-		`UPDATE roadmap_workforce.squad_dispatch
-        SET dispatch_status = 'blocked',
-            completed_at = now(),
-            metadata = COALESCE(metadata, '{}'::jsonb) ||
-              jsonb_build_object('agent_run_id', $2::text, 'error', $3::text)
-      WHERE id = $1`,
-		[dispatchId, result.agentRunId, errorMessage],
+		`SELECT pg_notify('work_offers', $1)`,
+		[JSON.stringify({ event: "emitted", dispatch_id: dispatchId, proposal_id: proposal.id, role })],
 	);
-	await releaseDispatchLease(
-		dispatchId,
-		`gate dispatch blocked: ${errorMessage.slice(0, 500)}`,
+
+	logger.log(
+		`Emitted offer ${dispatchId} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${role})`,
 	);
-	logger.warn(
-		`Implicit gate dispatch ${dispatchId} blocked ${proposal.display_id}: ${errorMessage}`,
-	);
+
+	return;
 }
 
 async function drainImplicitGateReady(
 	reason: string,
 	limit = 5,
 ): Promise<void> {
+	if (stopping) return;
 	const proposals = await claimImplicitGateReady(undefined, limit);
 	for (const proposal of proposals) {
-		await dispatchImplicitGate(proposal.id, reason);
+		if (stopping) return;
+		await trackInFlight(dispatchImplicitGate(proposal.id, reason));
 	}
 }
 
@@ -1066,11 +1242,31 @@ async function releaseStaleCubics(proposalId: string) {
 	}
 }
 
+// P266: poller handles owned by main() so shutdown() can clear them.
+let pollTimer: NodeJS.Timeout | null = null;
+let implicitGateTimer: NodeJS.Timeout | null = null;
+
 // Main orchestrator
 async function main() {
 	logger.log("Starting Orchestrator with dynamic agent deployment...");
 
-	const pool = getPool();
+	// AC-3: Bootstrap PoolManager for multi-project support.
+	// metaPool replaces the old singleton getPool() for cross-project tables.
+	// Per-project pools are lazy-created via poolManager.getPool(projectId).
+	const poolManager = await PoolManager.init();
+	const pool = poolManager.metaPool;
+	logger.log(`PoolManager initialized. Known projects: ${poolManager.listProjects().map(p => p.name).join(", ") || "none"}`);
+
+	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.
+	await reapStaleRows(
+		pool,
+		{
+			log: (m) => logger.log(m),
+			warn: (m) => logger.warn(m),
+		},
+		"Orchestrator.Reaper",
+	);
+
 	const pgClient = await pool.connect();
 
 	// Listen for state changes
@@ -1085,14 +1281,14 @@ async function main() {
 		async (msg: { channel: string; payload?: string }) => {
 			if (!msg.payload) return;
 
+			if (stopping) return;
 			try {
 				const data = JSON.parse(msg.payload);
 				if (msg.channel === "proposal_gate_ready") {
 					const proposalId = Number(data.proposal_id || data.id);
 					if (Number.isFinite(proposalId)) {
-						await dispatchImplicitGate(
-							proposalId,
-							"notify:proposal_gate_ready",
+						await trackInFlight(
+							dispatchImplicitGate(proposalId, "notify:proposal_gate_ready"),
 						);
 					}
 					return;
@@ -1109,7 +1305,9 @@ async function main() {
 
 				if (result.rows.length > 0) {
 					const wf = result.rows[0];
-					await handleStateChange(String(wf.proposal_id), wf.current_stage);
+					await trackInFlight(
+						handleStateChange(String(wf.proposal_id), wf.current_stage),
+					);
 				}
 			} catch (e) {
 				logger.error("Error handling notification:", e);
@@ -1119,8 +1317,9 @@ async function main() {
 
 	if (ENABLE_POLLING) {
 		// Poll for proposals needing agents (every 2 minutes)
-		setInterval(
+		pollTimer = setInterval(
 			async () => {
+				if (stopping) return;
 				try {
 					// Find workflows in NEW states that haven't had agents dispatched yet
 					// (workflows with no recent agent activity, ordered by recency)
@@ -1138,7 +1337,10 @@ async function main() {
 					);
 
 					for (const wf of result.rows) {
-						await handleStateChange(String(wf.proposal_id), wf.current_stage);
+						if (stopping) return;
+						await trackInFlight(
+							handleStateChange(String(wf.proposal_id), wf.current_stage),
+						);
 					}
 				} catch (e) {
 					logger.error("Polling error:", e);
@@ -1155,7 +1357,8 @@ async function main() {
 
 	if (IMPLICIT_GATE_POLL_INTERVAL_MS > 0) {
 		await drainImplicitGateReady("startup", 5);
-		setInterval(async () => {
+		implicitGateTimer = setInterval(async () => {
+			if (stopping) return;
 			try {
 				await drainImplicitGateReady("implicit-gate-poll", 5);
 			} catch (e) {
@@ -1169,16 +1372,80 @@ async function main() {
 
 	logger.log("Orchestrator running with dynamic agent deployment...");
 
-	// Graceful shutdown
+	// P266: graceful shutdown — drain in-flight dispatches before exit.
 	const shutdown = async (signal: string) => {
-		logger.log(`Received ${signal}, shutting down...`);
-		pgClient.release();
-		await pool.end();
+		if (stopping) return;
+		stopping = true;
+		logger.log(
+			`Received ${signal}, draining ${inFlight.size} in-flight dispatch(es) (timeout ${SHUTDOWN_DRAIN_MS}ms)...`,
+		);
+
+		if (pollTimer) clearInterval(pollTimer);
+		if (implicitGateTimer) clearInterval(implicitGateTimer);
+
+		const drainStart = Date.now();
+		const drainPromise = Promise.allSettled(Array.from(inFlight));
+		const timeoutPromise = new Promise<"timeout">((resolve) =>
+			setTimeout(() => resolve("timeout"), SHUTDOWN_DRAIN_MS),
+		);
+		const winner = await Promise.race([
+			drainPromise.then(() => "drained" as const),
+			timeoutPromise,
+		]);
+		logger.log(
+			`Drain ${winner} after ${Date.now() - drainStart}ms; ${inFlight.size} still in-flight`,
+		);
+
+		// If anything is still hanging, mark the corresponding squad_dispatch
+		// rows as cancelled so the next boot's reaper has nothing left to do.
+		if (inFlight.size > 0) {
+			try {
+				const r = await pool.query(
+					`UPDATE roadmap_workforce.squad_dispatch
+					 SET dispatch_status='cancelled',
+					     completed_at=now(),
+					     metadata = COALESCE(metadata,'{}'::jsonb)
+					                || jsonb_build_object('shutdown_cancelled_at', to_jsonb(now()),
+					                                       'shutdown_signal', $1::text)
+					 WHERE dispatch_status IN ('assigned','active')
+					   AND completed_at IS NULL
+					   AND assigned_at > now() - interval '1 hour'
+					 RETURNING id`,
+					[signal],
+				);
+				logger.warn(
+					`Cancelled ${r.rowCount ?? 0} dispatch row(s) on forced shutdown`,
+				);
+			} catch (e) {
+				logger.error("Failed to cancel hanging dispatches:", e);
+			}
+		}
+
+		try {
+			pgClient.release();
+		} catch (e) {
+			logger.warn(`pgClient release: ${e instanceof Error ? e.message : e}`);
+		}
+		try {
+			await pool.end();
+		} catch (e) {
+			logger.warn(`pool.end: ${e instanceof Error ? e.message : e}`);
+		}
 		process.exit(0);
 	};
 
-	process.on("SIGTERM", () => shutdown("SIGTERM"));
-	process.on("SIGINT", () => shutdown("SIGINT"));
+	process.on("SIGTERM", () => {
+		shutdown("SIGTERM").catch((e) => {
+			logger.error("Shutdown failed:", e);
+			process.exit(1);
+		});
+	});
+	process.on("SIGINT", () => {
+		shutdown("SIGINT").catch((e) => {
+			logger.error("Shutdown failed:", e);
+			process.exit(1);
+		});
+	});
 }
 
 main().catch((err) => {

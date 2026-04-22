@@ -334,10 +334,11 @@ async function startPgListener(): Promise<void> {
 
 	client.on("notification", async (msg) => {
 		if (msg.channel !== "new_message") return;
+		if (stopping) return;
 		logger.log(`[notify] new message: ${msg.payload?.slice(0, 120)}`);
 		// Give the INSERT a moment to fully commit before we fetch
 		await new Promise((res) => setTimeout(res, 200));
-		await dispatchPendingMessages();
+		await trackedDispatch();
 	});
 
 	client.on("error", (err) => {
@@ -348,6 +349,25 @@ async function startPgListener(): Promise<void> {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
+// P267: graceful-shutdown bookkeeping. New iterations are refused once
+// `stopping` is true; the current iteration is awaited before exit.
+let stopping = false;
+let currentDispatch: Promise<number> | null = null;
+let pollTimer: NodeJS.Timeout | null = null;
+const SHUTDOWN_DRAIN_MS = Number(
+	process.env.AGENTHIVE_A2A_DRAIN_MS ?? 90_000,
+);
+
+function trackedDispatch(): Promise<number> {
+	if (stopping) return Promise.resolve(0);
+	const p = dispatchPendingMessages();
+	currentDispatch = p;
+	p.finally(() => {
+		if (currentDispatch === p) currentDispatch = null;
+	}).catch(() => {});
+	return p;
+}
 
 async function main() {
 	logger.log("A2A Message Dispatcher starting...");
@@ -360,21 +380,54 @@ async function main() {
 	await startPgListener();
 
 	// Fallback poll loop (catches missed notifications)
-	setInterval(() => {
-		dispatchPendingMessages().catch(logger.error);
+	pollTimer = setInterval(() => {
+		if (stopping) return;
+		trackedDispatch().catch(logger.error);
 	}, POLL_INTERVAL_MS);
 
 	logger.log("A2A Dispatcher running.");
 }
 
-// Graceful shutdown
-process.on("SIGINT", () => {
-	logger.log("Shutting down A2A dispatcher...");
+// P267: graceful shutdown — drain current iteration + close pool before exit.
+async function shutdown(signal: string): Promise<void> {
+	if (stopping) return;
+	stopping = true;
+	logger.log(
+		`${signal} received, draining (current=${currentDispatch ? "1" : "0"}, timeout ${SHUTDOWN_DRAIN_MS}ms)...`,
+	);
+
+	if (pollTimer) clearInterval(pollTimer);
+
+	if (currentDispatch) {
+		const drainStart = Date.now();
+		const winner = await Promise.race([
+			currentDispatch.then(() => "drained" as const).catch(() => "drained" as const),
+			new Promise<"timeout">((resolve) =>
+				setTimeout(() => resolve("timeout"), SHUTDOWN_DRAIN_MS),
+			),
+		]);
+		logger.log(`Drain ${winner} after ${Date.now() - drainStart}ms`);
+	}
+
+	try {
+		await getPool().end();
+	} catch (e) {
+		logger.error(`pool.end: ${e instanceof Error ? e.message : e}`);
+	}
 	process.exit(0);
+}
+
+process.on("SIGINT", () => {
+	shutdown("SIGINT").catch((e) => {
+		logger.error("Shutdown failed:", e);
+		process.exit(1);
+	});
 });
 process.on("SIGTERM", () => {
-	logger.log("Shutting down A2A dispatcher...");
-	process.exit(0);
+	shutdown("SIGTERM").catch((e) => {
+		logger.error("Shutdown failed:", e);
+		process.exit(1);
+	});
 });
 
 main().catch((err) => {
