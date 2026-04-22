@@ -8,7 +8,7 @@ import { getPool, query } from "./pool.ts";
 const PROPOSAL_COLUMNS = `
   id, display_id, parent_id, type, status, maturity, title,
   summary, motivation, design, drawbacks, alternatives,
-  dependency, priority, tags, audit, created_at, modified_at
+  dependency_note, priority, tags, audit, created_at, modified_at
 `;
 
 export type ProposalRow = {
@@ -24,7 +24,7 @@ export type ProposalRow = {
 	design: string | null;
 	drawbacks: string | null;
 	alternatives: string | null;
-	dependency: string | null;
+	dependency_note: string | null; // was dependency in older schema
 	priority: string | null; // descriptive; queue order from v_proposal_queue
 	tags: any | null; // jsonb
 	audit: any[]; // jsonb: [{ TS, Agent, Activity, Reason }]
@@ -43,7 +43,7 @@ export type ProposalCreateInput = {
 	design?: string | null;
 	drawbacks?: string | null;
 	alternatives?: string | null;
-	dependency?: string | null;
+	dependency_note?: string | null;
 	priority?: string | null;
 	tags?: any | null;
 	required_capabilities?: Record<string, string[]> | null;
@@ -344,7 +344,7 @@ export async function createProposal(
 	const { rows } = await client.query<ProposalRow>(
 			`INSERT INTO roadmap_proposal.proposal (
       display_id, type, status, title, parent_id, summary, motivation, design,
-      drawbacks, alternatives, dependency, priority, tags, required_capabilities, audit
+      drawbacks, alternatives, dependency_note, priority, tags, required_capabilities, audit
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, $15::jsonb)
     RETURNING ${PROPOSAL_COLUMNS}`,
 			[
@@ -358,7 +358,7 @@ export async function createProposal(
 				input.design ?? null,
 				input.drawbacks ?? null,
 				input.alternatives ?? null,
-				input.dependency ?? null,
+				input.dependency_note ?? null,
 				input.priority ?? null,
 				input.tags ? JSON.stringify(input.tags) : null,
 				input.required_capabilities ? JSON.stringify(input.required_capabilities) : null,
@@ -917,7 +917,7 @@ export async function searchProposals(
                COALESCE(design, ''),
                COALESCE(drawbacks, ''),
                COALESCE(alternatives, ''),
-               COALESCE(dependency, '')
+               COALESCE(dependency_note, '')
              )
            )
             @@ plainto_tsquery('english', $1)

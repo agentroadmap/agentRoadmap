@@ -17,7 +17,7 @@
 |----|-------|----|
 | P066 | Maturity Lifecycle Tracking & Escalation | 0/5 |
 | P067 | Domain-Oriented Proposal Routing | 0/5 |
-| P068 | Risk Alert & Mitigation System | 0/5 |
+| P068 | Federation & Cross-Instance Sync | 0/5 |
 | P069 | Workflow Engine Schema Migration | 0/5 |
 | P058 | Cross-Domain Semantic Index | 0/3 |
 | P059 | MCP Tool Router — Dynamic Tool Exposure | 0/3 |

@@ -57,6 +57,7 @@ import {
 	getStatusColor,
 } from "./status-icon.ts";
 import { createScreen } from "./tui.ts";
+import { query as pgQuery } from "../../infra/postgres/pool.ts";
 
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
@@ -1400,6 +1401,11 @@ export async function viewProposalEnhanced(
 export function generateDetailContent(
 	proposal: Proposal,
 	resolveDirectiveLabel?: (directive: string) => string,
+	extraData?: {
+		decisions?: Array<{ decision: string; authority: string; rationale: string | null; binding: boolean; decided_at: string }>;
+		reviews?: Array<{ reviewer_identity: string; verdict: string; notes: string | null; findings: string | null; is_blocking: boolean; reviewed_at: string }>;
+		discussions?: Array<{ author_identity: string; context_prefix: string | null; body: string; created_at: string }>;
+	},
 ): { headerContent: string[]; bodyContent: string[] } {
 	const dvId = proposal.id.replace(/^STATE-/, "STEP-");
 	const statusColor = getStatusColor(proposal.status);
@@ -1571,6 +1577,54 @@ export function generateDetailContent(
 		bodyContent.push("");
 	}
 
+	// Decisions section
+	if (extraData?.decisions && extraData.decisions.length > 0) {
+		bodyContent.push(formatSectionHeading(`Decisions (${extraData.decisions.length})`, "magenta"));
+		for (const d of extraData.decisions) {
+			const bindingTag = d.binding ? " {yellow-fg}[binding]{/}" : "";
+			bodyContent.push(`  {bold}{magenta-fg}${d.decision}{/magenta-fg}{/bold}${bindingTag}`);
+			bodyContent.push(`    {gray-fg}by ${d.authority} · ${formatDateForDisplay(d.decided_at)}{/}`);
+			if (d.rationale) {
+				bodyContent.push(`    ${d.rationale.slice(0, 200)}${d.rationale.length > 200 ? "..." : ""}`);
+			}
+			bodyContent.push("");
+		}
+	}
+
+	// Reviews section
+	if (extraData?.reviews && extraData.reviews.length > 0) {
+		bodyContent.push(formatSectionHeading(`Reviews (${extraData.reviews.length})`, "cyan"));
+		const verdictColor: Record<string, string> = {
+			approve: "green",
+			request_changes: "yellow",
+			reject: "red",
+		};
+		for (const r of extraData.reviews) {
+			const color = verdictColor[r.verdict] || "white";
+			const blockTag = r.is_blocking ? " {red-fg}[blocking]{/}" : "";
+			bodyContent.push(`  {${color}-fg}${r.verdict}{/}${blockTag} {gray-fg}by ${r.reviewer_identity} · ${formatDateForDisplay(r.reviewed_at)}{/}`);
+			if (r.notes) {
+				bodyContent.push(`    ${r.notes.slice(0, 200)}${r.notes.length > 200 ? "..." : ""}`);
+			}
+			bodyContent.push("");
+		}
+	}
+
+	// Discussions section
+	if (extraData?.discussions && extraData.discussions.length > 0) {
+		bodyContent.push(formatSectionHeading(`Discussions (${extraData.discussions.length})`, "blue"));
+		for (const disc of extraData.discussions.slice(0, 10)) {
+			const prefix = disc.context_prefix ? `{yellow-fg}[${disc.context_prefix}]{/} ` : "";
+			bodyContent.push(`  ${prefix}{cyan-fg}${disc.author_identity}{/} {gray-fg}· ${formatDateForDisplay(disc.created_at)}{/}`);
+			const body = disc.body.length > 150 ? `${disc.body.slice(0, 150)}...` : disc.body;
+			bodyContent.push(`    ${body}`);
+			bodyContent.push("");
+		}
+		if (extraData.discussions.length > 10) {
+			bodyContent.push(`  {gray-fg}... and ${extraData.discussions.length - 10} more{/}`);
+		}
+	}
+
 	bodyContent.push(formatSectionHeading("Activity Thread", "blue"));
 	bodyContent.push(formatActivityThread(proposal.activityLog).join("\n"));
 	bodyContent.push("");
@@ -1589,6 +1643,43 @@ export async function createProposalPopup(
 	close: () => void;
 } | null> {
 	if (output.isTTY === false) return null;
+
+	// Fetch decisions, reviews, and discussions from database
+	const proposalIdNum = parseInt(proposal.id.replace(/^[A-Za-z-]+/, ""), 10);
+	if (Number.isNaN(proposalIdNum)) {
+		throw new Error(`Cannot parse proposal ID: ${proposal.id}`);
+	}
+
+	const [decResult, revResult, discResult] = await Promise.all([
+		pgQuery(
+			`SELECT decision, authority, rationale, binding, decided_at
+			 FROM roadmap_proposal.proposal_decision
+			 WHERE proposal_id = $1 ORDER BY decided_at DESC`,
+			[proposalIdNum],
+		),
+		pgQuery(
+			`SELECT reviewer_identity, verdict, notes, findings, is_blocking, reviewed_at
+			 FROM roadmap_proposal.proposal_reviews
+			 WHERE proposal_id = $1 ORDER BY reviewed_at DESC`,
+			[proposalIdNum],
+		),
+		pgQuery(
+			`SELECT author_identity, context_prefix, body, created_at
+			 FROM roadmap_proposal.proposal_discussions
+			 WHERE proposal_id = $1 ORDER BY created_at DESC`,
+			[proposalIdNum],
+		),
+	]);
+
+	const decisions = decResult.rows as any;
+	const reviews = revResult.rows as any;
+	const discussions = discResult.rows as any;
+
+	const { headerContent, bodyContent } = generateDetailContent(
+		proposal,
+		resolveDirectiveLabel,
+		{ decisions, reviews, discussions },
+	);
 
 	const popup = box({
 		parent: screen,
@@ -1617,11 +1708,6 @@ export async function createProposalPopup(
 	});
 
 	popup.setFront?.();
-
-	const { headerContent, bodyContent } = generateDetailContent(
-		proposal,
-		resolveDirectiveLabel,
-	);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;
@@ -1752,6 +1838,8 @@ export async function createProposalPopup(
 	setImmediate(() => {
 		contentArea.focus();
 	});
+
+	screen.render();
 
 	return {
 		background,

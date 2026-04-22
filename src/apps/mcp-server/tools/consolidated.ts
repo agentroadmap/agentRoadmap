@@ -108,6 +108,7 @@ const proposalRoutes: RouteMap = {
 	merge_worktree: "worktree_merge",
 	sync_worktrees: "worktree_sync",
 	merge_status: "worktree_merge_status",
+	get_detail: "prop_get_detail",
 };
 
 const messageRoutes: RouteMap = {

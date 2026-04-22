@@ -73,7 +73,7 @@ export function registerProposalTools(
 						{ type: "string" },
 					],
 					description:
-						"Fields to include. Supported: title, type, status, maturity, priority, summary, motivation, design, drawbacks, alternatives, dependency, dependencies, acceptance_criteria, lease, workflow, latest_decision, tags.",
+						"Fields to include. Supported: title, type, status, maturity, priority, summary, motivation, design, drawbacks, alternatives, dependency, dependencies, acceptance_criteria, lease, workflow, latest_decision, decisions, tags.",
 				},
 				format: {
 					type: "string",
@@ -346,5 +346,28 @@ export function registerProposalTools(
 			required: ["id"],
 		},
 		handler: (args: any) => handlers.getProposalProjection(args),
+	});
+
+	// prop_get_detail - comprehensive single-call proposal with ALL children
+	server.addTool({
+		name: "prop_get_detail",
+		description:
+			"Get complete proposal detail in one call: main sections, acceptance criteria, dependencies, discussions, reviews, gate decision history, active dispatches, lease, and workflow state. Returns JSON by default.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				id: {
+					type: "string",
+					description: "Proposal display_id or numeric id (e.g. P206)",
+				},
+				format: {
+					type: "string",
+					enum: ["json", "yaml_md"],
+					description: "Output format. Defaults to json.",
+				},
+			},
+			required: ["id"],
+		},
+		handler: (args: any) => handlers.getProposalDetail(args),
 	});
 }

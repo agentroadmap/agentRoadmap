@@ -321,12 +321,31 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		setDirective(proposal?.directive || "");
 		setMode(isCreateMode ? "create" : "preview");
 		setError(null);
-		// Preload proposals for dependency picker
-		apiClient
-			.fetchProposals()
-			.then(setAvailableProposals)
-			.catch(() => setAvailableProposals([]));
-		// Fetch decisions and reviews for this proposal
+
+		// Fetch full proposal details from REST API if modal is opening
+		if (isOpen && proposal?.id && !isCreateMode) {
+			apiClient
+				.fetchProposal(proposal.id)
+				.then((fullProposal) => {
+					if (fullProposal) {
+						setDescription(fullProposal.description || "");
+						setPlan(fullProposal.implementationPlan || "");
+						setNotes(fullProposal.implementationNotes || "");
+						setFinalSummary(fullProposal.finalSummary || "");
+						setCriteria(fullProposal.acceptanceCriteriaItems || []);
+					}
+				})
+				.catch(() => {
+					// Silently fail - use what we have from WebSocket
+				});
+	}
+
+	// Preload proposals for dependency picker
+	apiClient
+		.fetchProposals()
+		.then(setAvailableProposals)
+		.catch(() => setAvailableProposals([]));
+	// Fetch decisions and reviews for this proposal
 		if (proposal?.id) {
 			apiClient
 				.fetchProposalDecisions(proposal.id)
@@ -1083,13 +1102,20 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 										{r.notes && (
 											<div className="text-sm text-gray-700 dark:text-gray-300 mt-1">{r.notes}</div>
 										)}
-										{r.findings && (
-											<div className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono bg-gray-50 dark:bg-gray-900 rounded p-1.5 overflow-x-auto">
-												{(() => {
-													try { return JSON.stringify(JSON.parse(r.findings), null, 2); } catch { return r.findings; }
-												})()}
-											</div>
-										)}
+						{r.findings && (
+									<div className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono bg-gray-50 dark:bg-gray-900 rounded p-1.5 overflow-x-auto">
+										{(() => {
+											try {
+												if (typeof r.findings === "string") {
+													return JSON.stringify(JSON.parse(r.findings), null, 2);
+												}
+												return JSON.stringify(r.findings, null, 2);
+											} catch {
+												return String(r.findings);
+											}
+										})()}
+									</div>
+								)}
 									</div>
 								))}
 							</div>

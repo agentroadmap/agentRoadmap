@@ -49,8 +49,7 @@ Roadmap tracks **commitments**. Use your judgment to distinguish between "help m
 
 - `get_workflow_overview`, `get_state_creation_guide`, `get_state_execution_guide`, `get_state_finalization_guide`
 - `proposal_list`, `proposal_search`, `proposal_view`, `proposal_create`, `proposal_edit`
-- `prop_list`, `prop_get`, `prop_get_detail`, `prop_create`, `prop_update`, `prop_transition`, `prop_set_maturity`
-- `prop_get_detail` — complete proposal with ALL children (ACs, deps, discussions, reviews, gate decisions, dispatches) in one call. Use `format: "yaml_md"` for human-readable output.
+- `prop_list`, `prop_get`, `prop_create`, `prop_update`, `prop_transition`, `prop_set_maturity`
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`
 - `agents_talk`, `agents_list`
 

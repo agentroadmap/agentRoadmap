@@ -293,7 +293,7 @@ Internal lifecycle stage within a workflow state. Values: new, active, mature, o
 Table `roadmap.model_metadata`. Catalog of available models with provider, pricing, capabilities. Extended with cost_per_million columns (v4 DDL 005/006).
 
 **Model Routes**
-Table `roadmap.model_routes`. Active routing configuration: model_name, route_provider, api_spec, endpoint, cost columns. Extended with agent_cli (v4 DDL 009).
+Table `roadmap.model_routes`. Active routing configuration: model_name, route_provider, agent_provider, agent_cli, api_spec, base_url, cost columns. Extended with agent_cli (v4 DDL 009). **P235: Platform-Aware Model Constraints** — agent_provider column enforces which provider can use which model. resolveModelRoute() queries `WHERE model_name=$1 AND agent_provider=$2 AND is_enabled=true`; cross-platform hints (e.g. claude model on hermes provider) are rejected. Also drives dynamic escalation ladder (ordered by cost ASC). Related: Host Model Policy, fn_check_spawn_policy.
 
 **Multi-Agency**
 Architecture (P282) for multiple AgentHive agencies collaborating across hosts and instances. Each agency has its own agents, configuration, and identity but shares proposals and governance through federation. Currently 0 connected hosts; blocked by missing cryptographic agent identity (P080/P159). Related: multi-project (P300), one orchestrator serving N projects.
@@ -346,6 +346,12 @@ State changes produce append-only events in proposal_event table. Downstream con
 ---
 
 ## P
+
+**P235**
+Platform-Aware Model Constraints — prevent cross-platform model leakage. COMPLETE. resolveModelRoute() in agent-spawner.ts validates model hints against model_routes filtered by agent_provider. Cross-platform hints are rejected. See: Platform-Aware Model Constraints.
+
+**Platform-Aware Model Constraints**
+Feature from P235. Prevents model hints from one CLI platform (e.g. claude-sonnet-4-6 from Claude Code) bleeding into spawns on a different platform (e.g. hermes). Implementation: resolveModelRoute() queries `roadmap.model_routes WHERE model_name=$1 AND agent_provider=$2 AND is_enabled=true`; if no route found, warns [P235] and falls back to provider default. assertResolvedRouteMetadata() validates route completeness. Related: Host Model Policy (P245), Model Routes, fn_check_spawn_policy.
 
 **P240**
 Simplify Gating: Mature Proposals as the Implicit Gate Queue. COMPLETE. Foundation for the current gate model.

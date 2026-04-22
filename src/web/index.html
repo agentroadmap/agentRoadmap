@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <base href="/">
-    <title>agentRoadmap.md - State Management</title>
+    <title>AgentHive — Roadmap</title>
     <link rel="icon" type="image/png" href="./favicon.png">
     <link rel="stylesheet" href="./styles/style.css">
+    <link rel="stylesheet" href="./main.css">
     <script>
         // Prevent flash of wrong theme by applying theme before page renders
         (function() {
@@ -22,6 +23,18 @@
 </head>
 <body>
     <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
+    <script>
+        // Global error handler to capture runtime errors
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('RUNTIME ERROR:', msg, 'at', url + ':' + line + ':' + col, error);
+            document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:sans-serif;"><h2>Runtime Error</h2><pre>' + msg + '</pre><p>at ' + url + ':' + line + ':' + col + '</p></div>';
+            return true;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('UNHANDLED REJECTION:', e.reason);
+            document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:sans-serif;"><h2>Promise Rejection</h2><pre>' + (e.reason?.message || e.reason) + '</pre></div>';
+        });
+    </script>
+    <script type="module" src="./main.js"></script>
 </body>
 </html>

@@ -94,8 +94,13 @@ function asArrayOf<T>(
 }
 
 export function useWebSocket(
-	url: string = "ws://localhost:3001",
+	url?: string,
 ): UseWebSocketReturn {
+	// Derive WebSocket URL from current page location if not specified
+	// This ensures WS connects to the same host/port as the HTTP server
+	const wsUrl = url ?? (typeof window !== "undefined"
+		? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+		: "ws://localhost:6420");
 	const [connected, setConnected] = useState(false);
 	const [proposals, setProposals] = useState<Proposal[]>([]);
 	const [agents, setAgents] = useState<Agent[]>([]);
@@ -112,7 +117,7 @@ export function useWebSocket(
 			wsRef.current.close();
 		}
 
-		const ws = new WebSocket(url);
+		const ws = new WebSocket(wsUrl);
 		wsRef.current = ws;
 
 		ws.onopen = () => {

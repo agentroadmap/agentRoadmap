@@ -59,7 +59,16 @@ function toSharedProposal(proposal: WebSocketProposal): Proposal {
 			proposal.priority === "low"
 				? proposal.priority
 				: undefined,
-	};
+		// Pass through full proposal data for detail modal
+		implementationPlan: proposal.implementationPlan,
+		implementationNotes: proposal.implementationNotes,
+		finalSummary: proposal.finalSummary,
+		acceptanceCriteriaItems: proposal.acceptanceCriteriaItems,
+		parentProposalId: proposal.parentProposalId,
+		parentProposalTitle: proposal.parentProposalTitle,
+		maturity: proposal.maturity,
+		rawContent: proposal.rawContent,
+	} as Proposal & Record<string, unknown>;
 }
 
 function toSharedAgent(agent: WebSocketAgent): SharedAgent {

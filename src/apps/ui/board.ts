@@ -2230,45 +2230,50 @@ export async function renderBoardTui(
 			}
 		};
 
-		screen.key(["enter"], async () => {
-			if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
+	screen.key(["enter"], () => {
+		if (popupOpen || filterPopupOpen || currentFocus === "filters") return;
 
-			// In move mode, Enter confirms the move
-			if (moveOp) {
-				await performProposalMove();
-				return;
-			}
+		// In move mode, Enter confirms the move
+		if (moveOp) {
+			void performProposalMove();
+			return;
+		}
 
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			if (idx < 0 || idx >= column.proposals.length) return;
-			const proposal = column.proposals[idx];
-			if (!proposal) return;
-			popupOpen = true;
+		const column = columns[currentCol];
+		if (!column) return;
+		const idx = column.list.selected ?? 0;
+		if (idx < 0 || idx >= column.proposals.length) return;
+		const proposal = column.proposals[idx];
+		if (!proposal) return;
+		popupOpen = true;
 
-			const popup = await createProposalPopup(
-				screen,
-				proposal,
-				resolveDirectiveLabel,
-			);
-			if (!popup) {
+		createProposalPopup(screen, proposal, resolveDirectiveLabel)
+			.then((popup) => {
+				if (!popup) {
+					popupOpen = false;
+					screen.render();
+					return;
+				}
+				const { contentArea, close } = popup;
+				contentArea.key(["escape", "q"], () => {
+					popupOpen = false;
+					close();
+					focusColumn(currentCol);
+					return false;
+				});
+				popup.background.setFront?.();
+				popup.popup.setFront?.();
+				contentArea.focus();
+				screen.render();
+			})
+			.catch((err) => {
 				popupOpen = false;
-				return;
-			}
-
-			const { contentArea, close } = popup;
-			contentArea.key(["escape", "q"], () => {
-				popupOpen = false;
-				close();
-				focusColumn(currentCol);
-				return false;
+				showTransientFooter(` {red-fg}Error: ${String(err).slice(0, 80)}{/}`);
+				screen.render();
 			});
+	});
 
-			screen.render();
-		});
-
-		const openQuickEdit = async (
+	const openQuickEdit = async (
 			proposal: Proposal,
 			field: "title" | "assignee" | "labels",
 		) => {

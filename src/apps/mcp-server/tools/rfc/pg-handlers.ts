@@ -14,6 +14,10 @@
  */
 
 import { query } from "../../../../postgres/pool.ts";
+import {
+	validateLease,
+	formatValidationError,
+} from "../../../../core/proposal/proposal-integrity.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 
@@ -298,15 +302,28 @@ export async function transitionProposal(args: {
 			};
 		}
 
-		if (
-			transitionNeedsAcceptanceCriteria(transition) &&
-			(await hasOutstandingAcceptanceCriteria(proposal.id))
-		) {
+	if (
+		transitionNeedsAcceptanceCriteria(transition) &&
+		(await hasOutstandingAcceptanceCriteria(proposal.id))
+	) {
+		return {
+			content: [
+				{
+					type: "text",
+					text: `❌ Cannot transition ${args.proposal_id}: acceptance criteria must all pass first.`,
+				},
+			],
+		};
+	}
+
+		// AC-3: Require active lease before allowing transition
+		const leaseResult = await validateLease(proposal.id, args.decided_by);
+		if (!leaseResult.valid) {
 			return {
 				content: [
 					{
 						type: "text",
-						text: `❌ Cannot transition ${args.proposal_id}: acceptance criteria must all pass first.`,
+						text: `🔒 ${formatValidationError(leaseResult.error!)}`,
 					},
 				],
 			};

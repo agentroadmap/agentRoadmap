@@ -116,7 +116,9 @@ async function shutdown(signal: string) {
 	if (offerProvider) {
 		try {
 			await offerProvider.stop();
-			console.log("[GatePipeline] OfferProvider stopped");
+			// Wait for active claims to finish before closing the pool (P376 fix)
+			await offerProvider.waitForIdle(30_000);
+			console.log("[GatePipeline] OfferProvider stopped (idle)");
 		} catch (err) {
 			console.error("[GatePipeline] Error stopping OfferProvider:", err);
 		}

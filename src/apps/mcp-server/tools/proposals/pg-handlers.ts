@@ -10,6 +10,10 @@ import type { QueryResultRow } from "pg";
 import { query } from "../../../../postgres/pool.ts";
 import type { ProposalRow } from "../../../../postgres/proposal-storage-v2.ts";
 import * as pg from "../../../../postgres/proposal-storage-v2.ts";
+import {
+	validateLease,
+	formatValidationError,
+} from "../../../../core/proposal/proposal-integrity.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 
@@ -28,7 +32,7 @@ type ProjectionField =
 	| "design"
 	| "drawbacks"
 	| "alternatives"
-	| "dependency"
+	| "dependency_note"
 	| "dependencies"
 	| "acceptance_criteria"
 	| "criteria"
@@ -57,7 +61,7 @@ type ProposalProjectionRow = QueryResultRow & {
 	design: string | null;
 	drawbacks: string | null;
 	alternatives: string | null;
-	dependency: string | null;
+	dependency_note: string | null;
 	dependencies: unknown;
 	acceptance_criteria: unknown;
 	latest_decision: string | null;
@@ -98,7 +102,7 @@ const PROJECTION_FIELD_ALIASES: Record<string, ProjectionField> = {
 	design: "design",
 	drawbacks: "drawbacks",
 	alternatives: "alternatives",
-	dependency: "dependency",
+	dependency_note: "dependency_note",
 	dependencies: "dependencies",
 	lease: "lease",
 	workflow: "workflow",
@@ -319,7 +323,7 @@ export class PgProposalHandlers {
 		design?: string;
 		drawbacks?: string;
 		alternatives?: string;
-		dependency?: string;
+		dependency_note?: string;
 		priority?: string;
 		body_markdown?: string;
 		status?: string;
@@ -347,7 +351,7 @@ export class PgProposalHandlers {
 					design: args.design || null,
 					drawbacks: args.drawbacks || null,
 					alternatives: args.alternatives || null,
-					dependency: args.dependency || null,
+					dependency_note: args.dependency_note || null,
 					priority: args.priority || null,
 					tags: args.tags ? JSON.parse(args.tags) : null,
 				},
@@ -375,7 +379,7 @@ export class PgProposalHandlers {
 		design?: string;
 		drawbacks?: string;
 		alternatives?: string;
-		dependency?: string;
+		dependency_note?: string;
 		priority?: string;
 		body_markdown?: string;
 		tags?: string;
@@ -396,7 +400,7 @@ export class PgProposalHandlers {
 			if (args.design) updates.design = args.design;
 			if (args.drawbacks) updates.drawbacks = args.drawbacks;
 			if (args.alternatives) updates.alternatives = args.alternatives;
-			if (args.dependency) updates.dependency = args.dependency;
+			if (args.dependency_note) updates.dependency_note = args.dependency_note;
 			if (args.priority) updates.priority = args.priority;
 			if (args.body_markdown) updates.summary = args.body_markdown;
 			if (args.tags) updates.tags = JSON.parse(args.tags);
@@ -476,6 +480,20 @@ export class PgProposalHandlers {
 						};
 					}
 				}
+			}
+
+			// AC-2: Require active lease before allowing transition
+			const agentIdentity = args.author ?? "system";
+			const leaseResult = await validateLease(id, agentIdentity);
+			if (!leaseResult.valid) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `🔒 ${formatValidationError(leaseResult.error!)}`,
+						},
+					],
+				};
 			}
 
 			const updated = await pg.transitionProposal(
@@ -854,19 +872,28 @@ export class PgProposalHandlers {
 				 FROM roadmap_proposal.proposal_lease
 				 WHERE proposal_id = $1 AND released_at IS NULL
 				 ORDER BY claimed_at DESC LIMIT 1`,
-				[proposal.id],
-			);
+			[proposal.id],
+		);
 
-			// 4. Fetch latest decision
-			const decisionResult = await query(
-				`SELECT decision, authority, rationale, decided_at
-				 FROM roadmap_proposal.proposal_decision
-				 WHERE proposal_id = $1
-				 ORDER BY decided_at DESC LIMIT 1`,
-				[proposal.id],
-			);
+		// 4. Fetch all decisions (for decisions field)
+		const allDecisionsResult = await query(
+			`SELECT decision, authority, rationale, binding, decided_at
+			 FROM roadmap_proposal.proposal_decision
+			 WHERE proposal_id = $1
+			 ORDER BY decided_at DESC`,
+			[proposal.id],
+		);
 
-			// 5. Fetch dependencies
+		// 5. Fetch latest decision
+		const decisionResult = await query(
+			`SELECT decision, authority, rationale, decided_at
+			 FROM roadmap_proposal.proposal_decision
+			 WHERE proposal_id = $1
+			 ORDER BY decided_at DESC LIMIT 1`,
+			[proposal.id],
+		);
+
+		// 6. Fetch dependencies
 			const depResult = await query(
 				`SELECT d.to_proposal_id, p.display_id, d.dependency_type, d.resolved
 				 FROM roadmap_proposal.proposal_dependencies d
@@ -920,11 +947,24 @@ export class PgProposalHandlers {
 			if (proposal.alternatives) {
 				md += `## Alternatives\n\n${proposal.alternatives}\n\n`;
 			}
-			if (proposal.dependency) {
-				md += `## Dependencies (Free Text)\n\n${proposal.dependency}\n\n`;
+			if (proposal.dependency_note) {
+				md += `## Dependencies (Free Text)\n\n${proposal.dependency_note}\n\n`;
 			}
 			if (decision?.rationale) {
 				md += `## Decision Rationale\n\n${decision.rationale}\n\n`;
+			}
+
+			// All decisions section (full history)
+			const allDecisions = allDecisionsResult.rows;
+			if (allDecisions.length > 0) {
+				md += `## All Decisions (${allDecisions.length})\n\n`;
+				for (const d of allDecisions) {
+					md += `- **${d.decision}** by ${d.authority} (${d.decided_at})`;
+					if (d.binding) md += ` [binding]`;
+					if (d.rationale) md += ` — ${d.rationale.slice(0, 100)}${d.rationale.length > 100 ? '...' : ''}`;
+					md += `\n`;
+				}
+				md += `\n`;
 			}
 
 			// Acceptance criteria
@@ -994,12 +1034,15 @@ export class PgProposalHandlers {
 				case "dependencies":
 					object.dependencies = normalizeJsonArray(row.dependencies);
 					break;
-				case "latest_decision":
-					object.latest_decision = row.latest_decision
-						? { decision: row.latest_decision, decided_at: row.decision_at }
-						: null;
-					break;
-				default:
+		case "latest_decision":
+				object.latest_decision = row.latest_decision
+					? { decision: row.latest_decision, decided_at: row.decision_at }
+					: null;
+				break;
+			case "decisions":
+				// decisions are added from allDecisionsResult, not row
+				break;
+			default:
 					object[field] = row[field];
 					break;
 			}
@@ -1043,7 +1086,7 @@ export class PgProposalHandlers {
 				case "design":
 				case "drawbacks":
 				case "alternatives":
-				case "dependency": {
+				case "dependency_note": {
 					const value = object[field];
 					if (value) {
 						sections.push(`## ${field.replace(/_/g, " ")}\n${formatScalar(value)}`);
@@ -1074,5 +1117,142 @@ export class PgProposalHandlers {
 		}
 
 		return `# --- METADATA (YAML) ---\n${metadata}\n# -----------------------\n\n# --- NARRATIVE (Markdown) ---\n${sections.join("\n\n") || "No narrative fields requested."}`;
+	}
+
+	/**
+	 * getProposalDetail - returns complete proposal with ALL child entities in one call.
+	 * Queries v_proposal_detail view which includes: ACs, deps, discussions, reviews,
+	 * gate_decisions, active_dispatches, lease, workflow.
+	 */
+	async getProposalDetail(args: { id: string; format?: string }): Promise<CallToolResult> {
+		try {
+			const { rows } = await query(
+				`SELECT * FROM roadmap_proposal.v_proposal_detail
+				 WHERE display_id = $1 OR id = $2
+				 LIMIT 1`,
+				[args.id, Number.isNaN(Number.parseInt(args.id, 10)) ? null : Number.parseInt(args.id, 10)],
+			);
+			const row = rows[0];
+			if (!row) {
+				return {
+					content: [{ type: "text", text: `Proposal ${args.id} not found.` }],
+				};
+			}
+
+			// Build the detail object with all fields
+			const detail: Record<string, any> = {
+				id: row.id,
+				display_id: row.display_id,
+				parent_id: row.parent_id,
+				type: row.type,
+				status: row.status,
+				maturity: row.maturity,
+				title: row.title,
+				summary: row.summary,
+				motivation: row.motivation,
+				design: row.design,
+				drawbacks: row.drawbacks,
+				alternatives: row.alternatives,
+				dependency_note: row.dependency_note,
+				priority: row.priority,
+				tags: row.tags,
+				required_capabilities: row.required_capabilities,
+				created_at: row.created_at,
+				modified_at: row.modified_at,
+				// Child entities (JSONB arrays)
+				dependencies: row.dependencies || [],
+				acceptance_criteria: row.acceptance_criteria || [],
+				discussions: row.discussions || [],
+				reviews: row.reviews || [],
+				gate_decisions: row.gate_decisions || [],
+				active_dispatches: row.active_dispatches || [],
+				// Lease
+				lease: row.leased_by
+					? { agent: row.leased_by, expires: row.lease_expires }
+					: null,
+				// Workflow
+				workflow: row.workflow_name
+					? { name: row.workflow_name, current_stage: row.current_stage }
+					: null,
+			};
+
+			if (args.format === "yaml_md") {
+				// Format as YAML header + markdown sections
+				const yamlHeader = [
+					`display_id: ${detail.display_id}`,
+					`type: ${detail.type}`,
+					`status: ${detail.status}`,
+					`maturity: ${detail.maturity}`,
+					detail.priority ? `priority: ${detail.priority}` : null,
+					detail.lease ? `lease: ${detail.lease.agent} (expires ${detail.lease.expires})` : null,
+					detail.workflow ? `workflow: ${detail.workflow.name} → ${detail.workflow.current_stage}` : null,
+					`discussions: ${detail.discussions.length}`,
+					`reviews: ${detail.reviews.length}`,
+					`gate_decisions: ${detail.gate_decisions.length}`,
+					`dispatches: ${detail.active_dispatches.length}`,
+				]
+					.filter(Boolean)
+					.join("\n");
+
+				const sections: string[] = [];
+				if (detail.title) sections.push(`# ${detail.title}`);
+				if (detail.summary) sections.push(`## Summary\n${detail.summary}`);
+				if (detail.motivation) sections.push(`## Motivation\n${detail.motivation}`);
+				if (detail.design) sections.push(`## Design\n${detail.design}`);
+				if (detail.acceptance_criteria.length > 0) {
+					sections.push(
+						`## Acceptance Criteria\n${detail.acceptance_criteria
+							.map((ac: any) => `- [${ac.status}] AC${ac.item_number}: ${ac.criterion_text}`)
+							.join("\n")}`,
+					);
+				}
+				if (detail.dependencies.length > 0) {
+					sections.push(
+						`## Dependencies\n${detail.dependencies.map((d: any) => `- ${d.to_display_id} (${d.dependency_type})`).join("\n")}`,
+					);
+				}
+				if (detail.gate_decisions.length > 0) {
+					sections.push(
+						`## Gate Decisions\n${detail.gate_decisions
+							.map(
+								(gd: any) =>
+									`- **${gd.decision}** (${gd.from_state}→${gd.to_state}) by ${gd.decided_by}\n  Rationale: ${gd.rationale}`,
+							)
+							.join("\n")}`,
+					);
+				}
+				if (detail.reviews.length > 0) {
+					sections.push(
+						`## Reviews\n${detail.reviews
+							.map((r: any) => `- **${r.verdict}** by ${r.reviewer_identity}: ${r.notes || r.findings || ""}`)
+							.join("\n")}`,
+					);
+				}
+				if (detail.discussions.length > 0) {
+					sections.push(
+						`## Discussions (${detail.discussions.length} messages)\n${detail.discussions
+							.slice(0, 5)
+							.map((d: any) => `- [${d.author_identity}]: ${d.body?.substring(0, 200)}`)
+							.join("\n")}${detail.discussions.length > 5 ? `\n... and ${detail.discussions.length - 5} more` : ""}`,
+					);
+				}
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: `# --- METADATA (YAML) ---\n${yamlHeader}\n# -----------------------\n\n${sections.join("\n\n")}`,
+						},
+					],
+				};
+			}
+
+			// Default: JSON format
+			return {
+				content: [{ type: "text", text: JSON.stringify(detail, null, 2) }],
+			};
+		} catch (err) {
+			return errorResult("Failed to get proposal detail", err);
+		}
 	}
 }
