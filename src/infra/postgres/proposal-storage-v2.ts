@@ -8,7 +8,7 @@ import { getPool, query } from "./pool.ts";
 const PROPOSAL_COLUMNS = `
   id, display_id, parent_id, type, status, maturity, title,
   summary, motivation, design, drawbacks, alternatives,
-  dependency, priority, tags, audit, created_at, modified_at
+  dependency_note AS dependency, priority, tags, audit, created_at, modified_at
 `;
 
 export type ProposalRow = {
@@ -339,10 +339,10 @@ export async function createProposal(
 
 		const { rows } = await client.query<ProposalRow>(
 			`INSERT INTO roadmap_proposal.proposal (
-	      display_id, type, status, title, parent_id, summary, motivation, design,
-	      drawbacks, alternatives, dependency, priority, tags, audit
-	    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb)
-	    RETURNING ${PROPOSAL_COLUMNS}`,
+      display_id, type, status, title, parent_id, summary, motivation, design,
+      drawbacks, alternatives, dependency_note, priority, tags, audit
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb)
+    RETURNING ${PROPOSAL_COLUMNS}`,
 			[
 				input.display_id ?? null,
 				input.type,
@@ -417,11 +417,12 @@ export async function updateProposal(
 
 	for (const [key, value] of Object.entries(updates)) {
 		if (value !== undefined) {
+			const colName = key === "dependency" ? "dependency_note" : key;
 			if (jsonbFields.includes(key as any)) {
-				setClauses.push(`${key} = $${idx}::jsonb`);
+				setClauses.push(`${colName} = $${idx}::jsonb`);
 				params.push(value === null ? null : JSON.stringify(value));
 			} else {
-				setClauses.push(`${key} = $${idx}`);
+				setClauses.push(`${colName} = $${idx}`);
 				params.push(value);
 			}
 			idx++;
@@ -912,7 +913,7 @@ export async function searchProposals(
                COALESCE(design, ''),
                COALESCE(drawbacks, ''),
                COALESCE(alternatives, ''),
-               COALESCE(dependency, '')
+				COALESCE(dependency_note, '')
              )
            )
             @@ plainto_tsquery('english', $1)

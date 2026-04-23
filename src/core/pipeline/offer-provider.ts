@@ -172,6 +172,24 @@ export class OfferProvider {
 		}
 	}
 
+	/**
+	 * Wait for all active claims to finish before the pool is closed.
+	 * Times out after maxWaitMs to prevent hanging forever.
+	 */
+	async waitForIdle(maxWaitMs = 60_000): Promise<void> {
+		if (this.activeClaims === 0) return;
+		const start = Date.now();
+		while (this.activeClaims > 0) {
+			if (Date.now() - start > maxWaitMs) {
+				this.logger.warn(
+					`[OfferProvider] waitForIdle timed out after ${maxWaitMs}ms with ${this.activeClaims} claim(s) still active`,
+				);
+				return;
+			}
+			await new Promise((r) => setTimeout(r, 500));
+		}
+	}
+
 	// ─── Claim loop ─────────────────────────────────────────────────────────────
 
 	private async tryClaimLoop(): Promise<void> {

@@ -758,13 +758,15 @@ async function claimImplicitGateReady(
          SELECT sd.id
            FROM roadmap_workforce.squad_dispatch sd
           WHERE sd.proposal_id = p.id
-            AND sd.dispatch_role = 'gate-reviewer'
-            AND sd.dispatch_status = 'active'
+            AND sd.dispatch_role LIKE 'skeptic%'
+            AND sd.dispatch_status IN ('active', 'open')
+            AND sd.metadata->>'source' = 'implicit_maturity_gating'
           ORDER BY sd.assigned_at DESC
           LIMIT 1
        ) dispatch ON true
       WHERE p.maturity = 'mature'
         AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge')
+        AND dispatch.id IS NULL
         AND ($1::bigint IS NULL OR p.id = $1)
       ORDER BY p.modified_at ASC, p.id ASC
       LIMIT $2`,
@@ -777,8 +779,17 @@ async function dispatchImplicitGate(
 	proposalId: number,
 	reason: string,
 ): Promise<void> {
+	// Gate dispatch ONLY for maturity='mature'. new/active = enhancement queue, not gating.
 	const [proposal] = await claimImplicitGateReady(proposalId, 1);
 	if (!proposal) {
+		return;
+	}
+
+	// Defense in depth: re-check maturity at dispatch time
+	if (proposal.maturity !== 'mature') {
+		logger.log(
+			`Skipping gate for ${proposal.display_id}: maturity=${proposal.maturity}, not mature`,
+		);
 		return;
 	}
 

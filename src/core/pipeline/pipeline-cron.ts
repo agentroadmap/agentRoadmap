@@ -443,7 +443,7 @@ async function loadProposalDispatchContext(
 		    p.design AS design,
 		    p.alternatives AS alternatives,
 		    p.drawbacks AS drawbacks,
-		    p.dependency AS dependency,
+		    p.dependency_note AS dependency,
 		    COALESCE(dep.unresolved_dependencies, 0) AS unresolved_dependencies,
 		    COALESCE(ac.total_acceptance_criteria, 0) AS total_acceptance_criteria,
 		    COALESCE(ac.blocking_acceptance_criteria, 0) AS blocking_acceptance_criteria,
