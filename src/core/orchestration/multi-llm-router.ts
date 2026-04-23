@@ -9,13 +9,15 @@
  * AC#4: Support for fallback routing
  */
 
+import { query } from "../../infra/postgres/pool.ts";
+
 // ===================== Types =====================
 
 /** LLM reasoning tiers from basic to premium */
 export type ReasoningTier = "basic" | "standard" | "advanced" | "premium";
 
-/** Model provider identifiers */
-export type ModelProvider = "anthropic" | "openai" | "google" | "local";
+/** Model provider identifiers — source of truth is model_routes.route_provider */
+export type ModelProvider = string;
 
 /** Model configuration */
 export interface ModelConfig {
@@ -166,80 +168,61 @@ export const DEFAULT_COST_BUDGET_USD = 0.1;
 /** Maximum context tokens for cost estimation */
 export const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
-// ===================== Model Registry =====================
+// ===================== Model Registry Loader =====================
 
-/** Default model configurations */
-export const DEFAULT_MODELS: ModelConfig[] = [
-	// Anthropic models
-	{
-		modelId: "claude-opus-4",
-		displayName: "Claude Opus 4",
-		provider: "anthropic",
-		tier: "premium",
-		inputCostPer1k: 0.015,
-		outputCostPer1k: 0.075,
-		maxContextTokens: 200000,
-		capabilities: ["code", "analysis", "reasoning", "creative", "long-context"],
-		available: true,
-	},
-	{
-		modelId: "claude-sonnet-4",
-		displayName: "Claude Sonnet 4",
-		provider: "anthropic",
-		tier: "advanced",
-		inputCostPer1k: 0.003,
-		outputCostPer1k: 0.015,
-		maxContextTokens: 200000,
-		capabilities: ["code", "analysis", "reasoning", "creative"],
-		available: true,
-	},
-	{
-		modelId: "claude-haiku-3.5",
-		displayName: "Claude Haiku 3.5",
-		provider: "anthropic",
-		tier: "standard",
-		inputCostPer1k: 0.0008,
-		outputCostPer1k: 0.004,
-		maxContextTokens: 200000,
-		capabilities: ["code", "analysis", "reasoning"],
-		available: true,
-	},
-	// OpenAI models
-	{
-		modelId: "gpt-4o",
-		displayName: "GPT-4o",
-		provider: "openai",
-		tier: "advanced",
-		inputCostPer1k: 0.0025,
-		outputCostPer1k: 0.01,
-		maxContextTokens: 128000,
-		capabilities: ["code", "analysis", "reasoning", "multimodal"],
-		available: true,
-	},
-	{
-		modelId: "gpt-4o-mini",
-		displayName: "GPT-4o Mini",
-		provider: "openai",
-		tier: "standard",
-		inputCostPer1k: 0.00015,
-		outputCostPer1k: 0.0006,
-		maxContextTokens: 128000,
-		capabilities: ["code", "analysis"],
-		available: true,
-	},
-	// Local model (always available, lowest cost)
-	{
-		modelId: "local-fast",
-		displayName: "Local Fast Model",
-		provider: "local",
-		tier: "basic",
-		inputCostPer1k: 0.00001,
-		outputCostPer1k: 0.00002,
-		maxContextTokens: 32000,
-		capabilities: ["code", "analysis"],
-		available: true,
-	},
-];
+/** Load active model configurations from the DB-backed model registry.
+ *  Uses model_routes (source of truth for routing) joined with model_metadata
+ *  (source of truth for capabilities).  No hardcoded fallback — if the DB is
+ *  unreachable the caller must handle the error. */
+export async function loadModelsFromRegistry(): Promise<ModelConfig[]> {
+	const { rows } = await query<{
+		model_name: string;
+		agent_provider: string;
+		api_spec: string;
+		cost_per_million_input: string | null;
+		cost_per_million_output: string | null;
+		max_tokens: number | null;
+		capabilities: Record<string, boolean> | null;
+		rating: number | null;
+	}>(
+		`SELECT mr.model_name, mr.agent_provider, mr.api_spec,
+		        mr.cost_per_million_input, mr.cost_per_million_output,
+		        COALESCE(mm.max_tokens, 32768) AS max_tokens,
+		        mm.capabilities, mm.rating
+		 FROM roadmap.model_routes mr
+		 LEFT JOIN roadmap.model_metadata mm
+		        ON mm.model_name = mr.model_name
+		 WHERE mr.is_enabled = true
+		 ORDER BY mr.priority ASC,
+		          COALESCE(mr.cost_per_million_input, 0) ASC`,
+		[],
+	);
+
+	return rows.map((r) => {
+		const caps = r.capabilities
+			? Object.keys(r.capabilities).filter(
+					(k) => r.capabilities![k],
+				)
+			: ["code", "analysis"];
+		const inputCostPer1k = r.cost_per_million_input
+			? Number(r.cost_per_million_input) / 1000
+			: 0;
+		const outputCostPer1k = r.cost_per_million_output
+			? Number(r.cost_per_million_output) / 1000
+			: 0;
+		return {
+			modelId: r.model_name,
+			displayName: r.model_name,
+			provider: r.agent_provider as ModelProvider,
+			tier: "standard" as ReasoningTier,
+			inputCostPer1k,
+			outputCostPer1k,
+			maxContextTokens: r.max_tokens ?? 32768,
+			capabilities: caps,
+			available: true,
+		};
+	});
+}
 
 // ===================== Multi-LLM Task Router =====================
 
@@ -254,13 +237,21 @@ export class MultiLLMRouter {
 	private costBudgetUsd: number;
 
 	constructor(
-		models: ModelConfig[] = DEFAULT_MODELS,
+		models: ModelConfig[] = [],
 		costBudgetUsd: number = DEFAULT_COST_BUDGET_USD,
 	) {
 		for (const model of models) {
 			this.models.set(model.modelId, model);
 		}
 		this.costBudgetUsd = costBudgetUsd;
+	}
+
+	/** Create a router backed by the live DB model registry (migration 039). */
+	static async createFromRegistry(
+		costBudgetUsd: number = DEFAULT_COST_BUDGET_USD,
+	): Promise<MultiLLMRouter> {
+		const models = await loadModelsFromRegistry();
+		return new MultiLLMRouter(models, costBudgetUsd);
 	}
 
 	// ===================== AC#1: Tier Determination from Priority & Labels =====================

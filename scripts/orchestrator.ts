@@ -17,7 +17,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { spawnAgent, detectProvider } from "../src/core/orchestration/agent-spawner.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
-import { getPool, query, PoolManager } from "../src/infra/postgres/pool.ts";
+import { getPool, query } from "../src/infra/postgres/pool.ts";
 import { mcpText } from "./mcp-result.ts";
 
 const MCP_URL = "http://127.0.0.1:6421/sse";
@@ -486,9 +486,7 @@ async function dispatchAgent(
 
 		// Spawn the agent process
 		const taskPrompt = `${AGENT_PROMPTS[agent] || ""}\n\nProposal P${proposalId}: ${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
-		// AC-7: Use worktree_path from cubic_acquire instead of re-scanning filesystem.
-		// The cubic already knows its worktree — respect it.
-		const worktree = data.worktree_path ?? await selectExecutorWorktree(null);
+		const worktree = await selectExecutorWorktree(null);
 		const result = await spawnAgent({
 			worktree,
 			task: taskPrompt,
@@ -530,139 +528,48 @@ async function dispatchAgent(
 	}
 }
 
-// Handle state change and dispatch agents via offer/claim pipeline
-async function handleStateChange(proposalId: string, _newState: string) {
-	// Always read actual proposal state — workflows table may be stale
-	const { rows: propRows } = await query<{
-		display_id: string;
-		title: string;
-		status: string;
-		maturity: string;
-	}>(
-		`SELECT display_id, title, status, maturity FROM roadmap_proposal.proposal WHERE id = $1`,
-		[proposalId],
-	);
-	const proposal = propRows[0];
-	if (!proposal) {
-		logger.log(`Proposal ${proposalId} not found`);
-		return;
-	}
-
-	const newState = proposal.status;
+// Handle state change and dispatch agents
+async function handleStateChange(proposalId: string, newState: string) {
 	const normalizedState = normalizeState(newState);
 	const agents = AGENT_DISPATCH[normalizedState];
 
 	if (!agents || agents.length === 0) {
+		logger.log(`No agents for state: ${newState}`);
 		return;
 	}
 
 	const phase = STATE_TO_PHASE[normalizedState] || "design";
 
-	// Check unresolved dependencies — skip dispatch if blockers exist
-	const { rows: depRows } = await query<{ unresolved: number }>(
-		`SELECT COUNT(*)::int AS unresolved
-       FROM roadmap.proposal_dependencies
-      WHERE from_proposal_id = $1
-        AND resolved = false`,
-		[proposalId],
-	);
-	const unresolved = depRows[0]?.unresolved ?? 0;
-	if (unresolved > 0) {
-		logger.log(
-			`⏳ P${proposalId} → ${newState}: ${unresolved} unresolved dependencies, skipping dispatch`,
-		);
-		return;
-	}
-
-	// Check for existing active/open dispatches for this proposal
-	const { rows: existing } = await query<{ id: number }>(
-		`SELECT id FROM roadmap_workforce.squad_dispatch
-      WHERE proposal_id = $1 AND dispatch_status IN ('active', 'open')
-      LIMIT 1`,
-		[proposalId],
-	);
-	if (existing.length > 0) {
-		logger.log(
-			`⏭ P${proposalId} → ${newState}: active dispatch already exists, skipping`,
-		);
-		return;
-	}
-
-	const displayId = proposal.display_id ?? `P${proposalId}`;
-	const title = proposal.title ?? "";
-
 	logger.log(`📢 P${proposalId} → ${newState} (${phase})`);
 	logger.log(`   Squad: ${agents.join(", ")}`);
 
-	// Build task prompt
-	const task = [
-		`Process proposal ${displayId} in ${newState} phase.`,
-		`Title: ${title}`,
-		`Phase: ${phase}`,
-		``,
-		`Agents in squad: ${agents.join(", ")}`,
-		``,
-		`Use MCP proposal tools to read the full YAML+Markdown projection, discussions, acceptance criteria.`,
-		`Connect to http://127.0.0.1:6421/sse for proposal management.`,
-	].join("\n");
+	// Release any locked cubics for this proposal from previous phases
+	await releaseStaleCubics(proposalId);
 
-	const squadName = `${displayId}-${phase}`;
-
-	// Create open offers for each agent in the squad
-	for (const role of agents) {
-		const requiredCaps = roleToCapabilities(role);
-		try {
-		const { rows: dispatchRows } = await query<{ id: number }>(
-			`INSERT INTO roadmap_workforce.squad_dispatch
-           (proposal_id, project_id, squad_name, dispatch_role, dispatch_status,
-            offer_status, agent_identity, assigned_by,
-            required_capabilities, metadata)
-         VALUES ($1,
-           (SELECT COALESCE(project_id, 1) FROM roadmap_proposal.proposal WHERE id = $1),
-           $2, $3, 'open', 'open', NULL, 'orchestrator',
-           $4::jsonb,
-           jsonb_build_object(
-             'source', 'state_change',
-             'state', $5::text,
-             'phase', $6::text,
-             'task', $7::text,
-             'worktree_root', (SELECT p.git_root || '/worktrees' FROM roadmap_workforce.projects p
-                               WHERE p.id = (SELECT COALESCE(pr.project_id, 1) FROM roadmap_proposal.proposal pr WHERE pr.id = $1))
-           ))
-         RETURNING id`,
-			[
-				proposalId,
-				squadName,
-				role,
-				JSON.stringify(requiredCaps),
-				newState,
-				phase,
-				task,
-			],
-		);
-			const dispatchId = dispatchRows[0]?.id;
-			if (dispatchId) {
-				await query(
-					`SELECT pg_notify('work_offers', $1)`,
-					[
-						JSON.stringify({
-							event: "emitted",
-							dispatch_id: dispatchId,
-							proposal_id: proposalId,
-							role,
-						}),
-					],
-				);
-				logger.log(
-					`   Emitted offer ${dispatchId} for ${displayId} (${role}/${phase})`,
-				);
-			}
-		} catch (err) {
-			logger.warn(
-				`   Failed to emit offer for ${role}: ${err instanceof Error ? err.message : String(err)}`,
+	// Dynamic control: check if provider is in cooldown before dispatching
+	try {
+		const worktree = await selectExecutorWorktree(null);
+		const provider = await detectProvider(worktree);
+		if (await isProviderInCooldown(provider)) {
+			logger.log(
+				`⏸ Skipping P${proposalId} (${newState}): provider ${provider} is in cooldown`,
 			);
+			return;
 		}
+	} catch {
+		// Provider resolution failed — let dispatch handle it
 	}
+
+	// Dispatch all agents for this state (parallel, tolerate individual failures)
+	const results = await Promise.allSettled(
+		agents.map((agent) =>
+			dispatchAgent(agent, proposalId, `Handle ${newState}`, phase),
+		),
+	);
+	const dispatched = results.filter(
+		(r) => r.status === "fulfilled" && r.value,
+	).length;
+	logger.log(`   ${dispatched}/${agents.length} dispatched`);
 }
 
 async function ensureAgentIdentity(
@@ -788,35 +695,6 @@ const GATE_ROLES: Record<string, { role: string; framing: string }> = {
 	},
 };
 
-// Map dispatch roles to required capabilities for offer matching.
-// Returns {"all": ["cap1", "cap2"]} — an agency needs ALL listed caps to claim.
-// Empty array = any agency can claim (no capability requirement).
-function roleToCapabilities(role: string): Record<string, string[]> {
-	const ROLE_CAP_MAP: Record<string, string[]> = {
-		"developer": ["code"],
-		"senior-developer": ["code"],
-		"architect": ["design"],
-		"reviewer": ["review"],
-		"gate-reviewer": ["review"],
-		"tester": ["testing"],
-		"devops": ["devops"],
-		"pm": ["management"],
-		"skeptic": ["review"],
-		"skeptic-alpha": ["design", "review"],
-		"skeptic-beta": ["review"],
-		"architecture-reviewer": ["design", "review"],
-		"researcher": ["research"],
-		"documenter": ["docs"],
-		"triage-agent": ["triage"],
-		"fix-agent": ["code"],
-		"merge-agent": ["code"],
-		"enhancer": ["code"],
-	};
-
-	const mapped = ROLE_CAP_MAP[role.toLowerCase()];
-	return mapped && mapped.length > 0 ? { all: [...mapped] } : {};
-}
-
 function gateRole(gate: GateDefinition): string {
 	return GATE_ROLES[gate.gate]?.role ?? "gate-reviewer";
 }
@@ -880,12 +758,15 @@ async function claimImplicitGateReady(
          SELECT sd.id
            FROM roadmap_workforce.squad_dispatch sd
           WHERE sd.proposal_id = p.id
+            AND sd.dispatch_role LIKE 'skeptic%'
             AND sd.dispatch_status IN ('active', 'open')
+            AND sd.metadata->>'source' = 'implicit_maturity_gating'
           ORDER BY sd.assigned_at DESC
           LIMIT 1
        ) dispatch ON true
       WHERE p.maturity = 'mature'
-        AND p.status IN ('DRAFT', 'REVIEW', 'DEVELOP', 'MERGE')
+        AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge')
+        AND dispatch.id IS NULL
         AND ($1::bigint IS NULL OR p.id = $1)
       ORDER BY p.modified_at ASC, p.id ASC
       LIMIT $2`,
@@ -898,8 +779,17 @@ async function dispatchImplicitGate(
 	proposalId: number,
 	reason: string,
 ): Promise<void> {
+	// Gate dispatch ONLY for maturity='mature'. new/active = enhancement queue, not gating.
 	const [proposal] = await claimImplicitGateReady(proposalId, 1);
 	if (!proposal) {
+		return;
+	}
+
+	// Defense in depth: re-check maturity at dispatch time
+	if (proposal.maturity !== 'mature') {
+		logger.log(
+			`Skipping gate for ${proposal.display_id}: maturity=${proposal.maturity}, not mature`,
+		);
 		return;
 	}
 
@@ -922,59 +812,205 @@ async function dispatchImplicitGate(
 		return;
 	}
 
-	const role = gateRole(gate);
-	const task = buildImplicitGateTask(proposal, gate);
-	const squadName = `gate-${proposal.display_id}-${gate.gate}`;
-	const requiredCaps = roleToCapabilities(role);
+	const worktree = await selectExecutorWorktree(null);
 
-const { rows: dispatchRows } = await query<{ id: number }>(
-	`INSERT INTO roadmap_workforce.squad_dispatch
-       (proposal_id, project_id, squad_name, dispatch_role, dispatch_status,
-        offer_status, agent_identity, assigned_by,
-        required_capabilities, metadata)
-     VALUES ($1,
-       (SELECT COALESCE(project_id, 1) FROM roadmap_proposal.proposal WHERE id = $1),
-       $2, $3, 'open', 'open', NULL, 'orchestrator',
-       $4::jsonb,
+	// Dynamic control: check if provider is in cooldown before dispatching
+	try {
+		const provider = await detectProvider(worktree);
+		if (await isProviderInCooldown(provider)) {
+			logger.log(
+				`⏸ Skipping ${proposal.display_id}: provider ${provider} is in cooldown`,
+			);
+			return;
+		}
+	} catch {
+		// Provider resolution failed — let spawn handle the error
+	}
+
+	await ensureAgentIdentity("orchestrator", "State Machine Orchestrator");
+	await ensureAgentIdentity(worktree, "Gate Executor");
+
+	const role = gateRole(gate);
+	const { rows: dispatchRows } = await query<{ id: number }>(
+		`INSERT INTO roadmap_workforce.squad_dispatch
+       (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
+        assigned_by, metadata)
+     VALUES ($1, $2, $3, $8, 'active', 'orchestrator',
        jsonb_build_object(
          'source', 'implicit_maturity_gating',
-         'reason', $5::text,
-         'gate', $6::text,
-         'from_stage', $7::text,
-         'to_stage', $8::text,
-         'task', $9::text,
-         'worktree_root', (SELECT p.git_root || '/worktrees' FROM roadmap_workforce.projects p
-                           WHERE p.id = (SELECT COALESCE(pr.project_id, 1) FROM roadmap_proposal.proposal pr WHERE pr.id = $1))
+         'reason', $4::text,
+         'gate', $5::text,
+         'from_stage', $6::text,
+         'to_stage', $7::text
        ))
      RETURNING id`,
 		[
 			proposal.id,
-			squadName,
-			role,
-			JSON.stringify(requiredCaps),
+			worktree,
+			`gate-${proposal.display_id}-${gate.gate}`,
 			reason,
 			gate.gate,
 			proposal.status,
 			gate.toStage,
-			task,
+			role,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;
-	if (!dispatchId) {
-		logger.warn(`Failed to create offer for ${proposal.display_id}`);
+	logger.log(
+		`Implicit gate dispatch ${dispatchId} -> ${worktree} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${gate.gate})`,
+	);
+
+	let result: Awaited<ReturnType<typeof spawnAgent>>;
+	try {
+		result = await spawnAgent({
+			worktree,
+			task: buildImplicitGateTask(proposal, gate),
+			proposalId: proposal.id,
+			stage: gate.toStage,
+			timeoutMs: 600_000,
+		});
+	} catch (spawnErr) {
+		const errMsg =
+			spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+		await query(
+			`UPDATE roadmap_workforce.squad_dispatch
+	        SET dispatch_status = 'blocked',
+	            completed_at = now(),
+	            metadata = COALESCE(metadata, '{}'::jsonb) ||
+	              jsonb_build_object('error', $2::text)
+	      WHERE id = $1`,
+			[dispatchId, errMsg],
+		);
+		await releaseDispatchLease(dispatchId, `gate spawn failed: ${errMsg.slice(0, 500)}`);
+		logger.warn(`Implicit gate dispatch ${dispatchId} blocked (spawn threw): ${errMsg}`);
 		return;
 	}
 
+	const proposalState = await query<{ status: string; maturity: string }>(
+		`SELECT status, maturity
+       FROM roadmap_proposal.proposal
+      WHERE id = $1`,
+		[proposal.id],
+	);
+	const current = proposalState.rows[0];
+	const reachedTarget =
+		current && normalizeState(current.status) === normalizeState(gate.toStage);
+
+	if (result.exitCode === 0 && reachedTarget) {
+		await setProposalMaturity(
+			proposal.id,
+			"new",
+			worktree,
+			`gate ${gate.gate} advanced to ${gate.toStage}`,
+		);
+		await query(
+			`UPDATE roadmap_workforce.squad_dispatch
+          SET dispatch_status = 'completed',
+              completed_at = now(),
+              metadata = COALESCE(metadata, '{}'::jsonb) ||
+                jsonb_build_object('agent_run_id', $2::text, 'gate_decision', 'advance', 'proposal_status', $3::text, 'proposal_maturity', 'new')
+        WHERE id = $1`,
+			[dispatchId, result.agentRunId, gate.toStage],
+		);
+		await releaseDispatchLease(
+			dispatchId,
+			`gate ${gate.gate} advanced to ${gate.toStage}`,
+		);
+		logger.log(
+			`Implicit gate dispatch ${dispatchId} advanced ${proposal.display_id} to ${gate.toStage}/new`,
+		);
+		return;
+	}
+
+	if (result.exitCode === 0 && current) {
+		const finalMaturity =
+			normalizeState(current.maturity) === "OBSOLETE" ? "obsolete" : "new";
+		if (finalMaturity === "new") {
+			await setProposalMaturity(
+				proposal.id,
+				"new",
+				worktree,
+				`gate ${gate.gate} sent back or held`,
+			);
+		}
+		const decisionMessage = `gate decision completed without state transition: proposal is ${current.status}/${finalMaturity}`;
+		await recordGateCommunication({
+			proposalId: proposal.id,
+			author: worktree,
+			toAgent: "orchestrator",
+			channel: "direct",
+			contextPrefix: "feedback:",
+			body: [
+				`Gate ${gate.gate} held ${proposal.display_id}.`,
+				`Target transition: ${proposal.status} -> ${gate.toStage}`,
+				`Current proposal state: ${current.status}/${finalMaturity}`,
+				"",
+				"The gate agent made a non-transition decision. Continue the conversation through MCP discussions/messages, revise the proposal, then set maturity back to mature when it is ready for another gate attempt.",
+			].join("\n"),
+			metadata: {
+				gate: gate.gate,
+				gate_decision: finalMaturity === "obsolete" ? "obsolete" : "hold",
+				proposal_status: current.status,
+				proposal_maturity: finalMaturity,
+				agent_run_id: result.agentRunId,
+				source: "implicit_maturity_gating",
+			},
+		});
+		await query(
+			`UPDATE roadmap_workforce.squad_dispatch
+          SET dispatch_status = 'completed',
+              completed_at = now(),
+              metadata = COALESCE(metadata, '{}'::jsonb) ||
+                jsonb_build_object('agent_run_id', $2::text, 'gate_decision', $3::text, 'proposal_status', $4::text, 'proposal_maturity', $5::text)
+        WHERE id = $1`,
+			[
+				dispatchId,
+				result.agentRunId,
+				finalMaturity === "obsolete" ? "obsolete" : "hold",
+				current.status,
+				finalMaturity,
+			],
+		);
+		await releaseDispatchLease(dispatchId, decisionMessage);
+		logger.log(
+			`Implicit gate dispatch ${dispatchId} held ${proposal.display_id}: ${decisionMessage}`,
+		);
+		return;
+	}
+
+	const errorMessage =
+		result.exitCode === 0
+			? `gate agent completed but proposal state could not be read`
+			: `gate agent exited ${result.exitCode}: ${[result.stderr, result.stdout].filter(Boolean).join("\n").slice(0, 2000)}`;
+
+	// Dynamic control: classify error and set provider cooldown if needed
+	const fullError = [result.stderr, result.stdout].filter(Boolean).join("\n");
+	const classified = classifyProviderError(fullError);
+	if (classified && result.exitCode !== 0) {
+		try {
+			const provider = await detectProvider(worktree);
+			await setProviderCooldown(provider, classified.type, fullError);
+		} catch {
+			// Provider detection failed — skip cooldown
+		}
+	}
+
 	await query(
-		`SELECT pg_notify('work_offers', $1)`,
-		[JSON.stringify({ event: "emitted", dispatch_id: dispatchId, proposal_id: proposal.id, role })],
+		`UPDATE roadmap_workforce.squad_dispatch
+        SET dispatch_status = 'blocked',
+            completed_at = now(),
+            metadata = COALESCE(metadata, '{}'::jsonb) ||
+              jsonb_build_object('agent_run_id', $2::text, 'error', $3::text)
+      WHERE id = $1`,
+		[dispatchId, result.agentRunId, errorMessage],
 	);
-
-	logger.log(
-		`Emitted offer ${dispatchId} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${role})`,
+	await releaseDispatchLease(
+		dispatchId,
+		`gate dispatch blocked: ${errorMessage.slice(0, 500)}`,
 	);
-
-	return;
+	logger.warn(
+		`Implicit gate dispatch ${dispatchId} blocked ${proposal.display_id}: ${errorMessage}`,
+	);
 }
 
 async function drainImplicitGateReady(
@@ -1250,12 +1286,7 @@ let implicitGateTimer: NodeJS.Timeout | null = null;
 async function main() {
 	logger.log("Starting Orchestrator with dynamic agent deployment...");
 
-	// AC-3: Bootstrap PoolManager for multi-project support.
-	// metaPool replaces the old singleton getPool() for cross-project tables.
-	// Per-project pools are lazy-created via poolManager.getPool(projectId).
-	const poolManager = await PoolManager.init();
-	const pool = poolManager.metaPool;
-	logger.log(`PoolManager initialized. Known projects: ${poolManager.listProjects().map(p => p.name).join(", ") || "none"}`);
+	const pool = getPool();
 
 	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.
 	await reapStaleRows(

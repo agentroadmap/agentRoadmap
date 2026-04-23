@@ -30,7 +30,6 @@ const spawnAdapter =
 				stage: string;
 				model?: string;
 				timeoutMs?: number;
-				agentLabel?: string;
 			}) =>
 				spawnAgent({
 					worktree: request.worktree,
@@ -44,7 +43,6 @@ const spawnAdapter =
 					stage: request.stage,
 					model: request.model,
 					timeoutMs: request.timeoutMs,
-					agentLabel: request.agentLabel,
 				})
 		: undefined;
 
@@ -65,7 +63,6 @@ const offerProvider = useOfferDispatch
 			leaseTtlSeconds: Number(process.env.AGENTHIVE_LEASE_TTL_SECONDS ?? "30"),
 			renewIntervalMs: Number(process.env.AGENTHIVE_RENEW_INTERVAL_MS ?? "10000"),
 			pollIntervalMs: Number(process.env.AGENTHIVE_OFFER_POLL_MS ?? "15000"),
-			maxConcurrent: Number(process.env.AGENTHIVE_MAX_CONCURRENT ?? "10"),
 		})
 	: null;
 
@@ -116,9 +113,9 @@ async function shutdown(signal: string) {
 	if (offerProvider) {
 		try {
 			await offerProvider.stop();
-			// Wait for active claims to finish before closing the pool (P376 fix)
-			await offerProvider.waitForIdle(30_000);
-			console.log("[GatePipeline] OfferProvider stopped (idle)");
+			// Wait for in-flight claims to finish before closing the pool
+			await offerProvider.waitForIdle(90_000);
+			console.log("[GatePipeline] OfferProvider stopped and drained");
 		} catch (err) {
 			console.error("[GatePipeline] Error stopping OfferProvider:", err);
 		}

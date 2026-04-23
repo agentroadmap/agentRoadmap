@@ -89,12 +89,18 @@ export interface ModelRoute {
 	routeProvider: string;
 	agentProvider: string;
 	agentCli: string;
-	apiSpec: "anthropic" | "openai" | "google";
+	apiSpec: string;
 	baseUrl: string;
 	planType: string | null;
 	costPer1kInput: number;
 	costPerMillionInput: number;
 	costPerMillionOutput: number;
+	/** DB-driven credential env var names (migration 039) */
+	apiKeyEnv: string | null;
+	apiKeyFallbackEnv: string | null;
+	baseUrlEnv: string | null;
+	/** Comma-separated Hermes toolsets to grant; null = defaults */
+	spawnToolsets: string | null;
 }
 
 export function buildSpawnProcessEnv(input: {
@@ -103,43 +109,23 @@ export function buildSpawnProcessEnv(input: {
 	agentEnv: Record<string, string>;
 	extraEnv: Record<string, string>;
 }): Record<string, string> {
-	const routeCredentialEnv = (() => {
-		if (input.route.apiSpec === "anthropic") {
-			return process.env.ANTHROPIC_API_KEY
-				? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY }
-				: {};
-		}
-		if (input.route.apiSpec === "google") {
-			return process.env.GEMINI_API_KEY
-				? { GEMINI_API_KEY: process.env.GEMINI_API_KEY }
-				: {};
-		}
-		if (input.route.apiSpec === "openai") {
-			if (input.route.routeProvider === "nous") {
-				const nousKey = process.env.NOUS_API_KEY ?? process.env.OPENAI_API_KEY;
-				return {
-					...(process.env.NOUS_API_KEY
-						? { NOUS_API_KEY: process.env.NOUS_API_KEY }
-						: {}),
-					...(nousKey ? { OPENAI_API_KEY: nousKey } : {}),
-				};
-			}
-			if (input.route.routeProvider === "xiaomi") {
-				const xiaomiKey =
-					process.env.XIAOMI_API_KEY ?? process.env.OPENAI_API_KEY;
-				return {
-					...(process.env.XIAOMI_API_KEY
-						? { XIAOMI_API_KEY: process.env.XIAOMI_API_KEY }
-						: {}),
-					...(xiaomiKey ? { OPENAI_API_KEY: xiaomiKey } : {}),
-				};
-			}
-			return process.env.OPENAI_API_KEY
-				? { OPENAI_API_KEY: process.env.OPENAI_API_KEY }
-				: {};
-		}
-		return {};
-	})();
+	// Migration 039: credential env vars come from model_routes, not hardcoded rules.
+	const routeCredentialEnv: Record<string, string> = {};
+
+	if (input.route.apiKeyEnv && process.env[input.route.apiKeyEnv]) {
+		routeCredentialEnv[input.route.apiKeyEnv] = process.env[input.route.apiKeyEnv]!;
+	}
+	if (
+		input.route.apiKeyFallbackEnv &&
+		process.env[input.route.apiKeyFallbackEnv]
+	) {
+		routeCredentialEnv[input.route.apiKeyFallbackEnv] =
+			process.env[input.route.apiKeyFallbackEnv]!;
+	}
+	// If the route specifies a primary key but it's missing, and a fallback exists
+	// that IS present, the fallback was already added above.  If neither is present,
+	// the spawner will fail later when the CLI tries to call the API — that is
+	// the correct behaviour (fail closed rather than run with no key).
 
 	const baseEnv: Record<string, string> = {
 		// Carry through essential PATH — always include hermes bin
@@ -186,9 +172,9 @@ function buildClaudeArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 		req.task,
 	];
 	const env: Record<string, string> = { ANTHROPIC_MODEL: route.modelName };
-	// Non-default base URL (e.g. Xiaomi anthropic-spec endpoint)
-	if (route.baseUrl !== "https://api.anthropic.com") {
-		env.ANTHROPIC_BASE_URL = route.baseUrl;
+	// DB controls base_url; set env var whenever baseUrlEnv is configured.
+	if (route.baseUrlEnv) {
+		env[route.baseUrlEnv] = route.baseUrl;
 	}
 	return { argv, env };
 }
@@ -211,6 +197,11 @@ function buildHermesArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 		"--yolo",
 		"-Q", // quiet mode: no spinner/activity
 	];
+	// Migration 039: if spawn_toolsets is configured, restrict the agent's
+	// toolsets so it cannot spawn subagents via the built-in delegate_task.
+	if (route.spawnToolsets) {
+		argv.push("--toolsets", route.spawnToolsets);
+	}
 	return { argv, env: {} };
 }
 
@@ -229,9 +220,9 @@ function buildCodexArgs(req: SpawnRequest, route: ModelRoute): CommandSpec {
 		req.task,
 	];
 	const env: Record<string, string> = {};
-	// Allow overriding base URL if needed (e.g. enterprise proxy)
-	if (route.baseUrl !== "https://api.openai.com/v1") {
-		env.OPENAI_BASE_URL = route.baseUrl;
+	// DB controls base_url; set env var whenever baseUrlEnv is configured.
+	if (route.baseUrlEnv) {
+		env[route.baseUrlEnv] = route.baseUrl;
 	}
 	return { argv, env };
 }
@@ -246,9 +237,10 @@ function buildOpenAICompatArgs(
 	route: ModelRoute,
 ): CommandSpec {
 	const argv = ["llm", "--model", route.modelName, req.task];
-	const env: Record<string, string> = {
-		OPENAI_BASE_URL: route.baseUrl,
-	};
+	const env: Record<string, string> = {};
+	if (route.baseUrlEnv) {
+		env[route.baseUrlEnv] = route.baseUrl;
+	}
 	return { argv, env };
 }
 
@@ -467,6 +459,10 @@ async function resolveModelRoute(
 		cost_per_1k_input: number | null;
 		cost_per_million_input: number | null;
 		cost_per_million_output: number | null;
+		api_key_env: string | null;
+		api_key_fallback_env: string | null;
+		base_url_env: string | null;
+		spawn_toolsets: string | null;
 	};
 
 	const perMillionPricing = await supportsPerMillionRoutePricing();
@@ -476,7 +472,8 @@ async function resolveModelRoute(
 		return query<RouteRow>(
 			`SELECT model_name, route_provider, agent_provider,
                agent_cli, api_spec, base_url, plan_type,
-               cost_per_1k_input, cost_per_million_input, cost_per_million_output
+               cost_per_1k_input, cost_per_million_input, cost_per_million_output,
+               api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
         FROM roadmap.model_routes
         WHERE model_name = $1
           AND agent_provider = $2
@@ -491,7 +488,8 @@ async function resolveModelRoute(
 			`SELECT model_name, route_provider, agent_provider,
               agent_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-              NULL::numeric AS cost_per_million_output
+              NULL::numeric AS cost_per_million_output,
+              api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
        FROM roadmap.model_routes
        WHERE model_name = $1
          AND agent_provider = $2
@@ -513,6 +511,10 @@ async function resolveModelRoute(
 		costPer1kInput: Number(r.cost_per_1k_input ?? 0),
 		costPerMillionInput: Number(r.cost_per_million_input ?? 0),
 		costPerMillionOutput: Number(r.cost_per_million_output ?? 0),
+		apiKeyEnv: r.api_key_env,
+		apiKeyFallbackEnv: r.api_key_fallback_env,
+		baseUrlEnv: r.base_url_env,
+		spawnToolsets: r.spawn_toolsets,
 	});
 
 	if (hint) {
@@ -530,16 +532,20 @@ async function resolveModelRoute(
 		// Fall through to default resolution
 	}
 
-	// Default: cheapest enabled model for this provider
+	// Default: use DB is_default flag first, then cheapest enabled as fallback.
 	const { rows } = perMillionPricing
 		? await query<RouteRow>(
 				`SELECT model_name, route_provider, agent_provider,
                agent_cli, api_spec, base_url, plan_type,
-               cost_per_1k_input, cost_per_million_input, cost_per_million_output
+               cost_per_1k_input, cost_per_million_input, cost_per_million_output,
+               api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
         FROM roadmap.model_routes
         WHERE agent_provider = $1
           AND is_enabled = true
-        ORDER BY priority ASC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC
+        ORDER BY
+          CASE WHEN is_default = true THEN 0 ELSE 1 END,
+          priority ASC,
+          COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC
         LIMIT 1`,
 				[provider],
 			)
@@ -547,11 +553,15 @@ async function resolveModelRoute(
 				`SELECT model_name, route_provider, agent_provider,
               agent_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-              NULL::numeric AS cost_per_million_output
+              NULL::numeric AS cost_per_million_output,
+              api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
        FROM roadmap.model_routes
        WHERE agent_provider = $1
          AND is_enabled = true
-        ORDER BY priority ASC, cost_per_1k_input ASC
+        ORDER BY
+          CASE WHEN is_default = true THEN 0 ELSE 1 END,
+          priority ASC,
+          cost_per_1k_input ASC
         LIMIT 1`,
 				[provider],
 			);
@@ -562,13 +572,15 @@ async function resolveModelRoute(
 		return route;
 	}
 
+	// Host-level fallback (legacy, kept for transition)
 	const fallbackModel = await getHostDefaultModel();
 	if (fallbackModel) {
 		const { rows: defaultRows } = perMillionPricing
 			? await query<RouteRow>(
 					`SELECT model_name, route_provider, agent_provider,
                agent_cli, api_spec, base_url, plan_type,
-               cost_per_1k_input, cost_per_million_input, cost_per_million_output
+               cost_per_1k_input, cost_per_million_input, cost_per_million_output,
+               api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
         FROM roadmap.model_routes
         WHERE model_name = $1
           AND agent_provider = $2
@@ -581,7 +593,8 @@ async function resolveModelRoute(
 					`SELECT model_name, route_provider, agent_provider,
               agent_cli, api_spec, base_url, plan_type,
               cost_per_1k_input, NULL::numeric AS cost_per_million_input,
-              NULL::numeric AS cost_per_million_output
+              NULL::numeric AS cost_per_million_output,
+              api_key_env, api_key_fallback_env, base_url_env, spawn_toolsets
        FROM roadmap.model_routes
        WHERE model_name = $1
          AND agent_provider = $2
@@ -842,7 +855,7 @@ export async function escalateOrNotify(
 		model_name: string;
 		cost: number;
 	}>(
-		`SELECT model_name, min(cost_per_1k_input) AS cost
+		`SELECT model_name, min(COALESCE(cost_per_million_input, 0)) AS cost
      FROM roadmap.model_routes
      WHERE agent_provider = $1 AND is_enabled = true
      GROUP BY model_name

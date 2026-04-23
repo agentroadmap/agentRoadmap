@@ -98,7 +98,7 @@ async function resolveProposalRecord(
        p.design,
        p.drawbacks,
        p.alternatives,
-       p.dependency,
+       p.dependency_note AS dependency,
        w.id AS workflow_id,
        w.current_stage,
        wt.name AS workflow_name
