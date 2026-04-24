@@ -489,9 +489,24 @@ async function loadEnvAgent(
 }
 
 /**
- * Detect a worktree's true provider by reading its `.env.agent` (AGENT_PROVIDER).
- * Falls back to 'hermes' if the file doesn't exist — creds come from $HOME, not worktree.
- * Host policy is enforced by the caller, not here.
+ * Resolve the first enabled agent provider from model_routes.
+ * Used as a dynamic fallback when no worktree-level provider is configured.
+ */
+export async function resolveActiveRouteProvider(): Promise<AgentProvider | null> {
+	const { rows } = await query<{ agent_provider: string }>(
+		`SELECT agent_provider
+		 FROM roadmap.model_routes
+		 WHERE is_enabled = true
+		 ORDER BY priority ASC, COALESCE(cost_per_million_input, 0) ASC
+		 LIMIT 1`,
+	);
+	return (rows[0]?.agent_provider ?? null) as AgentProvider | null;
+}
+
+/**
+ * Detect a worktree's provider from its `.env.agent` (AGENT_PROVIDER key).
+ * Falls back to the first enabled route in model_routes rather than hardcoding
+ * a specific provider, so provider changes only require a DB update.
  */
 export async function detectProvider(worktreeName: string, worktreeRoot: string = WORKTREE_ROOT): Promise<AgentProvider> {
 	const envPath = join(worktreeRoot, worktreeName, ".env.agent");
@@ -505,13 +520,17 @@ export async function detectProvider(worktreeName: string, worktreeRoot: string 
 			const key = trimmed.slice(0, eq).trim();
 			if (key !== "AGENT_PROVIDER") continue;
 			const value = trimmed.slice(eq + 1).trim().replace(/^[\"']|[\"']$/g, "");
-			if (value) return value;
+			if (value) return value as AgentProvider;
 		}
 	} catch (err: any) {
 		if (err?.code !== "ENOENT") throw err;
-		// No .env.agent — fall back to hermes (creds from $HOME)
 	}
-	return "hermes";
+	// No .env.agent — resolve from DB so switching providers requires only a DB change
+	const active = await resolveActiveRouteProvider();
+	if (active) return active;
+	// Last resort: use the env var if set
+	const envProvider = process.env.AGENTHIVE_DEFAULT_PROVIDER as AgentProvider | undefined;
+	return envProvider ?? "hermes";
 }
 
 // ─── P235: Platform-Aware Model Constraints ──────────────────────────────────

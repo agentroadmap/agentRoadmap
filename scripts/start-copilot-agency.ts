@@ -15,7 +15,7 @@
  */
 
 import { hostname } from "node:os";
-import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
+import { spawnAgent, resolveActiveRouteProvider } from "../src/core/orchestration/agent-spawner.ts";
 import { OfferProvider } from "../src/core/pipeline/offer-provider.ts";
 import { closePool, getPool } from "../src/infra/postgres/pool.ts";
 
@@ -29,8 +29,12 @@ const offerProvider = new OfferProvider({
 	pollIntervalMs: Number(process.env.AGENTHIVE_OFFER_POLL_MS ?? "20000"),
 	maxConcurrent: Number(process.env.AGENTHIVE_MAX_CONCURRENT ?? "2"),
 	connectListener: async () => getPool().connect(),
-	spawnFn: async (req) =>
-		spawnAgent({
+	spawnFn: async (req) => {
+		// Extract provider prefix from identity (e.g. "copilot/agency-gary" → "copilot")
+		// Falls back to active DB route if identity prefix is not a known provider.
+		const identityPrefix = agentIdentity.split("/")[0];
+		const provider = identityPrefix || (await resolveActiveRouteProvider()) || "copilot";
+		return spawnAgent({
 			worktree: req.worktree,
 			task: req.task,
 			proposalId: typeof req.proposalId === "number" ? req.proposalId : undefined,
@@ -38,7 +42,9 @@ const offerProvider = new OfferProvider({
 			model: req.model,
 			timeoutMs: req.timeoutMs,
 			agentLabel: req.agentLabel,
-		}),
+			provider: provider as any,
+		});
+	},
 });
 
 async function main() {

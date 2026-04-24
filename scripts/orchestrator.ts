@@ -15,7 +15,7 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { spawnAgent } from "../src/core/orchestration/agent-spawner.ts";
+import { spawnAgent, resolveActiveRouteProvider } from "../src/core/orchestration/agent-spawner.ts";
 import { postWorkOffer } from "../src/core/pipeline/post-work-offer.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { getPool, query } from "../src/infra/postgres/pool.ts";
@@ -563,16 +563,6 @@ function normalizeWorktreeIdentity(value: string): string {
  * P405: Resolve the active route provider from model_routes.
  * Worktrees are filesystem contexts, not provider constraints.
  */
-async function resolveActiveRouteProvider(): Promise<string | null> {
-	const { rows } = await query<{ agent_provider: string }>(
-		`SELECT agent_provider
-		 FROM roadmap.model_routes
-		 WHERE is_enabled = true
-		 ORDER BY priority ASC, COALESCE(cost_per_million_input, 0) ASC
-		 LIMIT 1`,
-	);
-	return rows[0]?.agent_provider ?? null;
-}
 
 async function scoreUsableWorktree(
 	worktree: string,
