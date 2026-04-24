@@ -2624,11 +2624,8 @@ export async function renderBoardTui(
 				// Rebuild entire thread view from accumulated events
 				feedLines = buildThreadLines(_allFeedEvents);
 			} else {
-				const newLines = unseenEvents
-					.slice()
-					.reverse()
-					.map(formatEventLine);
-				feedLines = [...feedLines, ...newLines].slice(-FEED_HISTORY_LIMIT);
+				// Always rebuild from sorted accumulated events to maintain chronological order
+				feedLines = _allFeedEvents.map(formatEventLine).slice(-FEED_HISTORY_LIMIT);
 			}
 			renderFeedPanel();
 			screen.render();

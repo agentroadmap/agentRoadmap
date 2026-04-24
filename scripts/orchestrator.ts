@@ -63,7 +63,125 @@ const IMPLICIT_GATE_POLL_INTERVAL_MS = Number(
 	process.env.AGENTHIVE_IMPLICIT_GATE_POLL_MS ?? 30_000,
 );
 
-// Agent dispatch map: state → agents to call
+// ─── Capability-Based Agent Matching ─────────────────────────────────────────
+
+interface RoleSlot {
+	role: string;
+	requiredCapabilities: string[];
+	minProficiency: number;
+	prompt: string;
+	count: number;
+	activity: string; // descriptive label: "researching", "enhancing", "reviewing", etc.
+}
+
+const JOB_ROLES: Record<string, RoleSlot[]> = {
+	DRAFT: [
+		{
+			role: "architect",
+			requiredCapabilities: ["design", "system-design"],
+			minProficiency: 3,
+			prompt: "You are an Architecture Agent. Enhance this DRAFT proposal with acceptance criteria, design rationale, and implementation plan.",
+			count: 1,
+			activity: "enhancing",
+		},
+		{
+			role: "researcher",
+			requiredCapabilities: ["research"],
+			minProficiency: 2,
+			prompt: "You are a Researcher. Gather context for proposals that need investigation.",
+			count: 1,
+			activity: "researching",
+		},
+	],
+	TRIAGE: [
+		{
+			role: "triage-agent",
+			requiredCapabilities: ["triage"],
+			minProficiency: 2,
+			prompt: "You are a Triage Agent. Evaluate issues and decide what to work on.",
+			count: 1,
+			activity: "triaging",
+		},
+	],
+	REVIEW: [
+		{
+			role: "skeptic",
+			requiredCapabilities: ["review", "gating", "skeptic-review"],
+			minProficiency: 3,
+			prompt: "You are a Skeptic Reviewer. Challenge design decisions. Demand evidence. Question assumptions.",
+			count: 2,
+			activity: "reviewing",
+		},
+		{
+			role: "arch-reviewer",
+			requiredCapabilities: ["design", "architecture"],
+			minProficiency: 3,
+			prompt: "You are the Architecture Reviewer. Analyze design completeness, scalability, and integration constraints.",
+			count: 1,
+			activity: "reviewing architecture",
+		},
+	],
+	FIX: [
+		{
+			role: "fix-agent",
+			requiredCapabilities: ["code"],
+			minProficiency: 3,
+			prompt: "You are a Fix Agent. Implement code changes to resolve issues.",
+			count: 1,
+			activity: "fixing",
+		},
+	],
+	DEVELOP: [
+		{
+			role: "developer",
+			requiredCapabilities: ["code"],
+			minProficiency: 3,
+			prompt: "You are a Senior Developer. Implement all acceptance criteria. Write production code and tests.",
+			count: 1,
+			activity: "implementing",
+		},
+		{
+			role: "skeptic-beta",
+			requiredCapabilities: ["review", "code"],
+			minProficiency: 2,
+			prompt: "You are SKEPTIC BETA. Review implementation quality. Check test coverage. Validate error handling.",
+			count: 1,
+			activity: "reviewing code",
+		},
+	],
+	MERGE: [
+		{
+			role: "merge-agent",
+			requiredCapabilities: ["devops", "terminal"],
+			minProficiency: 2,
+			prompt: "You are a Git Specialist. Integrate branches, resolve conflicts, run tests.",
+			count: 1,
+			activity: "integrating",
+		},
+	],
+	COMPLETE: [
+		{
+			role: "documenter",
+			requiredCapabilities: ["docs"],
+			minProficiency: 2,
+			prompt: "You are a Documenter. Write documentation for completed proposals.",
+			count: 1,
+			activity: "documenting",
+		},
+	],
+	DEPLOYED: [
+		{
+			role: "system-monitor",
+			requiredCapabilities: ["ops", "devops"],
+			minProficiency: 2,
+			prompt: "You are the System Monitor. Spot inconsistencies. Make proposals for rectifications.",
+			count: 1,
+			activity: "monitoring",
+		},
+	],
+};
+
+// Legacy fallback — used when capability matching returns too few agents
 const AGENT_DISPATCH: Record<string, string[]> = {
 	DRAFT: ["architect", "researcher"],
 	TRIAGE: ["triage-agent", "system-monitor"],
@@ -112,6 +230,151 @@ const AGENT_PROMPTS: Record<string, string> = {
 		"You are a Triage Agent. Evaluate issues and decide what to work on.",
 	"fix-agent": "You are a Fix Agent. Implement code changes to resolve issues.",
 };
+
+// ─── Capability-Based Agent Matching ─────────────────────────────────────────
+
+interface AgentCandidate {
+	agentIdentity: string;
+	agentRole: string | null;
+	skills: string[] | null;
+	trustTier: string;
+	capabilities: Array<{ cap: string; prof: number }>;
+	activeLeases: number;
+}
+
+/**
+ * Score an agent against a role slot.
+ * Higher score = better fit.
+ */
+function scoreAgentForRole(agent: AgentCandidate, slot: RoleSlot): number {
+	let score = 0;
+
+	// Capability match from agent_capability table
+	for (const ac of agent.capabilities) {
+		if (
+			slot.requiredCapabilities.includes(ac.cap) &&
+			ac.prof >= slot.minProficiency
+		) {
+			score += Math.min(ac.prof, 5) * 2;
+		}
+	}
+
+	// Capability match from skills jsonb (fallback signal)
+	if (agent.skills) {
+		for (const skill of agent.skills) {
+			if (slot.requiredCapabilities.includes(skill)) {
+				score += 5;
+			}
+		}
+	}
+
+	// Role alignment bonus — agent's declared role matches the slot
+	if (agent.agentRole) {
+		const roleLower = agent.agentRole.toLowerCase();
+		const slotLower = slot.role.toLowerCase();
+		if (roleLower.includes(slotLower) || slotLower.includes(roleLower)) {
+			score += 10;
+		}
+	}
+
+	// Workload penalty — prefer less loaded agents
+	score -= agent.activeLeases * 5;
+
+	// Trust bonus
+	switch (agent.trustTier) {
+		case "authority": score += 15; break;
+		case "trusted": score += 10; break;
+		case "known": score += 5; break;
+	}
+
+	return score;
+}
+
+interface MatchedAgent {
+	agentIdentity: string;
+	role: string;
+	prompt: string;
+	score: number;
+	activity: string;
+}
+
+/**
+ * Query the DB for active agents and score them against the role slots
+ * required for a given proposal state. Returns the best-fit agents,
+ * one per role slot (up to the slot's count).
+ */
+async function matchAgentsForState(state: string): Promise<MatchedAgent[]> {
+	const slots = JOB_ROLES[state];
+	if (!slots || slots.length === 0) return [];
+
+	// Single query: fetch all active agents with capabilities, skills, workload
+	const { rows } = await query<{
+		agent_identity: string;
+		role: string | null;
+		skills: string[] | null;
+		trust_tier: string;
+		capabilities: Array<{ cap: string; prof: number }>;
+		active_leases: number;
+	}>(
+		`SELECT
+			ar.agent_identity,
+			ar.role,
+			ar.skills,
+			ar.trust_tier,
+			COALESCE(
+				(SELECT jsonb_agg(jsonb_build_object('cap', ac.capability, 'prof', ac.proficiency))
+				 FROM roadmap_workforce.agent_capability ac WHERE ac.agent_id = ar.id),
+				'[]'::jsonb
+			) AS capabilities,
+			COALESCE(aw.active_lease_count, 0) AS active_leases
+		FROM roadmap_workforce.agent_registry ar
+		LEFT JOIN roadmap_workforce.agent_workload aw ON aw.agent_id = ar.id
+		WHERE ar.status = 'active'
+		  AND ar.agent_type IN ('llm', 'tool', 'hybrid')`,
+	);
+
+	const agents: AgentCandidate[] = rows.map((r) => ({
+		agentIdentity: r.agent_identity,
+		agentRole: r.role,
+		skills: r.skills,
+		trustTier: r.trust_tier,
+		capabilities: r.capabilities ?? [],
+		activeLeases: r.active_leases,
+	}));
+
+	const matched: MatchedAgent[] = [];
+	const used = new Set<string>(); // no double-booking within one dispatch
+
+	for (const slot of slots) {
+		// Score all agents against this slot, exclude already-used agents
+		const scored = agents
+			.filter((a) => !used.has(a.agentIdentity))
+			.map((a) => ({
+				agentIdentity: a.agentIdentity,
+				role: slot.role,
+				prompt: slot.prompt,
+				score: scoreAgentForRole(a, slot),
+				activity: slot.activity,
+			}))
+			.filter((s) => s.score > 0) // must have at least some capability match
+			.sort((a, b) => b.score - a.score);
+
+		// Pick top N agents for this slot
+		const picks = scored.slice(0, slot.count);
+		for (const pick of picks) {
+			matched.push(pick);
+			used.add(pick.agentIdentity);
+		}
+
+		if (picks.length < slot.count) {
+			logger.warn(
+				`Only ${picks.length}/${slot.count} agents matched for role "${slot.role}" in ${state} (needed capabilities: ${slot.requiredCapabilities.join(", ")})`,
+			);
+		}
+	}
+
+	return matched;
+}
 
 // ─── Provider Health & Dynamic Control ─────────────────────────────────────
 
@@ -400,14 +663,17 @@ async function selectExecutorWorktree(
 	const ranked = Array.from(deduped.values()).sort(
 		(a, b) => b.score - a.score || a.worktree.localeCompare(b.worktree),
 	);
-	const selected = ranked[0];
-	if (!selected) {
+	if (!ranked.length) {
 		throw new Error(
 			`No usable executor worktree found under ${WORKTREE_ROOT}. Create one such as codex-one/codex-two with a readable .env.agent and write access for ${process.env.USER ?? "the orchestrator user"}.`,
 		);
 	}
+	// Pick randomly from top scorers (within 10 points of best) for load distribution
+	const bestScore = ranked[0].score;
+	const topTier = ranked.filter((c) => c.score >= bestScore - 10);
+	const selected = topTier[Math.floor(Math.random() * topTier.length)];
 	logger.log(
-		`Selected executor ${selected.worktree} (${selected.source}, score=${selected.score})`,
+		`Selected executor ${selected.worktree} (${selected.source}, score=${selected.score}) [${topTier.length} candidates]`,
 	);
 	return selected.worktree;
 }
@@ -441,6 +707,8 @@ async function dispatchAgent(
 	task: string,
 	phase: string,
 	stage: string,
+	agentLabel?: string,
+	activity?: string,
 ): Promise<string | null> {
 	const client = new Client({ name: "orchestrator", version: "1.0.0" });
 	const transport = new SSEClientTransport(new URL(MCP_URL));
@@ -470,9 +738,32 @@ async function dispatchAgent(
 			`${verb} cubic ${cubicId.substring(0, 8)} for ${agent} → P${proposalId} (${phase})`,
 		);
 
-		// Spawn the agent process
-		const taskPrompt = `${AGENT_PROMPTS[agent] || ""}\n\nProposal P${proposalId}: ${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
-		const worktree = await selectExecutorWorktree(null);
+		// Spawn the agent process — pick a worktree that isn't already running an agent
+		const taskPrompt = `${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
+		let worktree: string | null = null;
+		const tried = new Set<string>();
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const candidate = await selectExecutorWorktree(null);
+			if (!candidate) break;
+			if (tried.has(candidate)) break;
+			tried.add(candidate);
+			const { rows } = await query<{ cnt: number }>(
+				`SELECT count(*)::int AS cnt FROM agent_runs
+			      WHERE display_id LIKE '%' || $1 || '%'
+			        AND status = 'running'`,
+				[candidate],
+			);
+			if (rows[0]?.cnt) {
+				logger.log(`⏭ ${candidate} busy (${rows[0].cnt} running) — trying another`);
+				continue;
+			}
+			worktree = candidate;
+			break;
+		}
+		if (!worktree) {
+			logger.warn(`No free worktree for ${agent} on P${proposalId} — skipping dispatch`);
+			return null;
+		}
 		// P405: resolve provider from model_routes, not worktree metadata
 		const activeProvider = await resolveActiveRouteProvider();
 		const result = await spawnAgent({
@@ -482,6 +773,8 @@ async function dispatchAgent(
 			stage,
 			timeoutMs: 600_000,
 			provider: activeProvider ?? undefined,
+			agentLabel: agentLabel ?? agent,
+			activity,
 		});
 
 		if (result.exitCode === 0) {
@@ -520,17 +813,19 @@ async function dispatchAgent(
 // Handle state change and dispatch agents
 async function handleStateChange(proposalId: string, newState: string) {
 	const normalizedState = normalizeState(newState);
-	const agents = AGENT_DISPATCH[normalizedState];
-
-	if (!agents || agents.length === 0) {
-		logger.log(`No agents for state: ${newState}`);
-		return;
-	}
 
 	const phase = STATE_TO_PHASE[normalizedState] || "design";
 
-	logger.log(`📢 P${proposalId} → ${newState} (${phase})`);
-	logger.log(`   Squad: ${agents.join(", ")}`);
+	// Skip if this proposal already has a running agent (prevents re-dispatch every poll cycle)
+	const { rows: runningRows } = await query<{ cnt: number }>(
+		`SELECT count(*)::int AS cnt FROM agent_runs
+	      WHERE proposal_id = $1 AND status = 'running'`,
+		[proposalId],
+	);
+	if (runningRows[0]?.cnt) {
+		logger.log(`⏭ P${proposalId} → ${newState}: already has ${runningRows[0].cnt} running agent(s) — skipping`);
+		return;
+	}
 
 	// Release any locked cubics for this proposal from previous phases
 	await releaseStaleCubics(proposalId);
@@ -548,16 +843,44 @@ async function handleStateChange(proposalId: string, newState: string) {
 		// Provider resolution failed — let dispatch handle it
 	}
 
-	// Dispatch all agents for this state (parallel, tolerate individual failures)
+	// Capability-based agent matching
+	let matchedAgents = await matchAgentsForState(normalizedState);
+
+	// Fallback to hardcoded dispatch if capability matching returns too few
+	const fallbackAgents = AGENT_DISPATCH[normalizedState];
+	if (matchedAgents.length === 0 && fallbackAgents && fallbackAgents.length > 0) {
+		logger.warn(
+			`⚠ No capability-matched agents for ${normalizedState} — falling back to hardcoded dispatch`,
+		);
+		matchedAgents = fallbackAgents.map((agent) => ({
+			agentIdentity: agent,
+			role: agent,
+			prompt: AGENT_PROMPTS[agent] || `Handle ${newState}`,
+			score: 0,
+			activity: "working",
+		}));
+	}
+
+	if (matchedAgents.length === 0) {
+		logger.log(`No agents for state: ${newState}`);
+		return;
+	}
+
+	logger.log(`📢 P${proposalId} → ${newState} (${phase})`);
+	for (const m of matchedAgents) {
+		logger.log(`   → ${m.agentIdentity} as ${m.role} (score=${m.score})`);
+	}
+
+	// Dispatch all matched agents (parallel, tolerate individual failures)
 	const results = await Promise.allSettled(
-		agents.map((agent) =>
-			dispatchAgent(agent, proposalId, `Handle ${newState}`, phase, normalizedState),
+		matchedAgents.map((m) =>
+			dispatchAgent(m.agentIdentity, proposalId, m.prompt, phase, normalizedState, m.role, m.activity),
 		),
 	);
 	const dispatched = results.filter(
 		(r) => r.status === "fulfilled" && r.value,
 	).length;
-	logger.log(`   ${dispatched}/${agents.length} dispatched`);
+	logger.log(`   ${dispatched}/${matchedAgents.length} dispatched`);
 }
 
 async function ensureAgentIdentity(
