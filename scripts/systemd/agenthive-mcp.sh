@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euo pipefail
+
+source /etc/agenthive/env
+
+export HOME="${HOME:-/home/agenthive}"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+cd "$PROJECT_ROOT"
+
+export PGHOST="${PGHOST:-127.0.0.1}"
+export PGPORT="${PGPORT:-5432}"
+export PGUSER="${PGUSER:-xiaomi}"
+
+if [ -z "${PGPASSWORD:-}" ] && [ -n "${PG_PASSWORD:-}" ]; then
+	export PGPASSWORD="$PG_PASSWORD"
+fi
+if [ -z "${PG_PASSWORD:-}" ] && [ -n "${PGPASSWORD:-}" ]; then
+	export PG_PASSWORD="$PGPASSWORD"
+fi
+export PGPASSWORD="${PGPASSWORD:?PGPASSWORD or PG_PASSWORD must be set in /etc/agenthive/env}"
+
+if [ -z "${PG_SCHEMA:-}" ] && [ -n "${PGSCHEMA:-}" ]; then
+	export PG_SCHEMA="$PGSCHEMA"
+fi
+
+echo "[$(date)] Starting AgentHive MCP SSE server on port $MCP_PORT (Node $(node --version))..."
+echo "[$(date)] Config: database.provider=Postgres, project_root=$PROJECT_ROOT"
+
+exec node --import jiti/register scripts/mcp-sse-server.js
