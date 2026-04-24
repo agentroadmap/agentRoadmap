@@ -4,12 +4,18 @@ After=network.target
 
 [Service]
 Type=simple
-User=gary
-Group=gary
-EnvironmentFile=/etc/agentroadmap/env
-ExecStart=/usr/local/bin/agentroadmap-mcp.sh
+User=agenthive
+Group=agenthive
+WorkingDirectory=/data/code/AgentHive
+EnvironmentFile=/etc/agenthive/env
+Environment=HOME=/home/agenthive
+Environment=NODE_ENV=production
+Environment=PATH=/home/agenthive/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/agenthive-mcp.sh
 Restart=always
 RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target

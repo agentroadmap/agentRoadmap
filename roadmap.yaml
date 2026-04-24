@@ -2,7 +2,6 @@ project:
   name: AgentHive
   project_root: /data/code/AgentHive
   date_format: yyyy-mm-dd
-  export_path: export
 database:
   provider: Postgres
   name: agenthive
@@ -14,22 +13,25 @@ mcp:
   transport: sse
 proposals:
   default_status: DRAFT
+  default_maturity: new
   statuses:
     - DRAFT
     - REVIEW
     - DEVELOP
     - MERGE
     - COMPLETE
-    - REJECTED
-    - ABANDONED
-    - REPLACED
+  maturity:
+    - new
+    - active
+    - mature
+    - obsolete
   labels:
+    - architecture
+    - module
     - feature
     - bugfix
     - refactor
-    - docs
   zero_padded_ids: 3
-  table_name: proposal
 ui:
   max_column_width: 80
   auto_open_browser: true

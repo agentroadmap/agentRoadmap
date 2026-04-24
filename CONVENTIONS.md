@@ -83,7 +83,7 @@ Use the real repo layout, not an imagined one:
 - Prefer existing patterns and helpers over inventing parallel abstractions.
 - Keep TypeScript and SQL changes aligned. If schema changes, check the storage layer, MCP handlers, CLI, and views that consume it.
 - If you notice an improvement, consolidation opportunity, concept unification, or a current or potential issue, create or update a proposal instead of leaving it as chat-only context.
-- Never commit credentials, copied env files, or secrets from `.env`, `/etc/agentroadmap/env`, or local shell history.
+- Never commit credentials, copied env files, or secrets from `.env`, `/etc/agenthive/env`, or local shell history.
 - Do not claim a deployment, migration, or verification step that you did not actually perform.
 
 ## 5. Proposal and RFC Workflow Through MCP

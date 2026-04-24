@@ -40,7 +40,9 @@ app.get("/health", async (_req, res) => {
 	});
 });
 
-app.post(["/mcp", "/api/mcp"], express.json(), async (req, res) => {
+const jsonBodyParser = express.json({ limit: "4mb" });
+
+app.post(["/mcp", "/api/mcp"], jsonBodyParser, async (req, res) => {
 	try {
 		const response = await handleDirectMcpRequest(directMcpServer, req.body);
 		res.status(response.status).json(response.body);
@@ -56,22 +58,26 @@ app.post(["/mcp", "/api/mcp"], express.json(), async (req, res) => {
 
 // StreamableHTTP endpoint — compatible with hermes MCP client and other modern clients
 // Single endpoint handles GET (SSE stream), POST (JSON-RPC), DELETE (cleanup)
-app.all("/mcp-streamable", async (req, res) => {
-	try {
-		const server = await createMcpServer(projectRoot);
-		const transport = await server.createStreamableHttpTransport();
-		await transport.handleRequest(req, res, req.body);
-	} catch (err) {
-		console.error("[MCP] StreamableHTTP request failed:", err.message);
-		if (!res.writableEnded) {
-			res.status(500).json({
-				jsonrpc: "2.0",
-				id: null,
-				error: { code: -32000, message: "StreamableHTTP request failed" },
-			});
+app.all(
+	["/mcp-streamable", "/mcp/streamable", "/streamable"],
+	jsonBodyParser,
+	async (req, res) => {
+		try {
+			const server = await createMcpServer(projectRoot);
+			const transport = await server.createStreamableHttpTransport();
+			await transport.handleRequest(req, res, req.body);
+		} catch (err) {
+			console.error("[MCP] StreamableHTTP request failed:", err.message);
+			if (!res.writableEnded) {
+				res.status(500).json({
+					jsonrpc: "2.0",
+					id: null,
+					error: { code: -32000, message: "StreamableHTTP request failed" },
+				});
+			}
 		}
-	}
-});
+	},
+);
 
 app.get("/sse", async (_req, res) => {
 	console.log("[MCP] New SSE connection request");
