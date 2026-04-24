@@ -70,7 +70,11 @@ export interface SpawnRequest {
 	worktreeRoot?: string;
 	/** Display label for context package (e.g. "worker-4620 (skeptic-alpha)") */
 	agentLabel?: string;
+<<<<<<< HEAD
 	/** Descriptive activity label (e.g. "researching", "enhancing", "reviewing") */
+=======
+	/** Activity description shown in feed (e.g. "enhancing DRAFT") */
+>>>>>>> xiaomi/one
 	activity?: string;
 }
 

@@ -296,7 +296,7 @@ export async function createProposal(
 		await client.query("BEGIN");
 
 		// Resolve the workflow's start_stage for this proposal type so the initial
-		// status matches the workflow (e.g. Quick Fix starts at TRIAGE, not Draft).
+		// status matches the workflow (for example issue -> RFC starts at Draft).
 		// Falls back to "Draft" if no workflow is configured for this type.
 		// If input.status is provided, validate it exists in the workflow's stages;
 		// if not, silently use the workflow's start stage instead.
@@ -602,8 +602,9 @@ export async function getValidTransitions(proposalId: number): Promise<
  * This is the canonical way for agents to declare readiness within a state:
  *   new → active → mature → obsolete
  *
- * When maturity reaches 'mature', the DB trigger fn_notify_gate_ready fires
- * pg_notify('proposal_gate_ready', ...) to queue a D* gating review.
+ * When maturity reaches 'mature' in DRAFT/REVIEW/DEVELOP/MERGE, the DB trigger
+ * fn_notify_gate_ready queues the inferred D* gating review. COMPLETE is
+ * terminal and does not join the gate-advance queue.
  */
 export async function setMaturity(
 	proposalId: number,
@@ -648,7 +649,8 @@ export async function setMaturity(
 		],
 	);
 
-	// Record an audit note when self-declaring mature (the gate-ready event)
+	// Record an audit note when self-declaring mature so later agents can see
+	// whether the maturity change was meant to request a gate review.
 	if (maturity === "mature") {
 		await query(
 			`INSERT INTO roadmap_proposal.proposal_discussions

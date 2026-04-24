@@ -267,23 +267,25 @@ export class PgProposalHandlers {
 
 			// Gate transitions require decision notes
 			const gateTransitions: Record<string, string[]> = {
-				Draft: ["Review"],
-				Review: ["Develop"],
-				Develop: ["Merge"],
-				Merge: ["Complete"],
+				DRAFT: ["REVIEW"],
+				REVIEW: ["DEVELOP"],
+				DEVELOP: ["MERGE"],
+				MERGE: ["COMPLETE"],
 			};
 
 			// Get current status to check if this is a gate transition
 			const current = await pg.getProposal(id);
 			if (current) {
-				const allowedTargets = gateTransitions[current.status];
-				if (allowedTargets?.includes(args.status)) {
+				const currentStatus = current.status.toUpperCase();
+				const requestedStatus = args.status.toUpperCase();
+				const allowedTargets = gateTransitions[currentStatus];
+				if (allowedTargets?.includes(requestedStatus)) {
 					if (!args.notes || args.notes.trim().length === 0) {
 						return {
 							content: [
 								{
 									type: "text",
-									text: `Gate transition ${current.status} → ${args.status} requires decision notes. Please provide notes with your reasoning.`,
+									text: `Gate transition ${currentStatus} → ${requestedStatus} requires decision notes. Please provide notes with your reasoning.`,
 								},
 							],
 						};
@@ -354,14 +356,22 @@ export class PgProposalHandlers {
 				};
 			}
 
+			const inferredGate =
+				updated.status === "DRAFT"
+					? "D1"
+					: updated.status === "REVIEW"
+						? "D2"
+						: updated.status === "DEVELOP"
+							? "D3"
+							: updated.status === "MERGE"
+								? "D4"
+								: null;
 			const gateNote =
-				args.maturity === "mature"
-					? ` — gate-ready event fired (D${
-							{ DRAFT: "1", REVIEW: "2", DEVELOP: "3", MERGE: "4" }[
-								updated.status
-							] ?? "?"
-						} queue)`
-					: "";
+				args.maturity === "mature" && inferredGate
+					? ` — entered ${inferredGate} gate-ready queue`
+					: args.maturity === "mature" && updated.status === "COMPLETE"
+						? " — terminal state; no gate advance queued"
+						: "";
 			return {
 				content: [
 					{
