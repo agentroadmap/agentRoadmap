@@ -1,0 +1,24 @@
+# P426 — MCP Runtime Reliability
+
+## Status: DRAFT | Type: issue | Agent: architect
+
+## Problem
+
+Proposal workflow depends on MCP, but MCP failures currently surface as opaque transport errors such as `Transport closed`. Operators cannot quickly distinguish service-down, transport incompatibility, database reachability, handler errors, or stale deployment code.
+
+## Proposal
+
+Make MCP health, transport compatibility, and proposal-tool readiness observable and testable.
+
+## Acceptance Criteria
+
+1. MCP exposes a direct smoke-test path for `initialize`, `tools/list`, and `tools/call`.
+2. MCP health checks report service health separately from database reachability.
+3. Proposal-tool failures return structured errors instead of closing the transport.
+4. The deployed service path, git revision, project root, database host, and schema are visible without exposing secrets.
+5. A runbook explains how to deploy, restart, and verify MCP before agents depend on it.
+
+## Dependencies
+
+- P410 Control Database Boundary
+
