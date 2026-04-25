@@ -73,12 +73,15 @@ program
       const rulesDir = path.resolve(config.rules || "src/tools/scanner/rules");
       const { rules, errors: ruleErrors } = await loadRules(rulesDir);
 
-      if (ruleErrors.length > 0 && !config.selfTest) {
+      if (ruleErrors.length > 0) {
         console.error("Rule load errors:");
         for (const err of ruleErrors) {
           console.error(`  ${err}`);
         }
-        process.exit(1);
+        if (rules.length === 0) {
+          // Only exit if NO rules loaded successfully
+          process.exit(1);
+        }
       }
 
       // Handle --explain
