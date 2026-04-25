@@ -152,7 +152,7 @@ export async function loadRules(rulesDir: string): Promise<{
   try {
     const files = await fs.readdir(rulesDir);
     const yamlFiles = files
-      .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+      .filter((f) => (f.endsWith(".yaml") || f.endsWith(".yml")) && !f.includes(".draft"))
       .sort();
 
     for (const file of yamlFiles) {
