@@ -3191,7 +3191,7 @@ function resolveProjectRoot() {
 var PROJECT_ROOT = resolveProjectRoot();
 var SYSTEMD_SERVICE_NAME = "agenthive-orchestrator";
 var SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service`;
-var ENV_FILE_PATH = "/etc/agentroadmap/env";
+var ENV_FILE_PATH = "/etc/agenthive/env";
 var AGENTHIVE_USER = "agenthive";
 var AGENTHIVE_HOME = "/var/lib/agenthive";
 var WORKTREE_ROOT = "/data/code/worktree";
@@ -3319,8 +3319,8 @@ PG_DATABASE=agenthive
 PG_SCHEMA=roadmap
 `;
     try {
-      sudo(["mkdir", "-p", "/etc/agentroadmap"]);
-      const tmpPath = `/tmp/agentroadmap-env-${Date.now()}`;
+      sudo(["mkdir", "-p", "/etc/agenthive"]);
+      const tmpPath = `/tmp/agenthive-env-${Date.now()}`;
       await writeFile(tmpPath, envContent, { mode: 416 });
       sudo(["cp", tmpPath, ENV_FILE_PATH]);
       sudo(["chmod", "640", ENV_FILE_PATH]);

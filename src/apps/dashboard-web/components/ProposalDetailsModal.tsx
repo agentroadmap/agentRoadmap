@@ -76,6 +76,18 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const [title, setTitle] = useState(proposal?.title || "");
 
 	// Editable fields (edit mode)
+	const [summary, setSummary] = useState(
+		proposal?.summary || proposal?.description || "",
+	);
+	const [motivation, setMotivation] = useState(proposal?.motivation || "");
+	const [design, setDesign] = useState(
+		proposal?.design || proposal?.implementationPlan || "",
+	);
+	const [drawbacks, setDrawbacks] = useState(proposal?.drawbacks || "");
+	const [alternatives, setAlternatives] = useState(proposal?.alternatives || "");
+	const [dependencyNote, setDependencyNote] = useState(
+		proposal?.dependency_note || "",
+	);
 	const [description, setDescription] = useState(proposal?.description || "");
 	const [plan, setPlan] = useState(proposal?.implementationPlan || "");
 	const [notes, setNotes] = useState(proposal?.implementationNotes || "");
@@ -270,6 +282,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const [references, setReferences] = useState<string[]>(
 		proposal?.references || [],
 	);
+	const [requiredCapabilities, setRequiredCapabilities] = useState<string[]>(
+		proposal?.required_capabilities || proposal?.needs_capabilities || [],
+	);
 	const [directive, setDirective] = useState<string>(proposal?.directive || "");
 	const [availableProposals, setAvailableProposals] = useState<Proposal[]>([]);
 	const directiveSelectionValue = resolveDirectiveToId(directive);
@@ -281,6 +296,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const baseline = useMemo(
 		() => ({
 			title: proposal?.title || "",
+			summary: proposal?.summary || proposal?.description || "",
+			motivation: proposal?.motivation || "",
+			design: proposal?.design || proposal?.implementationPlan || "",
+			drawbacks: proposal?.drawbacks || "",
+			alternatives: proposal?.alternatives || "",
+			dependencyNote: proposal?.dependency_note || "",
 			description: proposal?.description || "",
 			plan: proposal?.implementationPlan || "",
 			notes: proposal?.implementationNotes || "",
@@ -293,17 +314,43 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const isDirty = useMemo(() => {
 		return (
 			title !== baseline.title ||
+			summary !== baseline.summary ||
+			motivation !== baseline.motivation ||
+			design !== baseline.design ||
+			drawbacks !== baseline.drawbacks ||
+			alternatives !== baseline.alternatives ||
+			dependencyNote !== baseline.dependencyNote ||
 			description !== baseline.description ||
 			plan !== baseline.plan ||
 			notes !== baseline.notes ||
 			finalSummary !== baseline.finalSummary ||
 			JSON.stringify(criteria) !== baseline.criteria
 		);
-	}, [title, description, plan, notes, finalSummary, criteria, baseline]);
+	}, [
+		title,
+		summary,
+		motivation,
+		design,
+		drawbacks,
+		alternatives,
+		dependencyNote,
+		description,
+		plan,
+		notes,
+		finalSummary,
+		criteria,
+		baseline,
+	]);
 
 	// Reset local proposal when proposal changes or modal opens
 	useEffect(() => {
 		setTitle(proposal?.title || "");
+		setSummary(proposal?.summary || proposal?.description || "");
+		setMotivation(proposal?.motivation || "");
+		setDesign(proposal?.design || proposal?.implementationPlan || "");
+		setDrawbacks(proposal?.drawbacks || "");
+		setAlternatives(proposal?.alternatives || "");
+		setDependencyNote(proposal?.dependency_note || "");
 		setDescription(proposal?.description || "");
 		setPlan(proposal?.implementationPlan || "");
 		setNotes(proposal?.implementationNotes || "");
@@ -318,6 +365,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		setPriority(proposal?.priority || "");
 		setDependencies(proposal?.dependencies || []);
 		setReferences(proposal?.references || []);
+		setRequiredCapabilities(
+			proposal?.required_capabilities || proposal?.needs_capabilities || [],
+		);
 		setDirective(proposal?.directive || "");
 		setMode(isCreateMode ? "create" : "preview");
 		setError(null);
@@ -328,11 +378,24 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 				.fetchProposal(proposal.id)
 				.then((fullProposal) => {
 					if (fullProposal) {
+						setSummary(fullProposal.summary || fullProposal.description || "");
+						setMotivation(fullProposal.motivation || "");
+						setDesign(
+							fullProposal.design || fullProposal.implementationPlan || "",
+						);
+						setDrawbacks(fullProposal.drawbacks || "");
+						setAlternatives(fullProposal.alternatives || "");
+						setDependencyNote(fullProposal.dependency_note || "");
 						setDescription(fullProposal.description || "");
 						setPlan(fullProposal.implementationPlan || "");
 						setNotes(fullProposal.implementationNotes || "");
 						setFinalSummary(fullProposal.finalSummary || "");
 						setCriteria(fullProposal.acceptanceCriteriaItems || []);
+						setRequiredCapabilities(
+							fullProposal.required_capabilities ||
+								fullProposal.needs_capabilities ||
+								[],
+						);
 					}
 				})
 				.catch(() => {
@@ -376,6 +439,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			onClose();
 		} else {
 			setTitle(proposal?.title || "");
+			setSummary(proposal?.summary || proposal?.description || "");
+			setMotivation(proposal?.motivation || "");
+			setDesign(proposal?.design || proposal?.implementationPlan || "");
+			setDrawbacks(proposal?.drawbacks || "");
+			setAlternatives(proposal?.alternatives || "");
+			setDependencyNote(proposal?.dependency_note || "");
 			setDescription(proposal?.description || "");
 			setPlan(proposal?.implementationPlan || "");
 			setNotes(proposal?.implementationNotes || "");
@@ -407,6 +476,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		try {
 			const proposalData: ProposalUpdatePayload = {
 				title: title.trim(),
+				summary,
+				motivation,
+				design,
+				drawbacks,
+				alternatives,
+				dependency_note: dependencyNote,
 				description,
 				implementationPlan: plan,
 				implementationNotes: notes,
@@ -421,6 +496,8 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					| "low"
 					| undefined,
 				dependencies,
+				required_capabilities: requiredCapabilities,
+				needs_capabilities: requiredCapabilities,
 				directive: directive.trim().length > 0 ? directive.trim() : undefined,
 			};
 
@@ -455,11 +532,16 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		assignee,
 		criteria,
 		dependencies,
+		dependencyNote,
 		description,
+		design,
 		directive,
+		drawbacks,
+		alternatives,
 		finalSummary,
 		isCreateMode,
 		labels,
+		motivation,
 		notes,
 		onClose,
 		onSaved,
@@ -467,7 +549,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		plan,
 		priority,
 		proposal,
+		requiredCapabilities,
 		status,
+		summary,
 		title,
 	]);
 
@@ -604,6 +688,41 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 	const displayId = proposal?.id ?? "";
 	const documentation = proposal?.documentation ?? [];
+	const renderMarkdownField = (
+		fieldTitle: string,
+		value: string,
+		setValue: (next: string) => void,
+		emptyText: string,
+		height = 220,
+	) => (
+		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+			<SectionHeader title={fieldTitle} />
+			{mode === "preview" ? (
+				value.trim().length > 0 ? (
+					<div
+						className="prose prose-sm !max-w-none wmde-markdown"
+						data-color-mode={theme}
+					>
+						<MermaidMarkdown source={value} />
+					</div>
+				) : (
+					<div className="text-sm text-gray-500 dark:text-gray-400">
+						{emptyText}
+					</div>
+				)
+			) : (
+				<div className="border border-gray-200 dark:border-gray-700 rounded-md">
+					<MDEditor
+						value={value}
+						onChange={(val) => setValue(val || "")}
+						preview="edit"
+						height={height}
+						data-color-mode={theme}
+					/>
+				</div>
+			)}
+		</div>
+	);
 
 	return (
 		<Modal
@@ -764,33 +883,32 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 						</div>
 					)}
 					{/* Description */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-						<SectionHeader title="Description" />
-						{mode === "preview" ? (
-							description ? (
-								<div
-									className="prose prose-sm !max-w-none wmde-markdown"
-									data-color-mode={theme}
-								>
-									<MermaidMarkdown source={description} />
-								</div>
-							) : (
-								<div className="text-sm text-gray-500 dark:text-gray-400">
-									No description
-								</div>
-							)
-						) : (
-							<div className="border border-gray-200 dark:border-gray-700 rounded-md">
-								<MDEditor
-									value={description}
-									onChange={(val) => setDescription(val || "")}
-									preview="edit"
-									height={320}
-									data-color-mode={theme}
-								/>
-							</div>
-						)}
-					</div>
+					{renderMarkdownField("Summary", summary, setSummary, "No summary", 220)}
+					{renderMarkdownField(
+						"Motivation",
+						motivation,
+						setMotivation,
+						"No motivation",
+					)}
+					{renderMarkdownField("Design", design, setDesign, "No design", 280)}
+					{renderMarkdownField(
+						"Drawbacks",
+						drawbacks,
+						setDrawbacks,
+						"No drawbacks",
+					)}
+					{renderMarkdownField(
+						"Alternatives",
+						alternatives,
+						setAlternatives,
+						"No alternatives",
+					)}
+					{renderMarkdownField(
+						"Dependency Note",
+						dependencyNote,
+						setDependencyNote,
+						"No dependency note",
+					)}
 
 					{/* References */}
 					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -1298,6 +1416,25 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 							availableProposals={availableProposals}
 							currentProposalId={proposal?.id}
 							label=""
+							disabled={isFromOtherBranch}
+						/>
+					</div>
+
+					{/* Required Capabilities */}
+					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+						<SectionHeader title="Required Capabilities" />
+						<ChipInput
+							name="required-capabilities"
+							label=""
+							value={requiredCapabilities}
+							onChange={(value) => {
+								setRequiredCapabilities(value);
+								void handleInlineMetaUpdate({
+									required_capabilities: value,
+									needs_capabilities: value,
+								});
+							}}
+							placeholder="Type capability and press Enter"
 							disabled={isFromOtherBranch}
 						/>
 					</div>

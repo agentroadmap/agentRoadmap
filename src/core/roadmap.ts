@@ -656,6 +656,12 @@ export class Core {
 			tags.needs_capabilities = [...proposal.needs_capabilities];
 		}
 		if (
+			proposal.required_capabilities &&
+			proposal.required_capabilities.length > 0
+		) {
+			tags.required_capabilities = [...proposal.required_capabilities];
+		}
+		if (
 			proposal.external_injections &&
 			proposal.external_injections.length > 0
 		) {
@@ -766,6 +772,12 @@ export class Core {
 			labels,
 			dependencies: dependencies.map((dependency) => dependency.to_display_id),
 			rawContent,
+			summary: row.summary || undefined,
+			motivation: row.motivation || undefined,
+			design: row.design || undefined,
+			drawbacks: row.drawbacks || undefined,
+			alternatives: row.alternatives || undefined,
+			dependency_note: row.dependency || undefined,
 			description: row.summary || undefined,
 			implementationPlan: row.design || undefined,
 			implementationNotes: this.getPgTagString(row.tags, "implementationNotes"),
@@ -790,6 +802,10 @@ export class Core {
 			needs_capabilities: this.getPgTagStringArray(
 				row.tags,
 				"needs_capabilities",
+			),
+			required_capabilities: this.getPgTagStringArray(
+				row.tags,
+				"required_capabilities",
 			),
 			external_injections: this.getPgTagStringArray(
 				row.tags,
@@ -2354,6 +2370,26 @@ export class Core {
 			...(typeof input.description === "string" && {
 				description: input.description,
 			}),
+			...(typeof input.summary === "string" && {
+				summary: input.summary,
+				description: input.summary,
+			}),
+			...(typeof input.motivation === "string" && {
+				motivation: input.motivation,
+			}),
+			...(typeof input.design === "string" && {
+				design: input.design,
+				implementationPlan: input.design,
+			}),
+			...(typeof input.drawbacks === "string" && {
+				drawbacks: input.drawbacks,
+			}),
+			...(typeof input.alternatives === "string" && {
+				alternatives: input.alternatives,
+			}),
+			...(typeof input.dependency_note === "string" && {
+				dependency_note: input.dependency_note,
+			}),
 			...(typeof input.implementationPlan === "string" && {
 				implementationPlan: input.implementationPlan,
 			}),
@@ -2369,6 +2405,9 @@ export class Core {
 			...(input.maturity && { maturity: input.maturity }),
 			...(input.needs_capabilities && {
 				needs_capabilities: input.needs_capabilities,
+			}),
+			...(input.required_capabilities && {
+				required_capabilities: input.required_capabilities,
 			}),
 			...(input.external_injections && {
 				external_injections: input.external_injections,
@@ -2434,12 +2473,16 @@ export class Core {
 					status: proposal.status || FALLBACK_STATUS,
 					title: proposal.title,
 					parent_id: parentId,
-					summary: proposal.description ?? null,
-					design: proposal.implementationPlan ?? null,
+					summary: proposal.summary ?? proposal.description ?? null,
+					motivation: proposal.motivation ?? null,
+					design: proposal.design ?? proposal.implementationPlan ?? null,
+					drawbacks: proposal.drawbacks ?? null,
+					alternatives: proposal.alternatives ?? null,
 					dependency:
-						proposal.dependencies.length > 0
+						proposal.dependency_note ??
+						(proposal.dependencies.length > 0
 							? proposal.dependencies.join(", ")
-							: null,
+							: null),
 					priority: proposal.priority ?? null,
 					tags: this.buildPgTags(proposal),
 				},
@@ -2585,12 +2628,16 @@ export class Core {
 				title: proposal.title,
 				type: await this.resolvePgProposalType(proposal.proposalType),
 				parent_id: parentId,
-				summary: proposal.description ?? null,
-				design: proposal.implementationPlan ?? null,
+				summary: proposal.summary ?? proposal.description ?? null,
+				motivation: proposal.motivation ?? null,
+				design: proposal.design ?? proposal.implementationPlan ?? null,
+				drawbacks: proposal.drawbacks ?? null,
+				alternatives: proposal.alternatives ?? null,
 				dependency:
-					proposal.dependencies.length > 0
+					proposal.dependency_note ??
+					(proposal.dependencies.length > 0
 						? proposal.dependencies.join(", ")
-						: null,
+						: null),
 				priority: proposal.priority ?? null,
 				tags: this.buildPgTags(proposal),
 			});
@@ -2821,6 +2868,26 @@ export class Core {
 		applyStringField(input.description, proposal.description, (next) => {
 			proposal.description = next;
 		});
+		applyStringField(input.summary, proposal.summary, (next) => {
+			proposal.summary = next;
+			proposal.description = next;
+		});
+		applyStringField(input.motivation, proposal.motivation, (next) => {
+			proposal.motivation = next;
+		});
+		applyStringField(input.design, proposal.design, (next) => {
+			proposal.design = next;
+			proposal.implementationPlan = next;
+		});
+		applyStringField(input.drawbacks, proposal.drawbacks, (next) => {
+			proposal.drawbacks = next;
+		});
+		applyStringField(input.alternatives, proposal.alternatives, (next) => {
+			proposal.alternatives = next;
+		});
+		applyStringField(input.dependency_note, proposal.dependency_note, (next) => {
+			proposal.dependency_note = next;
+		});
 
 		applyStringField(input.domainId, proposal.domainId, (next) => {
 			proposal.domainId = next;
@@ -2855,6 +2922,18 @@ export class Core {
 				)
 			) {
 				proposal.needs_capabilities = [...input.needs_capabilities];
+				mutated = true;
+			}
+		}
+		if (input.required_capabilities !== undefined) {
+			if (
+				!stringArraysEqual(
+					proposal.required_capabilities ?? [],
+					input.required_capabilities,
+				)
+			) {
+				proposal.required_capabilities = [...input.required_capabilities];
+				proposal.needs_capabilities = [...input.required_capabilities];
 				mutated = true;
 			}
 		}

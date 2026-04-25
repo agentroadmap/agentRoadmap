@@ -444,8 +444,20 @@ export class RoadmapServer {
 			title: p.title || "(no title)",
 			status: p.status || "DRAFT",
 			priority: p.priority || "",
-			bodyMarkdown: p.description || p.rawContent || null,
-			processLogic: p.implementationPlan || null,
+			bodyMarkdown: p.summary || p.description || p.rawContent || null,
+			summary: p.summary || p.description || null,
+			motivation: p.motivation || null,
+			design: p.design || p.implementationPlan || null,
+			drawbacks: p.drawbacks || null,
+			alternatives: p.alternatives || null,
+			dependencyNote: p.dependency_note || null,
+			processLogic: p.design || p.implementationPlan || null,
+			implementationPlan: p.implementationPlan || p.design || null,
+			implementationNotes: p.implementationNotes || null,
+			finalSummary: p.finalSummary || null,
+			acceptanceCriteriaItems: p.acceptanceCriteriaItems || [],
+			requiredCapabilities: p.required_capabilities || [],
+			needsCapabilities: p.needs_capabilities || [],
 			maturityLevel: p.maturity === "new" ? 0 : p.maturity === "mature" ? 5 : p.maturity === "obsolete" ? 10 : null,
 			repositoryPath: p.filePath || null,
 			budgetLimitUsd: p.budgetLimitUsd || 0,
@@ -1270,7 +1282,7 @@ export class RoadmapServer {
 			const { proposal: createdProposal } =
 				await this.core.createProposalFromInput({
 					title: payload.title,
-					description: payload.description,
+					description: payload.summary ?? payload.description,
 					status: payload.status,
 					priority: payload.priority,
 					directive,
@@ -1279,7 +1291,16 @@ export class RoadmapServer {
 					dependencies: payload.dependencies,
 					references: payload.references,
 					parentProposalId: payload.parentProposalId,
-					implementationPlan: payload.implementationPlan,
+					summary: payload.summary,
+					motivation: payload.motivation,
+					design: payload.design,
+					drawbacks: payload.drawbacks,
+					alternatives: payload.alternatives,
+					dependency_note: payload.dependency_note,
+					needs_capabilities:
+						payload.needs_capabilities ?? payload.required_capabilities,
+					required_capabilities: payload.required_capabilities,
+					implementationPlan: payload.design ?? payload.implementationPlan,
 					implementationNotes: payload.implementationNotes,
 					finalSummary: payload.finalSummary,
 					acceptanceCriteria,
@@ -1384,6 +1405,29 @@ export class RoadmapServer {
 		if ("description" in updates && typeof updates.description === "string") {
 			updateInput.description = updates.description;
 		}
+		if ("summary" in updates && typeof updates.summary === "string") {
+			updateInput.summary = updates.summary;
+			updateInput.description = updates.summary;
+		}
+		if ("motivation" in updates && typeof updates.motivation === "string") {
+			updateInput.motivation = updates.motivation;
+		}
+		if ("design" in updates && typeof updates.design === "string") {
+			updateInput.design = updates.design;
+			updateInput.implementationPlan = updates.design;
+		}
+		if ("drawbacks" in updates && typeof updates.drawbacks === "string") {
+			updateInput.drawbacks = updates.drawbacks;
+		}
+		if ("alternatives" in updates && typeof updates.alternatives === "string") {
+			updateInput.alternatives = updates.alternatives;
+		}
+		if (
+			"dependency_note" in updates &&
+			typeof updates.dependency_note === "string"
+		) {
+			updateInput.dependency_note = updates.dependency_note;
+		}
 
 		if ("status" in updates && typeof updates.status === "string") {
 			updateInput.status = updates.status;
@@ -1421,10 +1465,24 @@ export class RoadmapServer {
 		if ("references" in updates && Array.isArray(updates.references)) {
 			updateInput.references = updates.references;
 		}
+		if (
+			"required_capabilities" in updates &&
+			Array.isArray(updates.required_capabilities)
+		) {
+			updateInput.required_capabilities = updates.required_capabilities;
+			updateInput.needs_capabilities = updates.required_capabilities;
+		}
+		if (
+			"needs_capabilities" in updates &&
+			Array.isArray(updates.needs_capabilities)
+		) {
+			updateInput.needs_capabilities = updates.needs_capabilities;
+		}
 
 		if (
 			"implementationPlan" in updates &&
-			typeof updates.implementationPlan === "string"
+			typeof updates.implementationPlan === "string" &&
+			!("design" in updates)
 		) {
 			updateInput.implementationPlan = updates.implementationPlan;
 		}

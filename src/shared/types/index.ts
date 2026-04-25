@@ -73,6 +73,12 @@ export interface Proposal {
 	references?: string[];
 	documentation?: string[];
 	readonly rawContent?: string; // Raw markdown content without frontmatter (read-only: do not modify directly)
+	summary?: string;
+	motivation?: string;
+	design?: string;
+	drawbacks?: string;
+	alternatives?: string;
+	dependency_note?: string;
 	description?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
@@ -99,6 +105,7 @@ export interface Proposal {
 	subproposalSummaries?: Array<{ id: string; title: string }>;
 	/** Agent capabilities required to work on this proposal */
 	needs_capabilities?: string[];
+	required_capabilities?: string[];
 	domainId?: string;
 	proposalType?: string;
 	category?: string;
@@ -250,6 +257,12 @@ export interface ProposalCreateInput {
 	external_injections?: string[];
 	unlocks?: string[];
 	parentProposalId?: string;
+	summary?: string;
+	motivation?: string;
+	design?: string;
+	drawbacks?: string;
+	alternatives?: string;
+	dependency_note?: string;
 	implementationPlan?: string;
 	implementationNotes?: string;
 	auditNotes?: string;
@@ -293,6 +306,7 @@ export interface ProposalUpdateInput {
 	addDocumentation?: string[];
 	removeDocumentation?: string[];
 	needs_capabilities?: string[];
+	required_capabilities?: string[];
 	addNeedsCapabilities?: string[];
 	removeNeedsCapabilities?: number[];
 	external_injections?: string[];
@@ -301,6 +315,12 @@ export interface ProposalUpdateInput {
 	unlocks?: string[];
 	addUnlocks?: string[];
 	removeUnlocks?: number[];
+	summary?: string;
+	motivation?: string;
+	design?: string;
+	drawbacks?: string;
+	alternatives?: string;
+	dependency_note?: string;
 	implementationPlan?: string;
 	appendImplementationPlan?: string[];
 	clearImplementationPlan?: boolean;
