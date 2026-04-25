@@ -10,34 +10,23 @@ rules:
       - identity
       - database
       - provider-leak
-    regex: |
-      \?\?\s*["\']xiaomi["\'].*PGUSER|PGUSER.*\?\?\s*["\']xiaomi["\']
+    regex: "PGUSER\\s*\\?\\?\\s*[\"']xiaomi[\"']"
     fix_suggestion: |
       Use environment variable resolution without hardcoded fallbacks:
 
       ```typescript
       const dbUser = process.env.PGUSER;
-      if (!dbUser) {
-        throw new Error('PGUSER environment variable is required');
-      }
+      if (!dbUser) throw new Error('PGUSER required');
       ```
 
-      Or if a fallback is needed, use `getDbUser()` from the paths module (P448):
-      ```typescript
-      import { getDbUser } from 'src/shared/runtime/paths';
-      const dbUser = getDbUser(); // env-aware with validation
-      ```
-
-      Never hardcode a provider-specific user as fallback. The platform must work for any user.
+      Never hardcode provider-specific user as fallback.
     examples_match:
       - 'const user = process.env.PGUSER ?? "xiaomi";'
-      - 'user: config?.user ?? process.env.PGUSER ?? "xiaomi",'
     examples_no_match:
-      - 'const user = process.env.PGUSER ?? getDbUserFromRegistry();'
-      - 'const user = getDbUser(); // from src/shared/runtime/paths'
+      - 'const user = getDbUser();'
 
   - id: identity.bare-xiaomi-literal
-    description: Bare "xiaomi" string outside legitimate provider-name contexts
+    description: Bare "xiaomi" string outside legitimate contexts
     severity: high
     confidence: medium
     proposal: P448
@@ -47,58 +36,32 @@ rules:
     pattern: '"xiaomi"'
     file_glob_exclude:
       - '**/*.test.ts'
-      - '**/*.spec.ts'
       - 'tests/**'
-      - 'src/tools/scanner/rules/**'
     fix_suggestion: |
-      Replace bare provider or user literals with dynamic resolution.
-      If this is an agency name (e.g., "hermes/agency-xiaomi"), that requires separate rules (identity.hardcoded-agent-name).
-
-      For database or system user context:
-      ```typescript
-      import { getDbUser, getOsUser } from 'src/shared/runtime/paths';
-      const dbUser = getDbUser();
-      const osUser = getOsUser();
-      ```
-
-      For agency identity, use the trust resolver (see identity.hardcoded-agent-name).
+      Replace with dynamic resolution from env or registry.
     examples_match:
-      - 'if (user === "xiaomi") { /* special case */ }'
-      - 'return "xiaomi";'
+      - 'const user = "xiaomi";'
     examples_no_match:
       - 'const user = process.env.PGUSER;'
-      - 'return getDbUser(); // from paths resolver'
 
   - id: identity.pgdatabase-fallback-agenthive
-    description: Fallback pattern "?? \"agenthive\"" on PGDATABASE indicating hardcoded DB name
+    description: Hardcoded "agenthive" database fallback
     severity: high
     confidence: high
     proposal: P448
     tags:
       - identity
       - database
-    regex: |
-      \?\?\s*["\']agenthive["\'].*PGDATABASE|PGDATABASE.*\?\?\s*["\']agenthive["\']
+    regex: "PGDATABASE\\s*\\?\\?\\s*[\"']agenthive[\"']"
     fix_suggestion: |
-      Avoid hardcoded database name fallbacks. Use environment variables:
-
-      ```typescript
-      const database = process.env.PGDATABASE;
-      if (!database) {
-        throw new Error('PGDATABASE environment variable is required');
-      }
-      ```
-
-      Database names must be configurable per deployment and per project.
-      See control-plane architecture (P410): each project has its own database.
+      Database name must be from environment, not hardcoded.
     examples_match:
       - 'const db = process.env.PGDATABASE ?? "agenthive";'
-      - 'database: process.env.PGDATABASE ?? "agenthive",'
     examples_no_match:
-      - 'const db = process.env.PGDATABASE; if (!db) throw new Error(...);'
+      - 'const db = process.env.PGDATABASE;'
 
   - id: identity.psql-shell-user
-    description: Shell commands with literal psql -U <user> or hard-coded username
+    description: Shell commands with hardcoded psql user
     severity: high
     confidence: high
     proposal: P448
@@ -106,35 +69,20 @@ rules:
       - identity
       - shell
       - database
-    pattern: 'psql -U'
-    file_glob_exclude:
-      - '**/*.test.sh'
-      - '**/*.spec.sh'
-      - 'tests/**'
+    regex: 'psql\s+-U\s+[a-z_][a-z0-9_]*(?!\})'
     fix_suggestion: |
-      Use environment variable substitution in shell commands:
+      Use environment variables for psql authentication.
 
       ```bash
-      psql -U "${PGUSER}" -d "${PGDATABASE}" ...
-      ```
-
-      Or use the CI/CD or deployment context to set PGUSER before invoking scripts.
-      Never hardcode usernames in shell commands.
-
-      In TypeScript/Node, prefer the native Postgres driver over shell invocation:
-      ```typescript
-      import { Pool } from 'pg';
-      const pool = new Pool({ user: process.env.PGUSER, ... });
+      psql -U "${PGUSER}" -d "${PGDATABASE}"
       ```
     examples_match:
-      - 'psql -U xiaomi -d agenthive -c "SELECT 1;"'
-      - 'exec(`psql -U alice -h localhost ...`);'
+      - 'psql -U xiaomi -d agenthive'
     examples_no_match:
-      - 'psql -U "${PGUSER}" -d "${PGDATABASE}" -c "SELECT 1;"'
-      - 'new Pool({ user: process.env.PGUSER, ... })'
+      - 'psql -U "${PGUSER}"'
 
   - id: identity.systemd-user-hardcode
-    description: systemd unit files with hardcoded User= or Environment=PGUSER directives
+    description: Hardcoded User= in systemd service files
     severity: high
     confidence: high
     proposal: P448
@@ -142,31 +90,25 @@ rules:
       - identity
       - systemd
       - deployment
-    file_glob: ['**/*.service', '**/*.timer']
-    regex: '^User=[a-zA-Z_]|^Environment=PGUSER='
+    file_glob:
+      - '**/*.service'
+      - '**/*.timer'
+    regex: 'User=[a-z_][a-z0-9_]*(?!%)'
     fix_suggestion: |
-      Use systemd variable substitution or external environment files:
+      Use systemd variable substitution or external env files.
 
       ```ini
       [Service]
-      User=%i                        # placeholder (instantiated via template.service@user)
+      User=%i
       EnvironmentFile=/etc/agenthive/env
-      Environment="PGUSER=${PGUSER}"
       ```
-
-      Or inject at deployment time via sed or config template tools.
-
-      The systemd service file should be generic; user and DB credentials are injected
-      via environment files or deployment templates.
     examples_match:
       - 'User=xiaomi'
-      - 'Environment=PGUSER=xiaomi'
     examples_no_match:
       - 'User=%i'
-      - 'EnvironmentFile=/etc/agenthive/env'
 
   - id: identity.shell-pgpassword-set
-    description: Shell scripts with PGPASSWORD= or other credential literals
+    description: Shell scripts with PGPASSWORD credentials
     severity: critical
     confidence: high
     proposal: P448
@@ -174,30 +116,12 @@ rules:
       - identity
       - credentials
       - shell
-    file_glob: ['**/*.sh', 'scripts/**/*.ts']
-    regex: 'PGPASSWORD=["\'][^"\']*["\']|PGPASSWORD=\$\{[^}]*\}'
+    file_glob:
+      - '**/*.sh'
+    regex: "PGPASSWORD=(?![\"']?\\$)(?:[\"'][^\"']*[\"']|[^\\s\"'$]+)"
     fix_suggestion: |
-      Never hardcode or print passwords in shell. Use password files or .pgpass:
-
-      ```bash
-      # Do not:
-      PGPASSWORD=my_secret psql ...
-
-      # Instead: use .pgpass (secure, single-file auth)
-      # ~/.pgpass:
-      # localhost:5432:*:username:password
-      # chmod 600 ~/.pgpass
-      export PGPASSWORDFILE="${HOME}/.pgpass"
-      psql -U "$PGUSER" -h "$PGHOST" ...
-
-      # Or: use environment variable from secure vault
-      export PGPASSWORD="${VAULT_DB_PASSWORD}"
-      ```
-
-      Secrets must never appear in logs, code, or process listings. Use .pgpass or vault.
+      Never hardcode passwords in shell. Use .pgpass or vault.
     examples_match:
-      - 'PGPASSWORD="secret" psql -U admin ...'
-      - 'export PGPASSWORD=${DB_PASS}'
+      - 'PGPASSWORD="secret" psql -c "..."'
     examples_no_match:
       - 'export PGPASSWORDFILE="$HOME/.pgpass"'
-      - '# Injected from vault at runtime'

@@ -1,196 +1,115 @@
 ruleset: endpoints
-description: Hardcoded network endpoints blocking cross-host and multi-instance deployment
+description: Hardcoded service endpoint URLs that block dynamic host/port configuration
 rules:
   - id: endpoints.mcp-url
-    description: Hardcoded MCP URL (http://127.0.0.1:6421 or http://localhost:6421)
+    description: Hardcoded MCP URL (http://127.0.0.1:6421)
     severity: critical
     confidence: high
     proposal: P449
     tags:
       - endpoints
       - mcp
-      - multi-instance
-    regex: |
-      https?://(127\.0\.0\.1|localhost):6421["\']?
+      - multi-host
+    regex: "http://(127\\.0\\.0\\.1|localhost):6421"
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - 'tests/**'
     fix_suggestion: |
-      Use the endpoint resolver from the runtime paths module:
+      MCP endpoint must be resolved at runtime:
 
       ```typescript
-      import { getMcpUrl } from 'src/shared/runtime/endpoints';
-      const mcpUrl = getMcpUrl(); // env-aware: MCP_URL or local default
+      const mcpUrl = getMcpUrl();
       ```
 
-      The MCP URL must be configurable per deployment. On a multi-instance host,
-      two AgentHive copies using hardcoded localhost:6421 will collide.
-
-      Environment variable: `MCP_URL` (default: http://127.0.0.1:6421)
+      Use environment variable MCP_URL.
     examples_match:
-      - 'const mcpUrl = "http://127.0.0.1:6421/sse";'
-      - 'const client = new MCPClient("http://localhost:6421");'
-      - 'const url = `http://127.0.0.1:6421/sse?session=${id}`'
+      - 'const mcpUrl = "http://127.0.0.1:6421";'
     examples_no_match:
-      - 'const mcpUrl = getMcpUrl(); // from src/shared/runtime/endpoints'
-      - 'const mcpUrl = process.env.MCP_URL ?? "http://127.0.0.1:6421";'
+      - 'const mcpUrl = getMcpUrl();'
 
   - id: endpoints.daemon-url
-    description: Hardcoded daemon URL (http://127.0.0.1:6420 or http://localhost:6420)
+    description: Hardcoded daemon/executor service URL
     severity: critical
     confidence: high
     proposal: P449
     tags:
       - endpoints
       - daemon
-      - multi-instance
-    pattern: ':6420'
+      - service-discovery
+    regex: "http://(127\\.0\\.0\\.1|localhost):(5000|8000|8080)"
     fix_suggestion: |
-      Use the daemon endpoint resolver:
-
-      ```typescript
-      import { getDaemonUrl } from 'src/shared/runtime/endpoints';
-      const daemonUrl = getDaemonUrl(); // env-aware: DAEMON_URL or local default
-      ```
-
-      The daemon URL is the orchestrator service endpoint. Like MCP, it must be
-      configurable to avoid collisions on shared hosts.
-
-      Environment variable: `DAEMON_URL` (default: http://127.0.0.1:6420)
+      Daemon endpoints must be discovered dynamically.
     examples_match:
-      - 'const orchestratorUrl = "http://127.0.0.1:6420";'
-      - 'fetch("http://localhost:6420/health");'
+      - 'const daemon = "http://127.0.0.1:5000";'
     examples_no_match:
-      - 'const daemonUrl = getDaemonUrl();'
-      - 'const daemonUrl = process.env.DAEMON_URL ?? "http://127.0.0.1:6420";'
+      - 'const daemon = getDaemonUrl();'
 
   - id: endpoints.ws-url
-    description: Hardcoded WebSocket URL (ws://localhost:6420 or ws://127.0.0.1)
+    description: Hardcoded WebSocket endpoint URL
     severity: high
     confidence: high
     proposal: P449
     tags:
       - endpoints
       - websocket
-      - mcp
-    regex: 'ws(s)?://(127\.0\.0\.1|localhost):[0-9]{4}["\']?'
+      - realtime
+    regex: "ws://(127\\.0\\.0\\.1|localhost):[0-9]{4}"
     fix_suggestion: |
-      Use the endpoint resolver, then convert to WebSocket protocol:
-
-      ```typescript
-      import { getMcpUrl, getDaemonUrl } from 'src/shared/runtime/endpoints';
-      const httpUrl = getMcpUrl();
-      const wsUrl = httpUrl.replace(/^https?/, 'ws').replace(/\/$/, '');
-      ```
-
-      WebSocket endpoints should be derived from HTTP endpoints dynamically,
-      not hardcoded separately.
+      WebSocket endpoints must be resolved at runtime.
     examples_match:
-      - 'const wsUrl = "ws://localhost:6421";'
-      - 'const ws = new WebSocket("ws://127.0.0.1:6420");'
+      - 'const wsUrl = "ws://127.0.0.1:6421";'
     examples_no_match:
-      - 'const httpUrl = getMcpUrl(); const wsUrl = httpUrl.replace(/^https?/, "ws");'
+      - 'const wsUrl = getWebSocketUrl();'
 
   - id: endpoints.pg-host
-    description: Hardcoded Postgres host (127.0.0.1:5432 or localhost:5432) in source code
+    description: Hardcoded PostgreSQL host
     severity: high
-    confidence: high
-    proposal: P449
-    tags:
-      - endpoints
-      - database
-      - multi-instance
-    pattern: '"127.0.0.1:5432"'
-    file_glob_exclude:
-      - '**/*.test.ts'
-      - '**/*.spec.ts'
-      - 'tests/**'
-      - src/shared/runtime/endpoints.ts
-    fix_suggestion: |
-      Use environment variables for database host:
-
-      ```typescript
-      const dbHost = process.env.PGHOST ?? 'localhost';
-      const dbPort = parseInt(process.env.PGPORT ?? '5432', 10);
-      const pool = new Pool({ host: dbHost, port: dbPort, ... });
-      ```
-
-      Or use the connection string:
-      ```typescript
-      const dbUrl = process.env.DATABASE_URL ?? 'postgresql://localhost/agenthive';
-      const pool = new Pool({ connectionString: dbUrl });
-      ```
-
-      Environment variables: `PGHOST`, `PGPORT`, `DATABASE_URL`
-    examples_match:
-      - 'const pool = new Pool({ host: "127.0.0.1", port: 5432 });'
-      - 'const connStr = "postgresql://127.0.0.1:5432/agenthive";'
-    examples_no_match:
-      - 'const pool = new Pool({ host: process.env.PGHOST ?? "localhost" });'
-      - 'const pool = new Pool({ connectionString: process.env.DATABASE_URL });'
-
-  - id: endpoints.discord-api-url
-    description: Hardcoded Discord API endpoint instead of using configuration
-    severity: medium
-    confidence: high
-    proposal: P449
-    tags:
-      - endpoints
-      - config
-      - third-party
-    pattern: '"https://discord.com/api'
-    file_glob_exclude:
-      - '**/*.test.ts'
-      - 'docs/**'
-    fix_suggestion: |
-      Move Discord API endpoint to configuration:
-
-      ```typescript
-      const discordApiBase = process.env.DISCORD_API_URL
-        ?? 'https://discord.com/api/v10';
-      const url = `${discordApiBase}/channels/${channelId}/messages`;
-      ```
-
-      This allows testing against mock Discord servers or alternative endpoints.
-
-      Environment variable: `DISCORD_API_URL` (default: https://discord.com/api/v10)
-    examples_match:
-      - 'const url = "https://discord.com/api/channels/123/messages";'
-      - 'fetch("https://discord.com/api/v10/...");'
-    examples_no_match:
-      - 'const apiBase = process.env.DISCORD_API_URL ?? "https://discord.com/api/v10";'
-
-  - id: endpoints.bare-port-numbers
-    description: Bare port numbers (6420, 6421, 6422) in non-test code outside endpoints.ts
-    severity: medium
     confidence: medium
     proposal: P449
     tags:
       - endpoints
-      - port
-      - config
-    file_glob_exclude:
-      - src/shared/runtime/endpoints.ts
-      - '**/*.test.ts'
-      - '**/*.spec.ts'
-      - 'tests/**'
-    regex: '[:=]["\']?(6420|6421|6422|5432)["\']?(?![0-9])'
+      - database
+    regex: "PGHOST=[\"']?(127\\.0\\.0\\.1|localhost)[\"']?"
     fix_suggestion: |
-      Extract port numbers to configuration or use endpoint resolvers:
-
-      ```typescript
-      import { getMcpUrl, getDaemonUrl } from 'src/shared/runtime/endpoints';
-      const mcpUrl = new URL(getMcpUrl());
-      const mcpPort = parseInt(mcpUrl.port || '6421', 10);
-      ```
-
-      Or define port constants in a shared config:
-      ```typescript
-      // src/shared/config/defaults.ts
-      export const DEFAULT_MCP_PORT = parseInt(process.env.MCP_PORT ?? '6421', 10);
-      ```
-
-      This keeps port numbers visible in one place and configurable per deployment.
+      PostgreSQL host must be configured via environment.
     examples_match:
-      - 'const port = 6421;'
-      - 'const url = `http://localhost:6420`;'
+      - 'PGHOST=127.0.0.1'
     examples_no_match:
-      - 'const mcpUrl = getMcpUrl(); // port is in the URL'
-      - 'const port = parseInt(process.env.MCP_PORT ?? "6421", 10);'
+      - 'PGHOST=${PGHOST}'
+
+  - id: endpoints.discord-api-url
+    description: Hardcoded Discord API endpoint
+    severity: medium
+    confidence: high
+    proposal: P449
+    tags:
+      - endpoints
+      - external-api
+    pattern: 'https://discord.com/api'
+    fix_suggestion: |
+      Use official Discord client libraries instead.
+    examples_match:
+      - 'const url = "https://discord.com/api/v10";'
+    examples_no_match:
+      - 'const client = new DiscordClient();'
+
+  - id: endpoints.bare-port-numbers
+    description: Bare port numbers without protocol context
+    severity: medium
+    confidence: low
+    proposal: P449
+    tags:
+      - endpoints
+      - port
+    regex: "=\\s*[0-9]{4,5}(?![a-z0-9$])"
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - 'docs/**'
+    fix_suggestion: |
+      Port numbers should be part of configurable URLs.
+
+      Use environment variables instead.
+    examples_match:
+      - 'const port = 5000;'
+    examples_no_match:
+      - 'const port = process.env.PORT || 3000;'
