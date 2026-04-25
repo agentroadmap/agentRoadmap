@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Route, Switch } from "wouter";
 import type {
+	Proposal,
 	Agent as SharedAgent,
 	Channel as SharedChannel,
-	Proposal,
 } from "../../shared/types";
 import AchievementsView from "./components/AchievementsView";
 import AgentDashboard from "./components/AgentDashboard";
@@ -24,10 +24,10 @@ import SettingsPage from "./components/SettingsPage";
 import StatisticsPage from "./components/StatisticsPage";
 import TeamsPage from "./components/TeamsPage";
 import {
+	useWebSocket,
 	type Agent as WebSocketAgent,
 	type Channel as WebSocketChannel,
 	type Proposal as WebSocketProposal,
-	useWebSocket,
 } from "./hooks/useWebSocket";
 
 const STATUSES = [
@@ -100,10 +100,20 @@ function toSharedChannel(channel: WebSocketChannel): SharedChannel {
 
 export default function App() {
 	const { proposals, agents, channels } = useWebSocket();
-	const sharedProposals = proposals.map(toSharedProposal);
-	const sharedAgents = agents.map(toSharedAgent);
-	const sharedChannels = channels.map(toSharedChannel);
+	const sharedProposals = useMemo(
+		() => proposals.map(toSharedProposal),
+		[proposals],
+	);
+	const sharedAgents = useMemo(() => agents.map(toSharedAgent), [agents]);
+	const sharedChannels = useMemo(
+		() => channels.map(toSharedChannel),
+		[channels],
+	);
 	const [activeFeature, setActiveFeature] = useState<string | null>(null);
+	const activeProposal = useMemo(
+		() => sharedProposals.find((p) => p.id === activeFeature),
+		[activeFeature, sharedProposals],
+	);
 
 	const handleProposalClick = (proposal: Proposal) => {
 		setActiveFeature(proposal.id);
@@ -172,11 +182,9 @@ export default function App() {
 							<NotFoundPage />
 						</Route>
 					</Switch>
-					{activeFeature && (
+					{activeFeature && activeProposal && (
 						<ProposalDetailsModal
-							proposal={
-								sharedProposals.find((p) => p.id === activeFeature)
-							}
+							proposal={activeProposal}
 							isOpen={true}
 							onClose={() => setActiveFeature(null)}
 						/>
