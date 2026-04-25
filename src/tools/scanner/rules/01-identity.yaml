@@ -6,7 +6,10 @@ rules:
     severity: critical
     confidence: high
     proposal: P448
-    tags: [identity, database, provider-leak]
+    tags:
+      - identity
+      - database
+      - provider-leak
     regex: |
       \?\?\s*["\']xiaomi["\'].*PGUSER|PGUSER.*\?\?\s*["\']xiaomi["\']
     fix_suggestion: |
@@ -38,9 +41,15 @@ rules:
     severity: high
     confidence: medium
     proposal: P448
-    tags: [identity, provider-leak]
+    tags:
+      - identity
+      - provider-leak
     pattern: '"xiaomi"'
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'src/tools/scanner/rules/**']
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'src/tools/scanner/rules/**'
     fix_suggestion: |
       Replace bare provider or user literals with dynamic resolution.
       If this is an agency name (e.g., "hermes/agency-xiaomi"), that requires separate rules (identity.hardcoded-agent-name).
@@ -65,7 +74,9 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, database]
+    tags:
+      - identity
+      - database
     regex: |
       \?\?\s*["\']agenthive["\'].*PGDATABASE|PGDATABASE.*\?\?\s*["\']agenthive["\']
     fix_suggestion: |
@@ -91,9 +102,15 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, shell, database]
+    tags:
+      - identity
+      - shell
+      - database
     pattern: 'psql -U'
-    file_glob_exclude: ['**/*.test.sh', '**/*.spec.sh', 'tests/**']
+    file_glob_exclude:
+      - '**/*.test.sh'
+      - '**/*.spec.sh'
+      - 'tests/**'
     fix_suggestion: |
       Use environment variable substitution in shell commands:
 
@@ -121,7 +138,10 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, systemd, deployment]
+    tags:
+      - identity
+      - systemd
+      - deployment
     file_glob: ['**/*.service', '**/*.timer']
     regex: '^User=[a-zA-Z_]|^Environment=PGUSER='
     fix_suggestion: |
@@ -150,7 +170,10 @@ rules:
     severity: critical
     confidence: high
     proposal: P448
-    tags: [identity, credentials, shell]
+    tags:
+      - identity
+      - credentials
+      - shell
     file_glob: ['**/*.sh', 'scripts/**/*.ts']
     regex: 'PGPASSWORD=["\'][^"\']*["\']|PGPASSWORD=\$\{[^}]*\}'
     fix_suggestion: |

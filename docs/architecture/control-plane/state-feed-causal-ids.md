@@ -1,6 +1,8 @@
-# P423 — State Feed Causal IDs
+# P443 — State Feed Causal IDs
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P443
+
+This is a design note paired with MCP proposal P443. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -21,4 +23,3 @@ Standardize feed events around causal IDs and stop scopes.
 ## Dependencies
 
 - P415 Control Panel Observability
-

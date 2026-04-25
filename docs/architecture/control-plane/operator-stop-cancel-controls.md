@@ -1,6 +1,8 @@
-# P422 — Operator Stop and Cancel Controls
+# P442 — Operator Stop and Cancel Controls
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P442
+
+This is a design note paired with MCP proposal P442. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -22,4 +24,3 @@ Make cancellation, suspension, draining, and subprocess termination first-class 
 
 - P413 Dispatch and Agency Hardening
 - P415 Control Panel Observability
-

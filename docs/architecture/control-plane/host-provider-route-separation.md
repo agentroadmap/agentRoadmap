@@ -1,6 +1,8 @@
-# P424 — Host, Provider, and Route Separation
+# P444 — Host, Provider, and Route Separation
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P444
+
+This is a design note paired with MCP proposal P444. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -21,4 +23,3 @@ Make host, agency, provider account, model route, CLI, and worktree policy separ
 ## Dependencies
 
 - P414 Provider Route and Budget Governance
-

@@ -1,6 +1,8 @@
-# P412 — Project Domain Database Isolation
+# P432 — Project Domain Database Isolation
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P432
+
+This is a design note paired with MCP proposal P432. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 

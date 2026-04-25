@@ -6,7 +6,10 @@ rules:
     severity: high
     confidence: high
     proposal: P436
-    tags: [sql, schema, multi-project]
+    tags:
+      - sql
+      - schema
+      - multi-project
     file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
     regex: 'FROM\s+(proposal|squad_dispatch|proposal_lease|proposal_version|proposal_dependency|acceptance_criteria)(?!\w)|JOIN\s+(proposal|squad_dispatch|proposal_lease)(?!\w)|UPDATE\s+(proposal|squad_dispatch|proposal_lease)(?!\w)'
     fix_suggestion: |
@@ -51,7 +54,10 @@ rules:
     severity: medium
     confidence: high
     proposal: P448
-    tags: [logging, handlers, mcp]
+    tags:
+      - logging
+      - handlers
+      - mcp
     file_glob: ['src/apps/mcp-server/tools/**/*.ts', 'src/core/tool-agents/**/*.ts']
     regex: 'console\.log\(|console\.error\(|console\.warn\(|console\.debug\('
     fix_suggestion: |
@@ -99,7 +105,10 @@ rules:
     severity: low
     confidence: medium
     proposal: P448
-    tags: [code-debt, todo, governance]
+    tags:
+      - code-debt
+      - todo
+      - governance
     file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
     regex: 'TODO(?!\s*\(P\d+\):)'
     fix_suggestion: |
@@ -142,7 +151,10 @@ rules:
     severity: medium
     confidence: high
     proposal: P448
-    tags: [code-debt, fixme, governance]
+    tags:
+      - code-debt
+      - fixme
+      - governance
     file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
     pattern: 'FIXME'
     fix_suggestion: |
@@ -181,7 +193,9 @@ rules:
     severity: low
     confidence: medium
     proposal: P448
-    tags: [code-debt, commented-code]
+    tags:
+      - code-debt
+      - commented-code
     file_glob: ['src/**/*.ts', 'scripts/**/*.ts']
     regex: '(?:^|\n)\s*//\s+(?:if|for|while|function|const|let|async|class|return|import|export)\b.*(?:\n\s*//\s+(?:if|for|while|function|const|let|async|class|return|import|export|[a-zA-Z_$]|\}|;).*){2,}'
     fix_suggestion: |

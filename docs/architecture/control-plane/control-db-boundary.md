@@ -1,6 +1,8 @@
-# P410 — Control Database Boundary
+# P430 — Control DB Boundary
 
-## Status: DRAFT | Type: component | Agent: architect
+> **Type:** component  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P430
+
+This is a design note paired with MCP proposal P430. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 

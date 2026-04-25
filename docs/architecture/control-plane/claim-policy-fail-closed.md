@@ -1,6 +1,8 @@
-# P418 — Claim Policy Must Fail Closed
+# P438 — Claim Policy Must Fail Closed
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P438
+
+This is a design note paired with MCP proposal P438. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -22,4 +24,3 @@ Move claim eligibility into a fail-closed database policy.
 
 - P410 Control Database Boundary
 - P414 Provider Route and Budget Governance
-

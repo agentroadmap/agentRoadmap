@@ -1,6 +1,8 @@
-# P425 — State Machine Race Integration Tests
+# P445 — State Machine Race Integration Tests
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P445
+
+This is a design note paired with MCP proposal P445. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -23,4 +25,3 @@ Add Postgres-backed integration tests for state-machine races and failure paths.
 - P417 Dispatch Idempotency and Transition Leases
 - P418 Claim Policy Must Fail Closed
 - P420 Dispatch Retry and Terminal Semantics
-

@@ -6,8 +6,17 @@ rules:
     severity: critical
     confidence: high
     proposal: P450
-    tags: [models, anthropic, routing, multi-provider]
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**', 'src/tools/scanner/rules/**']
+    tags:
+      - models
+      - anthropic
+      - routing
+      - multi-provider
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'database/dml/**'
+      - 'src/tools/scanner/rules/**'
     regex: '["\']claude-(sonnet|opus|haiku)-[0-9]+["\']'
     fix_suggestion: |
       Model names must be resolved through the model routing system, not hardcoded.
@@ -54,8 +63,16 @@ rules:
     severity: critical
     confidence: high
     proposal: P450
-    tags: [models, openai, routing, multi-provider]
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    tags:
+      - models
+      - openai
+      - routing
+      - multi-provider
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'database/dml/**'
     regex: '["\']gpt-[0-9]+(\.[0-9]+)?(-turbo|-mini|-o)?["\']'
     fix_suggestion: |
       Model names must be resolved through the model routing system:
@@ -86,8 +103,16 @@ rules:
     severity: critical
     confidence: high
     proposal: P450
-    tags: [models, google, routing, multi-provider]
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    tags:
+      - models
+      - google
+      - routing
+      - multi-provider
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'database/dml/**'
     regex: '["\']gemini-(pro|flash|ultra|[0-9]+\.[0-9]+)["\']'
     fix_suggestion: |
       Use the model routing resolver instead of hardcoding:
@@ -114,8 +139,17 @@ rules:
     severity: critical
     confidence: high
     proposal: P450
-    tags: [models, xiaomi, nous, routing, multi-provider]
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    tags:
+      - models
+      - xiaomi
+      - nous
+      - routing
+      - multi-provider
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'database/dml/**'
     regex: '["\'](?:xiaomi|nous)/[a-z0-9\-]+["\']'
     fix_suggestion: |
       Use the model routing resolver:
@@ -142,7 +176,10 @@ rules:
     severity: critical
     confidence: high
     proposal: P450
-    tags: [models, cli-builders, routing]
+    tags:
+      - models
+      - cli-builders
+      - routing
     file_glob: ['src/core/runtime/cli-builders.ts']
     regex: 'defaultModel\(\)\s*\{[^}]*return\s+["\'][a-z\-0-9\.]+["\']'
     fix_suggestion: |
@@ -181,7 +218,10 @@ rules:
     severity: high
     confidence: medium
     proposal: P450
-    tags: [models, spawn, routing]
+    tags:
+      - models
+      - spawn
+      - routing
     regex: 'spawnAgent\([^)]*["\'][a-z\-0-9\.]+["\'][^)]*\)|--model\s+["\']?[a-z\-0-9\.]+["\']?'
     fix_suggestion: |
       Pass resolved routes to spawn, not raw model names:

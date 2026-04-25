@@ -6,9 +6,17 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, agency, hardcoded-agent]
+    tags:
+      - identity
+      - agency
+      - hardcoded-agent
     pattern: '"hermes/agency-xiaomi"'
-    file_glob_exclude: ['src/infra/trust/trust-resolver.ts', 'docs/**', '**/*.test.ts', '**/*.spec.ts', 'tests/**']
+    file_glob_exclude:
+      - src/infra/trust/trust-resolver.ts
+      - 'docs/**'
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
     fix_suggestion: |
       Agency identities must not be hardcoded. Use the trust resolver to look up stable agencies by ID:
 
@@ -49,9 +57,15 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, worker, ephemeral]
+    tags:
+      - identity
+      - worker
+      - ephemeral
     regex: '["\']worker-[0-9]+["\']'
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**']
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
     fix_suggestion: |
       Worker IDs are ephemeral and generated per dispatch. Never hardcode them.
 
@@ -92,9 +106,18 @@ rules:
     severity: high
     confidence: high
     proposal: P448
-    tags: [identity, agent, hardcoded]
+    tags:
+      - identity
+      - agent
+      - hardcoded
     regex: '["\'](?:hermes-andy|claude-bob|copilot-one|xiaomi-one|skeptic-alpha|skeptic-beta|orchestrator)["\']'
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**', 'src/infra/trust/**', 'docs/**']
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'database/dml/**'
+      - 'src/infra/trust/**'
+      - 'docs/**'
     fix_suggestion: |
       Agent identities must be resolved from the agent registry, not hardcoded.
       These are example names used in demos; production systems may have different agents.
@@ -138,8 +161,15 @@ rules:
     severity: medium
     confidence: medium
     proposal: P448
-    tags: [identity, discord, third-party]
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'docs/**']
+    tags:
+      - identity
+      - discord
+      - third-party
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - 'docs/**'
     regex: '["\'](\d{18,19})["\'](?=.*(?:discord|user|channel|role))'
     fix_suggestion: |
       Discord IDs must be stored in configuration, not hardcoded. Use environment variables or config tables:

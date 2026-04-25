@@ -1,6 +1,8 @@
-# P416 — Schema Reconciliation for Control Plane
+# P436 — Schema Reconciliation for Control Plane
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P436
+
+This is a design note paired with MCP proposal P436. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -28,4 +30,3 @@ Reconcile the schema around one rule: AgentHive control-plane state stays in the
 
 - P410 Control Database Boundary
 - P411 Control Database Bootstrap
-

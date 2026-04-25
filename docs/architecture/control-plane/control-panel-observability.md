@@ -1,6 +1,8 @@
-# P415 — Control Panel Observability
+# P435 — Control Panel Observability
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P435
+
+This is a design note paired with MCP proposal P435. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -18,4 +20,3 @@ Build control-panel observability on top of `agenthive_control`.
 4. Dispatch cancellation and subprocess termination are separate visible actions.
 5. Web, TUI, and mobile use the same control API.
 6. Audit log records every operator action.
-

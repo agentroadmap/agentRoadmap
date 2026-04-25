@@ -1,6 +1,8 @@
-# P420 — Dispatch Retry and Terminal Semantics
+# P440 — Dispatch Retry and Terminal Semantics
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P440
+
+This is a design note paired with MCP proposal P440. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -21,4 +23,3 @@ Define a dispatch lifecycle with attempt counters, retry policy, cooldowns, and 
 ## Dependencies
 
 - P417 Dispatch Idempotency and Transition Leases
-

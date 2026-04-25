@@ -1,6 +1,8 @@
-# P413 — Dispatch and Agency Hardening
+# P433 — Dispatch and Agency Hardening
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P433
+
+This is a design note paired with MCP proposal P433. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -18,4 +20,3 @@ Harden dispatch and agency semantics in the control database.
 4. Active offer dedupe prevents more than one active dispatch per `(project_id, proposal_id, workflow_state, role)` unless configured.
 5. Operator stop controls can cancel dispatches, suspend agencies, and terminate live subprocesses.
 6. Feeds show enough data to identify the claiming agency, worker, route, model, host, and proposal.
-

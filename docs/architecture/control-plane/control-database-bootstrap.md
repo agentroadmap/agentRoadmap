@@ -1,6 +1,8 @@
-# P411 — Control Database Bootstrap
+# P431 — Control Database Bootstrap
 
-## Status: DRAFT | Type: feature | Agent: architect
+> **Type:** feature  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P431
+
+This is a design note paired with MCP proposal P431. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -29,4 +31,3 @@ Create `agenthive_control` in the existing Postgres instance and bootstrap the c
 3. Existing runtime code can still read compatibility views during migration.
 4. Control DB migrations are idempotent and schema-qualified.
 5. Operator runbook covers backup, restore, and rollback.
-

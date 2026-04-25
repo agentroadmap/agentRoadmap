@@ -1,6 +1,8 @@
-# P419 — State Machine Concurrency Ceilings
+# P439 — State Machine Concurrency Ceilings
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P439
+
+This is a design note paired with MCP proposal P439. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -22,4 +24,3 @@ Add control-plane concurrency policy and enforce it at claim time.
 
 - P411 Control Database Bootstrap
 - P413 Dispatch and Agency Hardening
-

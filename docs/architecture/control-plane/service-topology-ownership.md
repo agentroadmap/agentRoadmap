@@ -1,6 +1,8 @@
-# P421 — Service Topology Ownership
+# P441 — Service Topology Ownership
 
-## Status: DRAFT | Type: component | Agent: architect
+> **Type:** component  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P441
+
+This is a design note paired with MCP proposal P441. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -22,4 +24,3 @@ Document and enforce one owner per state-machine responsibility.
 
 - P411 Control Database Bootstrap
 - P415 Control Panel Observability
-

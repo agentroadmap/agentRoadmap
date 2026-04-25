@@ -60,31 +60,91 @@ Important live facts:
 
 ## 3. Where Things Live
 
-Use the real repo layout, not an imagined one:
+### Tracked vs untracked, at a glance
+
+**TRACKED — every commit is reviewed; do not litter:**
+
+| Area | Purpose | What belongs here |
+| --- | --- | --- |
+| `src/core/` | proposal logic, workflow logic, roadmap query layer | TypeScript modules that are imported by other modules |
+| `src/infra/` | Postgres pool, storage adapters, DB-facing helpers | infrastructure adapters; nothing domain-specific |
+| `src/apps/mcp-server/` | MCP server, tool registration, handlers | MCP tool wrappers and the SSE/HTTP server |
+| `src/apps/cli.ts`, `src/apps/agenthive-cli.ts` | CLI entrypoints | CLI command wiring; thin |
+| `src/apps/dashboard-web/`, `src/apps/ui/` | board/web UI | TUI/web view components |
+| `src/shared/` | shared types, constants, utilities | code imported from both core and apps |
+| `database/ddl/` | schema DDL and numbered rollout SQL | schema-qualified, idempotent, numbered files |
+| `database/dml/` | initialization data and seed-like artifacts | reference data, seeds |
+| `database/migrations/` | newer numbered migrations | one logical migration per file |
+| `docs/architecture/` | canonical architecture documents | durable design docs that survive multiple proposals |
+| `docs/governance/` | constitution, decisions log, agent onboarding | durable governance |
+| `docs/pillars/` | pillar/proposal architecture docs | per-pillar canonical docs |
+| `docs/reference/` | reference material (schema migration, glossary, etc.) | durable reference |
+| `docs/glossary.md` | shared vocabulary | one file; update in place |
+| `scripts/` | runtime, board, systemd, helper scripts | committed scripts that other code depends on |
+| `tests/` | automated tests | test code only |
+
+**UNTRACKED — write here freely; do not commit:**
 
 | Area | Purpose |
 | --- | --- |
-| `src/core/` | proposal logic, workflow logic, roadmap query layer |
-| `src/infra/postgres/` | Postgres pool, storage adapters, DB-facing helpers |
-| `src/apps/mcp-server/` | MCP server, tool registration, handlers |
-| `src/apps/cli.ts` | CLI entrypoint |
-| `database/ddl/` | schema DDL and numbered rollout SQL |
-| `database/dml/` | initialization data and seed-like artifacts |
-| `docs/pillars/` | architecture and proposal/workflow docs |
-| `scripts/` | runtime, board, systemd, and helper scripts |
-| `tests/` | existing automated tests |
-| `tmp/` | disposable local artifacts only; never commit from here |
+| `tmp/<session>/` | per-session scratch (logs, dumps, intermediate notes); auto-reaped |
+| `tmp/` (root, no subdir) | one-off scratch; falls under same auto-reap rule |
+| `<sibling-worktree>/` | per-agent git worktree resolved from CWD; is your sandbox |
+
+`.gitignore` enforces these. If a tool wants to commit something under `tmp/`, that means the artifact is not actually scratch and should be moved into a tracked location with a real home.
 
 ## 4. Daily Working Rules
 
 - Use a dedicated Git worktree for your task, typically under a sibling worktree directory resolved from CWD.
 - Keep changes surgical. Do not opportunistically refactor unrelated code while fixing something else.
-- Put logs, scratch files, dumps, and temporary outputs in `tmp/` or your session workspace, not in tracked source folders.
 - Prefer existing patterns and helpers over inventing parallel abstractions.
 - Keep TypeScript and SQL changes aligned. If schema changes, check the storage layer, MCP handlers, CLI, and views that consume it.
 - If you notice an improvement, consolidation opportunity, concept unification, or a current or potential issue, create or update a proposal instead of leaving it as chat-only context.
 - Never commit credentials, copied env files, or secrets from `.env`, `/etc/agenthive/env`, or local shell history.
 - Do not claim a deployment, migration, or verification step that you did not actually perform.
+
+## 4a. Folder Discipline (mandatory for every cubic agent)
+
+AgentHive is shared infrastructure. Multiple agencies, projects, and providers share this repo. Every file you write is a vote on what belongs in the repo forever. Be ruthless about where things go.
+
+### What goes where — a decision tree
+
+When you are about to write a file, ask in this order:
+
+1. **Is it code another module imports?** → `src/...` in the right subtree. Never under `docs/`, never under `scripts/`, never under `tmp/`.
+2. **Is it canonical, durable design or governance?** (multi-month relevance, multiple agents will read it) → `docs/architecture/`, `docs/governance/`, `docs/reference/`, or a pillar folder. Pair with a tracked MCP proposal that owns the lifecycle.
+3. **Is it about a specific proposal?** → it goes in MCP, not in a markdown file. Use `prop_update`, `add_acceptance_criteria`, `add_discussion`, or `submit_review`. Markdown design notes paired with an MCP proposal live under `docs/architecture/<topic>/<slug>.md` (no `Pxxx-` prefix in the filename) and reference the MCP `display_id` in their frontmatter.
+4. **Is it a one-off output you need during this session?** (a SQL dump, a log capture, a parser experiment, a temporary report) → `tmp/<your-session-id>/`. Never `docs/tmp/`. Never repo root. Never `docs/` at all.
+5. **Is it a "ship verification" or "gate decision" or "handoff" note?** → these are MCP-tracked artifacts. Use `add_discussion` on the proposal with a `context_prefix` like `ship-verification:` or `gate-decision:` or `handoff:`. Do not create `docs/ship-reports/`, `docs/handoff/`, `docs/tmp/gate-decisions-*.md` files. Those folders are deprecated.
+6. **Is it a research note or RFC draft you want to keep?** → it should be either an MCP proposal (`prop_create` with `type=feature` or `component`, status `DRAFT`) or a durable doc under `docs/research/<topic>.md` linked from a proposal. If it would not survive a code review, it does not belong in `docs/`.
+
+### Hard rules
+
+- **Never write to `docs/tmp/`.** That folder is being retired (P452). Use `tmp/<session>/` instead.
+- **Never write to `docs/ship/`, `docs/ships/`, `docs/shipping/`, `docs/ship-reports/`.** Ship verifications go into MCP via `add_discussion` with `context_prefix=ship-verification:`.
+- **Never write to repo root** outside the existing top-level files. New top-level files require a proposal.
+- **Never create `docs/handoff/<date>.md` files.** Handoffs go into MCP discussions on the proposal you are handing off, plus optional team-memory or ZK notes.
+- **Never create `docs/<Pxxx>-<anything>.md`.** The MCP record at `roadmap_proposal.proposal` row Pxxx is canonical. Design notes paired with a proposal live under `docs/architecture/<topic>/<slug>.md` with the assigned MCP ID in frontmatter — not in the filename.
+- **Never copy `docs/proposals/` from before 2026-04-25.** Those legacy stubs collided with live MCP IDs and have been moved to `docs/architecture/control-plane/` with stripped prefixes. Don't recreate the pattern.
+- **Do not commit anything under `tmp/`.** The folder is gitignored and reaped on a schedule. If a file under `tmp/` is worth keeping, find it a real home in a tracked folder under a real proposal.
+
+### When you write a markdown file under `docs/`
+
+It must have:
+
+1. A clear topic-driven filename (no `Pxxx-` prefix, no date stamp, no agent name). Slug-style: `multi-project-rollout-plan.md`.
+2. A short frontmatter block at the top:
+   ```markdown
+   > **Type:** design note | governance | reference  
+   > **MCP-tracked:** P### (or N/A if cross-cutting)  
+   > **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P### (or "this file" for cross-cutting governance)
+   ```
+3. A clear first paragraph stating what problem this doc solves and who reads it.
+4. No personal session context, no `# 2026-04-25 hermes-andy figured out…`, no narrative about how the doc came to exist. Future readers don't care.
+
+### When in doubt
+
+Ask via MCP `msg_send` to a senior agent or to the orchestrator before creating a new top-level folder, a new `docs/` subdirectory, or a new file under `docs/` whose topic is not already represented. The bar is high because every new tracked file is permanent.
 
 ## 5. Proposal and RFC Workflow Through MCP
 
@@ -373,6 +433,24 @@ Before you start:
 5. Check whether your change touches live-schema compatibility.
 6. Use the correct worktree and branch.
 7. If you discovered a broader improvement or risk while scoping the task, capture it in a proposal before you forget it.
+8. Decide where every output you'll produce belongs (§4a). If you don't know, ask before writing.
+
+### Hardcoding red flags — do not introduce, fix when you find
+
+AgentHive is shared infrastructure. The following patterns block parallel multi-tenant operation. If you are about to write one, stop and use the registered alternative. If you find one, file an issue (or extend P448–P451) and fix it surgically.
+
+| Antipattern | Why it hurts | Use instead |
+| --- | --- | --- |
+| `"/data/code/AgentHive"`, `"/data/code/worktree"` literal | Switching agency host costs a multi-file edit (P448) | `getProjectRoot()` / `getWorktreeRoot()` from `src/shared/runtime/paths.ts` |
+| `"xiaomi"` as PGUSER fallback, `/home/xiaomi/...` paths | Fails on every other user; provider switch destroys env (P448) | `getDbUser()` / `getOsUser()` — fail fast if env unset |
+| `"http://127.0.0.1:6421/sse"`, `"http://localhost:6420"` | Two AgentHive instances on one host collide; cross-host blocked (P449) | `getMcpUrl()` / `getDaemonUrl()` from `src/shared/runtime/endpoints.ts` |
+| Hardcoded model name (`"claude-sonnet-4-6"`, `"xiaomi/mimo-v2-pro"`) | Bypasses `model_routes`; cross-platform leakage (P235, P450) | `resolveModelRoute(provider, modelHint)` from agent-spawner — never a literal |
+| Bare workflow state literal (`'DRAFT'`, `'COMPLETE'`, `'TRIAGE'`) | Per-project workflows can't override; SMDL drift (P410, P451) | `States.rfc.draft`, `isTerminal(template, stage)` from `src/core/workflow/state-names.ts` (per P453) |
+| Bare maturity literal (`'mature'`, `'obsolete'`) | Same problem (P451) | `Maturity.MATURE` etc. from same module |
+| Hardcoded agency name (`"hermes/agency-xiaomi"`, `"claude-bob"`) | One agent identity baked into routing decisions | Pass `agentIdentity` through the call chain; resolve from registry |
+| Schema-unqualified SQL (`FROM proposal` without `roadmap.`) | Lives in `public.*` ambiguity, breaks with control-plane rename | Always `FROM roadmap_proposal.proposal` (or future `control_*`) |
+
+When the registered alternative does not yet exist (e.g., the new `paths.ts` and `endpoints.ts` modules per P448/P449 are still draft), capture a `// TODO(P###):` comment naming the proposal that will replace the literal — do not silently re-add the antipattern.
 
 Before you finish:
 

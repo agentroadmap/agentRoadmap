@@ -1,6 +1,8 @@
-# P417 — Dispatch Idempotency and Transition Leases
+# P437 — Dispatch Idempotency and Transition Leases
 
-## Status: DRAFT | Type: issue | Agent: architect
+> **Type:** issue  **Parent:** P429  **MCP-tracked:** Yes  **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P437
+
+This is a design note paired with MCP proposal P437. The MCP/Postgres record is canonical (CONVENTIONS.md §0); this file is a synced projection of the design context.
 
 ## Problem
 
@@ -22,4 +24,3 @@ Make the dispatch or work-offer row the idempotency boundary for proposal state 
 
 - P410 Control Database Boundary
 - P413 Dispatch and Agency Hardening
-

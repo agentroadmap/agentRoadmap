@@ -6,7 +6,10 @@ rules:
     severity: critical
     confidence: high
     proposal: P449
-    tags: [endpoints, mcp, multi-instance]
+    tags:
+      - endpoints
+      - mcp
+      - multi-instance
     regex: |
       https?://(127\.0\.0\.1|localhost):6421["\']?
     fix_suggestion: |
@@ -34,7 +37,10 @@ rules:
     severity: critical
     confidence: high
     proposal: P449
-    tags: [endpoints, daemon, multi-instance]
+    tags:
+      - endpoints
+      - daemon
+      - multi-instance
     pattern: ':6420'
     fix_suggestion: |
       Use the daemon endpoint resolver:
@@ -60,7 +66,10 @@ rules:
     severity: high
     confidence: high
     proposal: P449
-    tags: [endpoints, websocket, mcp]
+    tags:
+      - endpoints
+      - websocket
+      - mcp
     regex: 'ws(s)?://(127\.0\.0\.1|localhost):[0-9]{4}["\']?'
     fix_suggestion: |
       Use the endpoint resolver, then convert to WebSocket protocol:
@@ -84,9 +93,16 @@ rules:
     severity: high
     confidence: high
     proposal: P449
-    tags: [endpoints, database, multi-instance]
+    tags:
+      - endpoints
+      - database
+      - multi-instance
     pattern: '"127.0.0.1:5432"'
-    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'src/shared/runtime/endpoints.ts']
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
+      - src/shared/runtime/endpoints.ts
     fix_suggestion: |
       Use environment variables for database host:
 
@@ -115,9 +131,14 @@ rules:
     severity: medium
     confidence: high
     proposal: P449
-    tags: [endpoints, config, third-party]
+    tags:
+      - endpoints
+      - config
+      - third-party
     pattern: '"https://discord.com/api'
-    file_glob_exclude: ['**/*.test.ts', 'docs/**']
+    file_glob_exclude:
+      - '**/*.test.ts'
+      - 'docs/**'
     fix_suggestion: |
       Move Discord API endpoint to configuration:
 
@@ -141,8 +162,15 @@ rules:
     severity: medium
     confidence: medium
     proposal: P449
-    tags: [endpoints, port, config]
-    file_glob_exclude: ['src/shared/runtime/endpoints.ts', '**/*.test.ts', '**/*.spec.ts', 'tests/**']
+    tags:
+      - endpoints
+      - port
+      - config
+    file_glob_exclude:
+      - src/shared/runtime/endpoints.ts
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - 'tests/**'
     regex: '[:=]["\']?(6420|6421|6422|5432)["\']?(?![0-9])'
     fix_suggestion: |
       Extract port numbers to configuration or use endpoint resolvers:
