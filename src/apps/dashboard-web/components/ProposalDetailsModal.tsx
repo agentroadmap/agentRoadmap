@@ -95,6 +95,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const proposalRef = useRef<Proposal | undefined>(proposal);
 	const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
 	const modeRef = useRef<Mode>(mode);
+	const activeProposalIdRef = useRef<string>(proposalId);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -123,6 +124,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(
 		proposal?.acceptanceCriteriaItems || [],
 	);
+	const criteriaRef = useRef<AcceptanceCriterion[]>(criteria);
 	const [decisions, setDecisions] = useState<Array<{
 		id: number; decision: string; authority: string; rationale: string | null; binding: boolean; decided_at: string;
 	}>>([]);
@@ -326,6 +328,10 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		proposalRef.current = proposal;
 	}, [proposal]);
 
+	useEffect(() => {
+		criteriaRef.current = criteria;
+	}, [criteria]);
+
 	const createSnapshot = useCallback(
 		(source?: Proposal): ProposalFormSnapshot => ({
 			title: source?.title || "",
@@ -360,6 +366,13 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	);
 
 	const applySnapshot = useCallback((snapshot: ProposalFormSnapshot) => {
+		const preserveCurrentCriteria =
+			activeProposalIdRef.current === proposalId &&
+			criteriaRef.current.length > 0 &&
+			snapshot.criteria.length === 0;
+		const nextCriteria = preserveCurrentCriteria
+			? criteriaRef.current
+			: snapshot.criteria;
 		setTitle(snapshot.title);
 		setSummary(snapshot.summary);
 		setMotivation(snapshot.motivation);
@@ -371,7 +384,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		setPlan(snapshot.plan);
 		setNotes(snapshot.notes);
 		setFinalSummary(snapshot.finalSummary);
-		setCriteria(snapshot.criteria);
+		setCriteria(nextCriteria);
 		setStatus(snapshot.status);
 		setAssignee(snapshot.assignee);
 		setLabels(snapshot.labels);
@@ -380,7 +393,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		setReferences(snapshot.references);
 		setRequiredCapabilities(snapshot.requiredCapabilities);
 		setDirective(snapshot.directive);
-	}, []);
+		activeProposalIdRef.current = proposalId;
+		return { ...snapshot, criteria: nextCriteria };
+	}, [proposalId]);
 
 	const isDirty = useMemo(() => {
 		return (
@@ -417,8 +432,8 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	useEffect(() => {
 		if (proposalId && proposalRef.current?.id !== proposalId) return;
 		const snapshot = createSnapshot(proposalRef.current);
-		applySnapshot(snapshot);
-		setBaseline(snapshot);
+		const appliedSnapshot = applySnapshot(snapshot);
+		setBaseline(appliedSnapshot);
 		setMode(isCreateMode ? "create" : "preview");
 		setError(null);
 	}, [applySnapshot, createSnapshot, isCreateMode, proposalId]);
@@ -431,8 +446,8 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			.then((fullProposal) => {
 				if (cancelled || !fullProposal || modeRef.current === "edit") return;
 				const snapshot = createSnapshot(fullProposal);
-				applySnapshot(snapshot);
-				setBaseline(snapshot);
+				const appliedSnapshot = applySnapshot(snapshot);
+				setBaseline(appliedSnapshot);
 			})
 			.catch(() => {
 				// Silently fail - use what we have from WebSocket
