@@ -1,0 +1,216 @@
+ruleset: models
+description: Hardcoded model names that bypass model routing and multi-provider support
+rules:
+  - id: models.hardcoded-anthropic
+    description: Hardcoded Claude model name (claude-sonnet-*, claude-opus-*, claude-haiku-*) outside tests and module-level seed data
+    severity: critical
+    confidence: high
+    proposal: P450
+    tags: [models, anthropic, routing, multi-provider]
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**', 'src/tools/scanner/rules/**']
+    regex: '["\']claude-(sonnet|opus|haiku)-[0-9]+["\']'
+    fix_suggestion: |
+      Model names must be resolved through the model routing system, not hardcoded.
+      Use resolveModelRoute() to determine the best available Claude model for the task:
+
+      ```typescript
+      // DO NOT hardcode:
+      // const model = "claude-sonnet-4-6";
+
+      // Instead: use the resolver
+      import { resolveModelRoute } from 'src/core/runtime/agent-spawner';
+
+      const route = await resolveModelRoute({
+        modelHint: 'claude-sonnet', // hint only, not a hard requirement
+        agentProvider: 'claude',
+        host: process.env.HOSTNAME,
+        requiredCapabilities: ['reasoning', 'tool_use'],
+      });
+
+      if (!route) {
+        throw new Error('No Claude route available matching requirements');
+      }
+
+      return route.model_name; // actual resolved model (may differ from hint)
+      ```
+
+      This allows the control plane to substitute models based on:
+      - Host policy (which models are allowed where)
+      - Budget (use cheaper models if expensive route is over budget)
+      - Availability (fallback if requested model is offline)
+      - Multi-provider strategy (use OpenAI Claude if Anthropic is over-quota)
+
+      See CONVENTIONS.md §9 and P450 for details.
+    examples_match:
+      - 'const model = "claude-sonnet-4-6";'
+      - 'return "claude-opus-4-1";'
+      - 'spawnAgent({ model: "claude-haiku-3-5" });'
+    examples_no_match:
+      - 'const model = await resolveModelRoute("claude-sonnet");'
+      - 'const model = route.model_name; // from resolved route'
+
+  - id: models.hardcoded-openai
+    description: Hardcoded OpenAI model name (gpt-4*, gpt-3.5-turbo, etc.)
+    severity: critical
+    confidence: high
+    proposal: P450
+    tags: [models, openai, routing, multi-provider]
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    regex: '["\']gpt-[0-9]+(\.[0-9]+)?(-turbo|-mini|-o)?["\']'
+    fix_suggestion: |
+      Model names must be resolved through the model routing system:
+
+      ```typescript
+      // DO NOT hardcode:
+      // const model = "gpt-4-turbo";
+
+      // Instead:
+      const route = await resolveModelRoute({
+        modelHint: 'gpt-4',
+        agentProvider: 'openai',
+        host: process.env.HOSTNAME,
+      });
+
+      return route.model_name; // actual OpenAI model assigned by routing
+      ```
+
+      This allows budget enforcement, provider switching, and capability-based selection.
+    examples_match:
+      - 'const model = "gpt-4-turbo";'
+      - 'return "gpt-3.5-turbo";'
+    examples_no_match:
+      - 'const route = await resolveModelRoute("gpt-4");'
+
+  - id: models.hardcoded-google
+    description: Hardcoded Google model name (gemini-pro, gemini-1.5, etc.)
+    severity: critical
+    confidence: high
+    proposal: P450
+    tags: [models, google, routing, multi-provider]
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    regex: '["\']gemini-(pro|flash|ultra|[0-9]+\.[0-9]+)["\']'
+    fix_suggestion: |
+      Use the model routing resolver instead of hardcoding:
+
+      ```typescript
+      const route = await resolveModelRoute({
+        modelHint: 'gemini-pro',
+        agentProvider: 'google',
+        host: process.env.HOSTNAME,
+      });
+      return route.model_name;
+      ```
+
+      This ensures Google models are subject to the same budget and host policy enforcement
+      as other providers.
+    examples_match:
+      - 'const model = "gemini-pro";'
+      - 'return "gemini-1.5-pro";'
+    examples_no_match:
+      - 'const route = await resolveModelRoute("gemini-pro");'
+
+  - id: models.hardcoded-xiaomi
+    description: Hardcoded Xiaomi/Nous model name (xiaomi/mimo-*, nous/*)
+    severity: critical
+    confidence: high
+    proposal: P450
+    tags: [models, xiaomi, nous, routing, multi-provider]
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**']
+    regex: '["\'](?:xiaomi|nous)/[a-z0-9\-]+["\']'
+    fix_suggestion: |
+      Use the model routing resolver:
+
+      ```typescript
+      const route = await resolveModelRoute({
+        modelHint: 'xiaomi/mimo-v2-pro',
+        agentProvider: 'hermes', // or 'codex'
+        host: process.env.HOSTNAME,
+      });
+      return route.model_name;
+      ```
+
+      This allows AgentHive to enforce host policy and budget across local model servers
+      as well as cloud providers.
+    examples_match:
+      - 'return "xiaomi/mimo-v2-omni";'
+      - 'const model = "nous/hermes-2-pro";'
+    examples_no_match:
+      - 'const route = await resolveModelRoute("xiaomi/mimo-v2-pro");'
+
+  - id: models.cli-builders-default-model
+    description: defaultModel() function in cli-builders.ts returning hardcoded model
+    severity: critical
+    confidence: high
+    proposal: P450
+    tags: [models, cli-builders, routing]
+    file_glob: ['src/core/runtime/cli-builders.ts']
+    regex: 'defaultModel\(\)\s*\{[^}]*return\s+["\'][a-z\-0-9\.]+["\']'
+    fix_suggestion: |
+      The defaultModel() function must resolve through the model routing system.
+      Update src/core/runtime/cli-builders.ts:
+
+      ```typescript
+      async function defaultModel(agentProvider: string): Promise<string> {
+        // DO NOT return a hardcoded string
+
+        // Instead:
+        const route = await resolveModelRoute({
+          modelHint: null, // no hint; use provider default
+          agentProvider,
+          host: process.env.HOSTNAME,
+        });
+
+        if (!route) {
+          throw new Error(`No default route for provider: ${agentProvider}`);
+        }
+
+        return route.model_name;
+      }
+      ```
+
+      This function is called by agent spawners and CLI builders. Hardcoding here defeats
+      all budget, host policy, and provider-switching controls.
+    examples_match:
+      - 'defaultModel() { return "claude-sonnet-4-6"; }'
+      - 'defaultModel() { return "xiaomi/mimo-v2-omni"; }'
+    examples_no_match:
+      - 'async defaultModel() { const route = await resolveModelRoute(...); return route.model_name; }'
+
+  - id: models.bare-model-string-in-spawn
+    description: Model name passed as positional arg to spawnAgent() instead of resolved through router
+    severity: high
+    confidence: medium
+    proposal: P450
+    tags: [models, spawn, routing]
+    regex: 'spawnAgent\([^)]*["\'][a-z\-0-9\.]+["\'][^)]*\)|--model\s+["\']?[a-z\-0-9\.]+["\']?'
+    fix_suggestion: |
+      Pass resolved routes to spawn, not raw model names:
+
+      ```typescript
+      // DO NOT:
+      // await spawnAgent("claude-sonnet-4-6", { ... });
+      // await spawnAgent("--model", "gpt-4", { ... });
+
+      // Instead:
+      const route = await resolveModelRoute({
+        modelHint: 'claude-sonnet',
+        agentProvider: 'claude',
+        host,
+      });
+
+      if (!route) {
+        throw new Error('No route available for specified model');
+      }
+
+      await spawnAgent({
+        routeId: route.route_id, // use resolved route, not model name
+        ...otherArgs,
+      });
+      ```
+
+      This ensures spawn-time budget and policy checks are performed before execution.
+    examples_match:
+      - 'await spawnAgent("claude-sonnet-4-6", options);'
+      - 'args.push("--model", "xiaomi/mimo-v2-pro");'
+    examples_no_match:
+      - 'const route = await resolveModelRoute(...); await spawnAgent({ routeId: route.route_id });'

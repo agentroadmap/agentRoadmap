@@ -1,0 +1,28 @@
+# Hardcoding Scanner Allowlist
+# Entries below suppress findings for files that are known exceptions
+# Use sparingly — most hardcoding is a bug waiting to happen
+
+- path: scripts/agenthive.cjs.js
+  rules: "*"
+  reason: generated bundle, hardcoded literals are acceptable
+
+- path: scripts/agenthive.cjs
+  rules: "*"
+  reason: generated wrapper script
+
+- path: docs/architecture/control-plane-multi-project-architecture.md
+  rules:
+    - example-hardcoded-tmpdir
+    - example-literal-db-host
+  reason: architecture documentation must show target literals for explanation
+
+- path: database/ddl/01-schema.sql
+  rules:
+    - example-literal-db-host
+  reason: initial DDL contains literal postgres user references
+
+- path: CONVENTIONS.md
+  rules:
+    - example-hardcoded-tmpdir
+    - example-literal-db-host
+  reason: conventions documentation references literal paths and hosts as examples

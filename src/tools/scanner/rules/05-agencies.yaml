@@ -1,0 +1,177 @@
+ruleset: agencies
+description: Hardcoded agency, worker, and agent identity literals blocking dynamic agent dispatch
+rules:
+  - id: agencies.hermes-agency-xiaomi
+    description: Hardcoded "hermes/agency-xiaomi" agency identity outside trust resolver and identity docs
+    severity: high
+    confidence: high
+    proposal: P448
+    tags: [identity, agency, hardcoded-agent]
+    pattern: '"hermes/agency-xiaomi"'
+    file_glob_exclude: ['src/infra/trust/trust-resolver.ts', 'docs/**', '**/*.test.ts', '**/*.spec.ts', 'tests/**']
+    fix_suggestion: |
+      Agency identities must not be hardcoded. Use the trust resolver to look up stable agencies by ID:
+
+      ```typescript
+      // DO NOT hardcode:
+      // const agencyId = "hermes/agency-xiaomi";
+
+      // Instead:
+      import { resolveTrustContext } from 'src/infra/trust/trust-resolver';
+
+      const trustCtx = await resolveTrustContext({
+        agencyHint: 'primary', // hint only; actual agency determined by registry
+        providerPreference: 'hermes',
+        projectId: offer.project_id,
+      });
+
+      // Or look up by role:
+      const architect = await agencyRegistry.findByRole('architect', offer.project_id);
+      const agencyId = architect.identity;
+      ```
+
+      This allows the platform to:
+      - Dynamically assign agencies based on availability and role
+      - Support multiple instances of the same agency type
+      - Perform agency failover without code changes
+      - Register new agencies without hardcoding
+
+      See src/infra/trust/trust-resolver.ts for canonical resolver.
+    examples_match:
+      - 'const agency = "hermes/agency-xiaomi";'
+      - 'if (offer.agency === "hermes/agency-xiaomi") { /* special */ }'
+    examples_no_match:
+      - 'const trustCtx = await resolveTrustContext(...);'
+      - 'const agency = agencyRegistry.findByRole("architect");'
+
+  - id: agencies.hardcoded-worker-id
+    description: Hardcoded "worker-*" literal for ephemeral worker identity (workers are per-dispatch)
+    severity: high
+    confidence: high
+    proposal: P448
+    tags: [identity, worker, ephemeral]
+    regex: '["\']worker-[0-9]+["\']'
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**']
+    fix_suggestion: |
+      Worker IDs are ephemeral and generated per dispatch. Never hardcode them.
+
+      ```typescript
+      // DO NOT hardcode:
+      // const workerId = "worker-11099";
+
+      // Instead: let the dispatcher generate worker IDs
+      const dispatch = await dispatcher.createDispatch({
+        proposalId: offer.proposal_id,
+        role: 'develop',
+        // worker_id and worker are generated automatically
+      });
+
+      const workerId = dispatch.worker_id; // e.g. "worker-11099"
+      ```
+
+      Workers are created at dispatch time, are unique per dispatch, and are retired
+      when the dispatch completes. Each dispatch gets a new worker_id.
+
+      Stable identities are:
+      - `agency_id` (stable, registered once)
+      - `proposal_id` (stable, persistent)
+      - `dispatch_id` (stable, one per proposal state transition)
+
+      Ephemeral identities are:
+      - `worker_id` (generated per dispatch)
+      - `run_id` (generated per execution)
+    examples_match:
+      - 'const workerId = "worker-11099";'
+      - 'if (msg.from === "worker-1234") { /* special */ }'
+    examples_no_match:
+      - 'const workerId = dispatch.worker_id; // from dispatcher'
+      - 'const worker = await workerRegistry.findActive(dispatch.dispatch_id);'
+
+  - id: agencies.hardcoded-agent-name
+    description: Hardcoded agent names (hermes-andy, claude-bob, copilot-one, xiaomi-one, skeptic-alpha, skeptic-beta, orchestrator) outside test data and resolver helpers
+    severity: high
+    confidence: high
+    proposal: P448
+    tags: [identity, agent, hardcoded]
+    regex: '["\'](?:hermes-andy|claude-bob|copilot-one|xiaomi-one|skeptic-alpha|skeptic-beta|orchestrator)["\']'
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'database/dml/**', 'src/infra/trust/**', 'docs/**']
+    fix_suggestion: |
+      Agent identities must be resolved from the agent registry, not hardcoded.
+      These are example names used in demos; production systems may have different agents.
+
+      ```typescript
+      // DO NOT hardcode:
+      // const agent = "claude-bob";
+      // const agent = "skeptic-alpha";
+
+      // Instead: look up by role or capability
+      import { agentRegistry } from 'src/core/identity/agent-registry';
+
+      const reviewer = await agentRegistry.findByRole('gating-reviewer', {
+        projectId: offer.project_id,
+      });
+
+      const agentName = reviewer.identity; // e.g. "claude-bob" or "hermes-admin"
+      ```
+
+      Or accept agent identity from the dispatch system:
+      ```typescript
+      const offer = await dispatcher.nextOffer();
+      // offer.assigned_to_agent already contains the resolved agent identity
+      ```
+
+      This allows:
+      - Agent substitution based on availability and role
+      - Multi-site deployments with different agent names
+      - Testing with mock agents
+      - Dynamic team composition
+    examples_match:
+      - 'const reviewer = "skeptic-alpha";'
+      - 'if (agentName === "hermes-andy") { /* special */ }'
+      - 'send("claude-bob", message);'
+    examples_no_match:
+      - 'const agent = await agentRegistry.findByRole("reviewer", { projectId });'
+      - 'const agentName = offer.assigned_to_agent; // from dispatcher'
+
+  - id: agencies.discord-id-hardcode
+    description: Hardcoded Discord user IDs (18-19 digit numeric strings)
+    severity: medium
+    confidence: medium
+    proposal: P448
+    tags: [identity, discord, third-party]
+    file_glob_exclude: ['**/*.test.ts', '**/*.spec.ts', 'tests/**', 'docs/**']
+    regex: '["\'](\d{18,19})["\'](?=.*(?:discord|user|channel|role))'
+    fix_suggestion: |
+      Discord IDs must be stored in configuration, not hardcoded. Use environment variables or config tables:
+
+      ```typescript
+      // DO NOT hardcode:
+      // const discordUserId = "123456789012345678";
+
+      // Instead:
+      const discordUserId = process.env.DISCORD_ADMIN_USER_ID;
+      if (!discordUserId) {
+        throw new Error('DISCORD_ADMIN_USER_ID environment variable is required');
+      }
+
+      const user = await discord.fetchUser(discordUserId);
+      ```
+
+      Or from a config table:
+      ```typescript
+      const config = await db.query(
+        'SELECT discord_user_id FROM agent_config WHERE agent_name = $1',
+        [agentName]
+      );
+      ```
+
+      This allows:
+      - Different Discord workspaces per deployment
+      - User ID updates without code changes
+      - Multi-project Discord mappings
+    examples_match:
+      - 'const adminId = "123456789012345678";'
+      - 'const discordUserId = "987654321098765432";'
+    examples_no_match:
+      - 'const userId = process.env.DISCORD_ADMIN_USER_ID;'
+      - 'const config = await db.getDiscordUserForAgent(agentName);'

@@ -1,0 +1,234 @@
+ruleset: misc
+description: AgentHive-specific patterns and code-debt markers
+rules:
+  - id: misc.unqualified-roadmap-table
+    description: SQL fragments referencing proposal/dispatch/lease tables without `roadmap_*` schema prefix
+    severity: high
+    confidence: high
+    proposal: P436
+    tags: [sql, schema, multi-project]
+    file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
+    regex: 'FROM\s+(proposal|squad_dispatch|proposal_lease|proposal_version|proposal_dependency|acceptance_criteria)(?!\w)|JOIN\s+(proposal|squad_dispatch|proposal_lease)(?!\w)|UPDATE\s+(proposal|squad_dispatch|proposal_lease)(?!\w)'
+    fix_suggestion: |
+      All references to proposal, workflow, and dispatch tables must use the schema-qualified
+      name to avoid ambiguity as the control-plane schema splits (P410, P436).
+
+      ```typescript
+      // DO NOT:
+      // const result = await client.query('SELECT * FROM proposal WHERE id = $1');
+      // const dispatch = await client.query('SELECT * FROM squad_dispatch WHERE ...');
+
+      // Instead:
+      const result = await client.query(
+        'SELECT * FROM roadmap_proposal.proposal WHERE id = $1'
+      );
+      const dispatch = await client.query(
+        'SELECT * FROM roadmap_workforce.squad_dispatch WHERE ...'
+      );
+      ```
+
+      **Current mappings (P436 migration phase):**
+      - `roadmap_proposal.*` - proposal, versions, dependencies, criteria
+      - `roadmap_workflow.*` - workflow state definitions, templates
+      - `roadmap_workforce.*` - squad_dispatch, proposal_lease, agencies
+
+      After P410 completes, the schema names will change to `control_*`. Update all
+      unqualified references now to prepare for the migration.
+
+      See CONVENTIONS.md §6: "Always schema-qualify SQL with `roadmap.`"
+    examples_match:
+      - 'SELECT * FROM proposal WHERE id = $1'
+      - 'JOIN squad_dispatch ON proposal.id = dispatch.proposal_id'
+      - 'UPDATE proposal_lease SET status = $1'
+      - 'DELETE FROM acceptance_criteria WHERE proposal_id = $1'
+    examples_no_match:
+      - 'SELECT * FROM roadmap_proposal.proposal WHERE id = $1'
+      - 'FROM roadmap_workforce.squad_dispatch'
+      - 'UPDATE roadmap_proposal.proposal_dependency SET ...'
+
+  - id: misc.console-log-in-handler
+    description: Bare console.log in MCP tool handlers (should use project logger)
+    severity: medium
+    confidence: high
+    proposal: P448
+    tags: [logging, handlers, mcp]
+    file_glob: ['src/apps/mcp-server/tools/**/*.ts', 'src/core/tool-agents/**/*.ts']
+    regex: 'console\.log\(|console\.error\(|console\.warn\(|console\.debug\('
+    fix_suggestion: |
+      MCP handlers and tool agents must use the structured project logger, not console.
+
+      ```typescript
+      // DO NOT:
+      // console.log('Processing proposal', proposalId);
+
+      // Instead:
+      import { logger } from 'src/shared/logging/logger';
+
+      logger.info('Processing proposal', {
+        proposal_id: proposalId,
+        timestamp: new Date().toISOString(),
+      });
+
+      // For errors:
+      logger.error('Failed to process proposal', {
+        proposal_id: proposalId,
+        error: err.message,
+        stack: err.stack,
+      });
+      ```
+
+      The structured logger:
+      - Routes output to the audit/operational logs
+      - Includes request context and agent identity
+      - Integrates with MCP event streams
+      - Redacts secrets automatically
+      - Supports different log levels per service
+
+      Console output is captured only by the local process and does not appear in
+      the operational feed.
+    examples_match:
+      - 'console.log("Proposal created");'
+      - 'console.error("Failed:", error);'
+      - 'console.debug(proposal);'
+    examples_no_match:
+      - 'logger.info("Proposal created", { proposal_id });'
+      - 'logger.error("Failed", { error: err.message });'
+
+  - id: misc.todo-without-proposal
+    description: TODO comments not referencing a proposal ID (expected format: TODO(Pxxx):)
+    severity: low
+    confidence: medium
+    proposal: P448
+    tags: [code-debt, todo, governance]
+    file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
+    regex: 'TODO(?!\s*\(P\d+\):)'
+    fix_suggestion: |
+      AgentHive uses proposal-driven development. All TODOs must reference the proposal
+      that owns the work. Use the format: `// TODO(P###): brief description`
+
+      ```typescript
+      // DO NOT:
+      // TODO: refactor this function
+      // TODO: add validation for email
+
+      // Instead:
+      // TODO(P448): refactor paths.ts for multi-tenant support
+      // TODO(P451): add email validation after workflow-state accessor (P453) ships
+      ```
+
+      This allows:
+      - Cross-referencing code with MCP proposals
+      - Tracking work across multiple files
+      - Identifying orphaned TODOs (proposal completed but TODO not removed)
+      - Scoping related changes to the same proposal
+
+      If no proposal exists yet, create one using MCP:
+      ```typescript
+      // Invoke MCP: prop_create(type='issue', title='...')
+      // Then reference it in the TODO
+      ```
+
+      See CONVENTIONS.md §5: "Proposal-first rule of thumb".
+    examples_match:
+      - '// TODO: fix this later'
+      - '// TODO: add validation'
+      - '/* TODO: update schema */'
+    examples_no_match:
+      - '// TODO(P448): refactor after paths.ts ships'
+      - '// TODO(P451): migrate to new state-names module'
+
+  - id: misc.fixme-marker
+    description: Bare FIXME comment without proposal context
+    severity: medium
+    confidence: high
+    proposal: P448
+    tags: [code-debt, fixme, governance]
+    file_glob: ['src/**/*.ts', 'scripts/**/*.ts', 'database/**/*.sql']
+    pattern: 'FIXME'
+    fix_suggestion: |
+      FIXME markers should always be linked to a proposal, either as a TODO(Pxxx) or as
+      an issue log entry. Bare FIXMEs are invisible to the proposal system.
+
+      ```typescript
+      // DO NOT:
+      // FIXME: this is inefficient
+      // FIXME: handle error case
+
+      // Instead:
+      // TODO(P451): optimize query performance (part of workflow-state refactor)
+      // TODO(P452): add error handler for async upload
+
+      // Or: if it's an urgent bug, log an issue immediately:
+      // // FIXME -> IssueLog: /data/code/AgentHive/src/core/runtime.ts:42
+      // //   Symptom: query hangs under load
+      // //   Root cause: missing index on proposal.created_at
+      // //   Workaround: none
+      ```
+
+      If a FIXME represents a real defect, create a proposal immediately (P448, P449, etc.)
+      or log an issue so the work is visible in the workflow system.
+
+      Bare FIXMEs create hidden technical debt that is invisible to agents and orchestrators.
+    examples_match:
+      - '// FIXME: needs optimization'
+      - '/* FIXME: implement retry logic */'
+    examples_no_match:
+      - '// TODO(P451): optimize query'
+      - '// IssueLog: P452 -> query performance'
+
+  - id: misc.commented-out-code-block
+    description: Multi-line commented-out code (3+ lines starting with if/for/while/function/const/let)
+    severity: low
+    confidence: medium
+    proposal: P448
+    tags: [code-debt, commented-code]
+    file_glob: ['src/**/*.ts', 'scripts/**/*.ts']
+    regex: '(?:^|\n)\s*//\s+(?:if|for|while|function|const|let|async|class|return|import|export)\b.*(?:\n\s*//\s+(?:if|for|while|function|const|let|async|class|return|import|export|[a-zA-Z_$]|\}|;).*){2,}'
+    fix_suggestion: |
+      Commented-out code blocks are difficult to maintain. Use one of these approaches:
+
+      **Option 1: Delete it (preferred for dead code)**
+      ```typescript
+      // Remove commented code. Git history preserves it if needed later.
+      ```
+
+      **Option 2: Create an issue/proposal if it represents planned work**
+      ```typescript
+      // TODO(P452): implement fallback caching strategy
+      // const fallbackCache = new Map();
+      // fallbackCache.get(key);
+      ```
+
+      **Option 3: Keep as a documented example with clear context**
+      ```typescript
+      // Alternative implementation using imperative loop (vs. functional reduce):
+      // for (let i = 0; i < items.length; i++) {
+      //   result += items[i].value;
+      // }
+      // Prefer functional style for consistency.
+      ```
+
+      Commented code:
+      - Takes up space and creates visual noise
+      - Is invisible to linters and may drift from the actual implementation
+      - Confuses new developers about what code is active
+      - Usually gets deleted eventually anyway
+
+      If the code might be useful later, open a proposal. If it's truly dead, delete it.
+    examples_match:
+      - |
+        // const oldFunction = () => {
+        //   const result = process.env.SOMETHING;
+        //   return result;
+        // };
+      - |
+        // if (useOldLogic) {
+        //   for (let i = 0; i < items.length; i++) {
+        //     console.log(items[i]);
+        //   }
+        // }
+    examples_no_match:
+      - |
+        // Example: alternative caching approach
+        // const cache = new Map(); // hypothetical only
+      - 'const result = process.env.SOMETHING; // gets value'

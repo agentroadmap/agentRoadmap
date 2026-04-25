@@ -1,0 +1,40 @@
+ruleset: example
+description: Placeholder example rules for validating scanner framework
+rules:
+  - id: example-hardcoded-tmpdir
+    description: Catches bare /tmp/ hardcoding (example for framework validation)
+    severity: medium
+    confidence: high
+    proposal: P448
+    pattern: '"/tmp/'
+    fix_suggestion: |
+      Replace hardcoded /tmp paths with getTempDir() from src/shared/runtime/paths.ts.
+    examples_match:
+      - 'const TEMP = "/tmp/app";'
+      - 'fs.writeFileSync("/tmp/log.txt", "data");'
+    examples_no_match:
+      - 'const TEMP = process.env.TMPDIR ?? "/tmp";'
+      - '// Never use /tmp in production'
+    tags: ["paths", "example"]
+
+  - id: example-literal-db-connection
+    description: Catches bare localhost hardcoding in connection strings
+    severity: high
+    confidence: medium
+    proposal: P449
+    pattern: 'localhost:5432'
+    file_glob:
+      - "src/**/*.ts"
+    file_glob_exclude:
+      - "**/*.test.ts"
+      - "src/shared/runtime/*.ts"
+    fix_suggestion: |
+      Replace with database configuration from environment variables.
+      Use getDatabaseConfig() from src/shared/runtime/config.ts.
+    examples_match:
+      - 'const connStr = "localhost:5432";'
+      - 'host: "localhost:5432",'
+    examples_no_match:
+      - 'const fallback = "localhost"; // used as default'
+      - '// the database runs on port 5432'
+    tags: ["endpoints", "example"]
