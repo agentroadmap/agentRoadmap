@@ -1,5 +1,5 @@
 import MDEditor from "@uiw/react-md-editor";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	AcceptanceCriterion,
 	Directive,
@@ -36,6 +36,29 @@ type InlineMetaUpdatePayload = Omit<Partial<Proposal>, "directive"> & {
 	directive?: string | null;
 };
 
+type ProposalFormSnapshot = {
+	title: string;
+	summary: string;
+	motivation: string;
+	design: string;
+	drawbacks: string;
+	alternatives: string;
+	dependencyNote: string;
+	description: string;
+	plan: string;
+	notes: string;
+	finalSummary: string;
+	criteria: AcceptanceCriterion[];
+	status: string;
+	assignee: string[];
+	labels: string[];
+	priority: string;
+	dependencies: string[];
+	references: string[];
+	requiredCapabilities: string[];
+	directive: string;
+};
+
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({
 	title,
 	right,
@@ -68,7 +91,11 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const { theme } = useTheme();
 	const isCreateMode = !proposal;
 	const isFromOtherBranch = Boolean(proposal?.branch);
+	const proposalId = proposal?.id ?? "";
+	const proposalRef = useRef<Proposal | undefined>(proposal);
 	const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
+	const modeRef = useRef<Mode>(mode);
+	const activeProposalIdRef = useRef<string>(proposalId);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +124,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 	const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(
 		proposal?.acceptanceCriteriaItems || [],
 	);
+	const criteriaRef = useRef<AcceptanceCriterion[]>(criteria);
 	const [decisions, setDecisions] = useState<Array<{
 		id: number; decision: string; authority: string; rationale: string | null; binding: boolean; decided_at: string;
 	}>>([]);
@@ -292,24 +320,82 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		(directiveEntity) => directiveEntity.id === directiveSelectionValue,
 	);
 
-	// Keep a baseline for dirty-check
-	const baseline = useMemo(
-		() => ({
-			title: proposal?.title || "",
-			summary: proposal?.summary || proposal?.description || "",
-			motivation: proposal?.motivation || "",
-			design: proposal?.design || proposal?.implementationPlan || "",
-			drawbacks: proposal?.drawbacks || "",
-			alternatives: proposal?.alternatives || "",
-			dependencyNote: proposal?.dependency_note || "",
-			description: proposal?.description || "",
-			plan: proposal?.implementationPlan || "",
-			notes: proposal?.implementationNotes || "",
-			finalSummary: proposal?.finalSummary || "",
-			criteria: JSON.stringify(proposal?.acceptanceCriteriaItems || []),
+	useEffect(() => {
+		modeRef.current = mode;
+	}, [mode]);
+
+	useEffect(() => {
+		proposalRef.current = proposal;
+	}, [proposal]);
+
+	useEffect(() => {
+		criteriaRef.current = criteria;
+	}, [criteria]);
+
+	const createSnapshot = useCallback(
+		(source?: Proposal): ProposalFormSnapshot => ({
+			title: source?.title || "",
+			summary: source?.summary || source?.description || "",
+			motivation: source?.motivation || "",
+			design: source?.design || source?.implementationPlan || "",
+			drawbacks: source?.drawbacks || "",
+			alternatives: source?.alternatives || "",
+			dependencyNote: source?.dependency_note || "",
+			description: source?.description || "",
+			plan: source?.implementationPlan || "",
+			notes: source?.implementationNotes || "",
+			finalSummary: source?.finalSummary || "",
+			criteria: source?.acceptanceCriteriaItems || [],
+			status:
+				source?.status ||
+				(isDraftMode ? "Draft" : availableStatuses?.[0] || "Draft"),
+			assignee: source?.assignee || [],
+			labels: source?.labels || [],
+			priority: source?.priority || "",
+			dependencies: source?.dependencies || [],
+			references: source?.references || [],
+			requiredCapabilities:
+				source?.required_capabilities || source?.needs_capabilities || [],
+			directive: source?.directive || "",
 		}),
-		[proposal],
+		[availableStatuses, isDraftMode],
 	);
+
+	const [baseline, setBaseline] = useState<ProposalFormSnapshot>(() =>
+		createSnapshot(proposal),
+	);
+
+	const applySnapshot = useCallback((snapshot: ProposalFormSnapshot) => {
+		const preserveCurrentCriteria =
+			activeProposalIdRef.current === proposalId &&
+			criteriaRef.current.length > 0 &&
+			snapshot.criteria.length === 0;
+		const nextCriteria = preserveCurrentCriteria
+			? criteriaRef.current
+			: snapshot.criteria;
+		setTitle(snapshot.title);
+		setSummary(snapshot.summary);
+		setMotivation(snapshot.motivation);
+		setDesign(snapshot.design);
+		setDrawbacks(snapshot.drawbacks);
+		setAlternatives(snapshot.alternatives);
+		setDependencyNote(snapshot.dependencyNote);
+		setDescription(snapshot.description);
+		setPlan(snapshot.plan);
+		setNotes(snapshot.notes);
+		setFinalSummary(snapshot.finalSummary);
+		setCriteria(nextCriteria);
+		setStatus(snapshot.status);
+		setAssignee(snapshot.assignee);
+		setLabels(snapshot.labels);
+		setPriority(snapshot.priority);
+		setDependencies(snapshot.dependencies);
+		setReferences(snapshot.references);
+		setRequiredCapabilities(snapshot.requiredCapabilities);
+		setDirective(snapshot.directive);
+		activeProposalIdRef.current = proposalId;
+		return { ...snapshot, criteria: nextCriteria };
+	}, [proposalId]);
 
 	const isDirty = useMemo(() => {
 		return (
@@ -324,7 +410,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			plan !== baseline.plan ||
 			notes !== baseline.notes ||
 			finalSummary !== baseline.finalSummary ||
-			JSON.stringify(criteria) !== baseline.criteria
+			JSON.stringify(criteria) !== JSON.stringify(baseline.criteria)
 		);
 	}, [
 		title,
@@ -342,92 +428,87 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		baseline,
 	]);
 
-	// Reset local proposal when proposal changes or modal opens
+	// Reset local proposal only when the selected proposal changes.
 	useEffect(() => {
-		setTitle(proposal?.title || "");
-		setSummary(proposal?.summary || proposal?.description || "");
-		setMotivation(proposal?.motivation || "");
-		setDesign(proposal?.design || proposal?.implementationPlan || "");
-		setDrawbacks(proposal?.drawbacks || "");
-		setAlternatives(proposal?.alternatives || "");
-		setDependencyNote(proposal?.dependency_note || "");
-		setDescription(proposal?.description || "");
-		setPlan(proposal?.implementationPlan || "");
-		setNotes(proposal?.implementationNotes || "");
-		setFinalSummary(proposal?.finalSummary || "");
-		setCriteria(proposal?.acceptanceCriteriaItems || []);
-		setStatus(
-			proposal?.status ||
-				(isDraftMode ? "Draft" : availableStatuses?.[0] || "Draft"),
-		);
-		setAssignee(proposal?.assignee || []);
-		setLabels(proposal?.labels || []);
-		setPriority(proposal?.priority || "");
-		setDependencies(proposal?.dependencies || []);
-		setReferences(proposal?.references || []);
-		setRequiredCapabilities(
-			proposal?.required_capabilities || proposal?.needs_capabilities || [],
-		);
-		setDirective(proposal?.directive || "");
+		if (proposalId && proposalRef.current?.id !== proposalId) return;
+		const snapshot = createSnapshot(proposalRef.current);
+		const appliedSnapshot = applySnapshot(snapshot);
+		setBaseline(appliedSnapshot);
 		setMode(isCreateMode ? "create" : "preview");
 		setError(null);
+	}, [applySnapshot, createSnapshot, isCreateMode, proposalId]);
 
-		// Fetch full proposal details from REST API if modal is opening
-		if (isOpen && proposal?.id && !isCreateMode) {
-			apiClient
-				.fetchProposal(proposal.id)
-				.then((fullProposal) => {
-					if (fullProposal) {
-						setSummary(fullProposal.summary || fullProposal.description || "");
-						setMotivation(fullProposal.motivation || "");
-						setDesign(
-							fullProposal.design || fullProposal.implementationPlan || "",
-						);
-						setDrawbacks(fullProposal.drawbacks || "");
-						setAlternatives(fullProposal.alternatives || "");
-						setDependencyNote(fullProposal.dependency_note || "");
-						setDescription(fullProposal.description || "");
-						setPlan(fullProposal.implementationPlan || "");
-						setNotes(fullProposal.implementationNotes || "");
-						setFinalSummary(fullProposal.finalSummary || "");
-						setCriteria(fullProposal.acceptanceCriteriaItems || []);
-						setRequiredCapabilities(
-							fullProposal.required_capabilities ||
-								fullProposal.needs_capabilities ||
-								[],
-						);
-					}
-				})
-				.catch(() => {
-					// Silently fail - use what we have from WebSocket
-				});
-	}
+	useEffect(() => {
+		if (!isOpen || !proposalId || isCreateMode) return;
+		let cancelled = false;
+		apiClient
+			.fetchProposal(proposalId)
+			.then((fullProposal) => {
+				if (cancelled || !fullProposal || modeRef.current === "edit") return;
+				const snapshot = createSnapshot(fullProposal);
+				const appliedSnapshot = applySnapshot(snapshot);
+				setBaseline(appliedSnapshot);
+			})
+			.catch(() => {
+				// Silently fail - use what we have from WebSocket
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [applySnapshot, createSnapshot, isCreateMode, isOpen, proposalId]);
 
-	// Preload proposals for dependency picker
-	apiClient
-		.fetchProposals()
-		.then(setAvailableProposals)
-		.catch(() => setAvailableProposals([]));
-	// Fetch decisions and reviews for this proposal
-		if (proposal?.id) {
-			apiClient
-				.fetchProposalDecisions(proposal.id)
-				.then(setDecisions)
-				.catch(() => setDecisions([]));
-			apiClient
-				.fetchProposalReviews(proposal.id)
-				.then(setReviews)
-				.catch(() => setReviews([]));
-			apiClient
-				.fetchProposalDiscussions(proposal.id)
-				.then(setDiscussions)
-				.catch(() => setDiscussions([]));
-		} else {
+	useEffect(() => {
+		if (!isOpen) return;
+		let cancelled = false;
+		apiClient
+			.fetchProposals()
+			.then((nextProposals) => {
+				if (!cancelled) setAvailableProposals(nextProposals);
+			})
+			.catch(() => {
+				if (!cancelled) setAvailableProposals([]);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [isOpen]);
+
+	useEffect(() => {
+		if (!proposalId) {
 			setDecisions([]);
 			setReviews([]);
 			setDiscussions([]);
+			return;
 		}
-	}, [proposal, isCreateMode, isDraftMode, availableStatuses]);
+		let cancelled = false;
+		apiClient
+			.fetchProposalDecisions(proposalId)
+			.then((nextDecisions) => {
+				if (!cancelled) setDecisions(nextDecisions);
+			})
+			.catch(() => {
+				if (!cancelled) setDecisions([]);
+			});
+		apiClient
+			.fetchProposalReviews(proposalId)
+			.then((nextReviews) => {
+				if (!cancelled) setReviews(nextReviews);
+			})
+			.catch(() => {
+				if (!cancelled) setReviews([]);
+			});
+		apiClient
+			.fetchProposalDiscussions(proposalId)
+			.then((nextDiscussions) => {
+				if (!cancelled) setDiscussions(nextDiscussions);
+			})
+			.catch(() => {
+				if (!cancelled) setDiscussions([]);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [proposalId]);
 
 	const handleCancelEdit = useCallback(() => {
 		if (isDirty) {
@@ -438,21 +519,10 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			// In create mode, close the modal on cancel
 			onClose();
 		} else {
-			setTitle(proposal?.title || "");
-			setSummary(proposal?.summary || proposal?.description || "");
-			setMotivation(proposal?.motivation || "");
-			setDesign(proposal?.design || proposal?.implementationPlan || "");
-			setDrawbacks(proposal?.drawbacks || "");
-			setAlternatives(proposal?.alternatives || "");
-			setDependencyNote(proposal?.dependency_note || "");
-			setDescription(proposal?.description || "");
-			setPlan(proposal?.implementationPlan || "");
-			setNotes(proposal?.implementationNotes || "");
-			setFinalSummary(proposal?.finalSummary || "");
-			setCriteria(proposal?.acceptanceCriteriaItems || []);
+			applySnapshot(baseline);
 			setMode("preview");
 		}
-	}, [isCreateMode, isDirty, onClose, proposal]);
+	}, [applySnapshot, baseline, isCreateMode, isDirty, onClose]);
 
 	const _normalizeChecklistItems = (
 		items: AcceptanceCriterion[],
@@ -686,7 +756,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			window.removeEventListener("keydown", onKey, keydownListenerOptions);
 	}, [mode, handleCancelEdit, handleComplete, handleSave, isReachedStatus]);
 
-	const displayId = proposal?.id ?? "";
+	const displayId = proposalId;
 	const documentation = proposal?.documentation ?? [];
 	const renderMarkdownField = (
 		fieldTitle: string,
@@ -1256,7 +1326,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 											<span className="text-gray-400 dark:text-gray-500">{formatStoredUtcDateForDisplay(d.created_at)}</span>
 										</div>
 										<div className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">
-											{d.body_markdown.length > 500 ? d.body_markdown.slice(0, 500) + "..." : d.body_markdown}
+											{d.body_markdown.length > 500
+												? `${d.body_markdown.slice(0, 500)}...`
+												: d.body_markdown}
 										</div>
 									</div>
 								))}
