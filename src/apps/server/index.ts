@@ -1314,6 +1314,13 @@ export class RoadmapServer {
 	}
 
 	private async handleGetProposal(proposalId: string): Promise<Response> {
+		const liveProposal = await this.core.getProposal(proposalId);
+		if (liveProposal) {
+			const store = await this.getContentStoreInstance();
+			store.upsertProposal(liveProposal);
+			return Response.json(liveProposal);
+		}
+
 		const store = await this.getContentStoreInstance();
 		const proposals = store.getProposals();
 		const proposal = findProposalByLooseId(proposals, proposalId);
