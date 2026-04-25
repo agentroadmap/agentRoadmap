@@ -90,17 +90,26 @@ export class PgCubicHandlers {
 	async listCubics(args: {
 		status?: string;
 		agent?: string;
+		limit?: number;
+		include_metadata?: boolean;
+		include_terminal?: boolean;
 	}): Promise<CallToolResult> {
 		try {
+			const limit = Math.min(Math.max(args.limit ?? 50, 1), 500);
+			const includeMetadata = args.include_metadata === true;
+			const includeTerminal = args.include_terminal === true;
+
 			let sql = `SELECT cubic_id, status, phase, agent_identity, worktree_path, budget_usd,
-			              lock_holder, lock_phase, locked_at, created_at, activated_at, completed_at, metadata
+			              lock_holder, lock_phase, locked_at, created_at, activated_at, completed_at${includeMetadata ? ", metadata" : ""}
 			       FROM roadmap.cubics`;
-			const params: string[] = [];
+			const params: (string | number)[] = [];
 			const conditions: string[] = [];
 
 			if (args.status) {
 				conditions.push(`status = $${params.length + 1}`);
 				params.push(args.status);
+			} else if (!includeTerminal) {
+				conditions.push(`status NOT IN ('expired','completed','recycled')`);
 			}
 			if (args.agent) {
 				conditions.push(`agent_identity = $${params.length + 1}`);
@@ -109,12 +118,42 @@ export class PgCubicHandlers {
 			if (conditions.length) {
 				sql += ` WHERE ${conditions.join(" AND ")}`;
 			}
-			sql += ` ORDER BY created_at DESC`;
+			sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+			params.push(limit);
 
-			const { rows } = await query(sql, params);
+			const [{ rows }, countResult] = await Promise.all([
+				query(sql, params),
+				query<{ total: string }>(
+					`SELECT COUNT(*)::text AS total FROM roadmap.cubics${conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""}`,
+					params.slice(0, -1),
+				),
+			]);
+
+			const totalMatching = Number(countResult.rows[0]?.total ?? rows.length);
+			const truncated = totalMatching > rows.length;
+
 			if (!rows.length) {
-				return { content: [{ type: "text", text: "No cubics found." }] };
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									total: 0,
+									returned: 0,
+									truncated: false,
+									note: includeTerminal
+										? "No cubics match the filter."
+										: "No active/idle cubics. Pass include_terminal=true to see expired/completed.",
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
 			}
+
 			const cubics = rows.map((r) => ({
 				id: r.cubic_id,
 				status: r.status,
@@ -132,7 +171,9 @@ export class PgCubicHandlers {
 				createdAt: r.created_at,
 				activatedAt: r.activated_at,
 				completedAt: r.completed_at,
-				...(typeof r.metadata === "object" && r.metadata !== null
+				...(includeMetadata &&
+				typeof r.metadata === "object" &&
+				r.metadata !== null
 					? r.metadata
 					: {}),
 			}));
@@ -140,7 +181,22 @@ export class PgCubicHandlers {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify({ total: cubics.length, cubics }, null, 2),
+						text: JSON.stringify(
+							{
+								total: totalMatching,
+								returned: cubics.length,
+								truncated,
+								limit,
+								filter: {
+									status: args.status ?? (includeTerminal ? "all" : "active+idle"),
+									agent: args.agent ?? null,
+									include_metadata: includeMetadata,
+								},
+								cubics,
+							},
+							null,
+							2,
+						),
 					},
 				],
 			};

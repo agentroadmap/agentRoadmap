@@ -898,12 +898,39 @@ export async function createMcpServer(
 		});
 		server.addTool({
 			name: "cubic_list",
-			description: "List all cubics",
+			description:
+				"List cubics. By default returns up to 50 active/idle cubics " +
+				"without large metadata. Pass include_terminal=true for completed/expired, " +
+				"include_metadata=true to include per-cubic metadata payload, or limit/agent/status " +
+				"to scope further. (Re: P458)",
 			inputSchema: {
 				type: "object",
 				properties: {
-					status: { type: "string" },
+					status: {
+						type: "string",
+						description:
+							"Filter by exact status (e.g. active, idle, expired, completed). " +
+							"If omitted, defaults to active+idle.",
+					},
 					agent: { type: "string" },
+					limit: {
+						type: "number",
+						description:
+							"Max cubics returned (1..500, default 50).",
+					},
+					include_metadata: {
+						type: "boolean",
+						description:
+							"Include each cubic's metadata JSON in the response. " +
+							"Default false to keep responses small (avg metadata ~1.3KB/row, " +
+							"6900+ historical rows).",
+					},
+					include_terminal: {
+						type: "boolean",
+						description:
+							"If true, include expired/completed/recycled cubics. " +
+							"Default false. Use status= for explicit terminal filtering.",
+					},
 				},
 			},
 			handler: (a) => cubic.listCubics(a as ListCubicsArgs),
