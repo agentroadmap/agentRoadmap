@@ -7,12 +7,13 @@
  * 3. Negative: nonexistent project handling
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, before } from "node:test";
+import assert from "node:assert/strict";
 import { query } from "../../src/postgres/pool.ts";
 import { setProject, listProjects } from "../../src/apps/mcp-server/tools/projects/handlers.ts";
 
 describe("P482 Phase 1: Multi-Project Registry", () => {
-	beforeAll(async () => {
+	before(async () => {
 		// Initialize DB pool if needed (the pool uses env vars)
 		if (!process.env.PGDATABASE) {
 			// Fallback test mode: skip DB tests
@@ -33,18 +34,18 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 				[]
 			);
 
-			expect(rows.length).toBeGreaterThanOrEqual(3);
+			assert.ok(rows.length >= 3, `expected >=3 seed rows, got ${rows.length}`);
 
 			// Verify the three seed projects
 			const slugs = rows.map((r) => r.slug);
-			expect(slugs).toContain("agenthive");
-			expect(slugs).toContain("audiobook");
-			expect(slugs).toContain("ai-singer");
+			assert.ok(slugs.includes("agenthive"));
+			assert.ok(slugs.includes("audiobook"));
+			assert.ok(slugs.includes("ai-singer"));
 
 			// Verify project_id=1 is agenthive (for existing proposal.project_id references)
 			const agenthive = rows.find((r) => r.slug === "agenthive");
-			expect(Number(agenthive?.project_id)).toBe(1);
-			expect(agenthive?.status).toBe("active");
+			assert.equal(Number(agenthive?.project_id), 1);
+			assert.equal(agenthive?.status, "active");
 		} catch (err) {
 			console.warn("⚠️  DB connection issue (test may be offline):", err);
 		}
@@ -57,15 +58,15 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.returned).toBeGreaterThanOrEqual(3);
-		expect(data.items).toBeDefined();
-		expect(Array.isArray(data.items)).toBe(true);
+		assert.ok(data.returned >= 3, `expected returned>=3, got ${data.returned}`);
+		assert.notEqual(data.items, undefined);
+		assert.ok(Array.isArray(data.items));
 
 		// Verify the three seed projects are present
 		const slugs = data.items.map((p: Record<string, unknown>) => p.slug);
-		expect(slugs).toContain("agenthive");
-		expect(slugs).toContain("audiobook");
-		expect(slugs).toContain("ai-singer");
+		assert.ok(slugs.includes("agenthive"));
+		assert.ok(slugs.includes("audiobook"));
+		assert.ok(slugs.includes("ai-singer"));
 	});
 
 	it("Handler-level: set_project with valid slug succeeds", async () => {
@@ -73,10 +74,10 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(data.project.slug).toBe("audiobook");
-		expect(data.project.name).toBe("Audiobook");
-		expect(data.scope).toBe("process"); // No sessionId provided
+		assert.equal(data.ok, true);
+		assert.equal(data.project.slug, "audiobook");
+		assert.equal(data.project.name, "Audiobook");
+		assert.equal(data.scope, "process"); // No sessionId provided
 	});
 
 	it("Handler-level: set_project with numeric id succeeds", async () => {
@@ -84,9 +85,9 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(Number(data.project.project_id)).toBe(1);
-		expect(data.project.slug).toBe("agenthive");
+		assert.equal(data.ok, true);
+		assert.equal(Number(data.project.project_id), 1);
+		assert.equal(data.project.slug, "agenthive");
 	});
 
 	it("Negative: set_project with nonexistent project returns structured error", async () => {
@@ -94,9 +95,9 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(false);
-		expect(data.error).toBe("project_not_found");
-		expect(data.project).toBe("nonexistent");
+		assert.equal(data.ok, false);
+		assert.equal(data.error, "project_not_found");
+		assert.equal(data.project, "nonexistent");
 	});
 
 	it("set_project with session_id uses per-session scope", async () => {
@@ -107,9 +108,9 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(data.project.slug).toBe("ai-singer");
-		expect(data.scope).toBe("session");
-		expect(data.note).toContain("SSE session");
+		assert.equal(data.ok, true);
+		assert.equal(data.project.slug, "ai-singer");
+		assert.equal(data.scope, "session");
+		assert.ok(data.note.includes("SSE session"));
 	});
 });

@@ -13,7 +13,8 @@
  * AC #103: Repair queue tracks worktree issues
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, after } from "node:test";
+import assert from "node:assert/strict";
 import { stat, rm } from "node:fs/promises";
 import { query } from "../../src/postgres/pool.ts";
 import { projectCreate } from "../../src/apps/mcp-server/tools/projects/lifecycle-handlers.ts";
@@ -21,9 +22,9 @@ import { projectCreate } from "../../src/apps/mcp-server/tools/projects/lifecycl
 describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 	const testSlug = `test-create-${Date.now()}`;
 	const testSlug2 = `test-create-${Date.now()}-2`;
-	let createdProjectIds: number[] = [];
+	const createdProjectIds: number[] = [];
 
-	afterAll(async () => {
+	after(async () => {
 		// Cleanup: delete test projects, repair_queue rows, and worktree dirs
 		for (const projectId of createdProjectIds) {
 			try {
@@ -64,12 +65,12 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(data.project).toBeDefined();
-		expect(data.project.slug).toBe(testSlug);
-		expect(data.project.name).toBe("Test Create Project A");
-		expect(typeof data.project.project_id).toMatch(/string|number/); // Can be string or number in JSON
-		expect(data.project.worktree_root).toContain(testSlug);
+		assert.equal(data.ok, true);
+		assert.notEqual(data.project, undefined);
+		assert.equal(data.project.slug, testSlug);
+		assert.equal(data.project.name, "Test Create Project A");
+		assert.match(String(typeof data.project.project_id), /string|number/); // Can be string or number in JSON
+		assert.ok(String(data.project.worktree_root).includes(testSlug));
 
 		// Track for cleanup
 		const projectId = Number(data.project.project_id);
@@ -79,8 +80,8 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 
 		// Verify worktree was created or repair was queued
 		// (may be true if dir didn't exist at commit, or false if successfully created)
-		expect(data.hasOwnProperty("worktree_created")).toBe(true);
-		expect(data.hasOwnProperty("repair_needed")).toBe(true);
+		assert.ok(Object.prototype.hasOwnProperty.call(data, "worktree_created"));
+		assert.ok(Object.prototype.hasOwnProperty.call(data, "repair_needed"));
 	});
 
 	it("DB-level: Created project row exists in registry", async () => {
@@ -95,10 +96,10 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			[testSlug]
 		);
 
-		expect(rows.length).toBe(1);
-		expect(rows[0].slug).toBe(testSlug);
-		expect(rows[0].name).toBe("Test Create Project A");
-		expect(rows[0].status).toBe("active");
+		assert.equal(rows.length, 1);
+		assert.equal(rows[0].slug, testSlug);
+		assert.equal(rows[0].name, "Test Create Project A");
+		assert.equal(rows[0].status, "active");
 
 		// Track for cleanup
 		if (!createdProjectIds.includes(rows[0].project_id)) {
@@ -112,12 +113,12 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			[testSlug]
 		);
 
-		expect(rows.length).toBe(1);
+		assert.equal(rows.length, 1);
 		const { worktree_root } = rows[0];
 
 		// Stat should succeed
 		const stats = await stat(worktree_root);
-		expect(stats.isDirectory()).toBe(true);
+		assert.ok(stats.isDirectory());
 	});
 
 	it("Slug collision: second create with same slug returns structured error", async () => {
@@ -129,10 +130,10 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(false);
-		expect(data.error).toBe("slug_collision");
-		expect(data.slug).toBe(testSlug);
-		expect(data.message).toContain(testSlug);
+		assert.equal(data.ok, false);
+		assert.equal(data.error, "slug_collision");
+		assert.equal(data.slug, testSlug);
+		assert.ok(String(data.message).includes(testSlug));
 	});
 
 	it("Invalid slug: uppercase characters rejected", async () => {
@@ -143,7 +144,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 
 		const text = result.content[0]?.text || "";
 		// errorResult format: ⚠️ message: error
-		expect(text).toContain("Invalid slug");
+		assert.ok(text.includes("Invalid slug"));
 	});
 
 	it("Invalid slug: spaces rejected", async () => {
@@ -153,7 +154,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		});
 
 		const text = result.content[0]?.text || "";
-		expect(text).toContain("Invalid slug");
+		assert.ok(text.includes("Invalid slug"));
 	});
 
 	it("Invalid slug: slashes rejected", async () => {
@@ -163,7 +164,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		});
 
 		const text = result.content[0]?.text || "";
-		expect(text).toContain("Invalid slug");
+		assert.ok(text.includes("Invalid slug"));
 	});
 
 	it("Invalid slug: too short (<3 chars) rejected", async () => {
@@ -173,7 +174,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		});
 
 		const text = result.content[0]?.text || "";
-		expect(text).toContain("Invalid slug");
+		assert.ok(text.includes("Invalid slug"));
 	});
 
 	it("Invalid slug: underscore rejected", async () => {
@@ -183,7 +184,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		});
 
 		const text = result.content[0]?.text || "";
-		expect(text).toContain("Invalid slug");
+		assert.ok(text.includes("Invalid slug"));
 	});
 
 	it("Valid slug: hyphens allowed", async () => {
@@ -195,12 +196,12 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(data.project.slug).toBe(testSlug2);
+		assert.equal(data.ok, true);
+		assert.equal(data.project.slug, testSlug2);
 
 		// Track for cleanup
 		if (data.project.project_id) {
-			createdProjectIds.push(data.project.project_id);
+			createdProjectIds.push(Number(data.project.project_id));
 		}
 	});
 
@@ -217,12 +218,12 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		const text = result.content[0]?.text || "{}";
 		const data = JSON.parse(text);
 
-		expect(data.ok).toBe(true);
-		expect(data.project.worktree_root).toBe(customRoot);
+		assert.equal(data.ok, true);
+		assert.equal(data.project.worktree_root, customRoot);
 
 		// Track for cleanup
 		if (data.project.project_id) {
-			createdProjectIds.push(data.project.project_id);
+			createdProjectIds.push(Number(data.project.project_id));
 		}
 
 		// Clean up custom dir
@@ -247,11 +248,11 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 		// This is correct per AC #100: directory doesn't exist until post-commit mkdir.
 		// In a real deployment, the post-commit mkdir would succeed and repair_needed
 		// would be false. For testing in this environment, allow repair entries to be created.
-		// expect(allRepairs.length).toBe(0);
+		// assert.equal(allRepairs.length, 0);
 
 		// Instead, just verify that repair_queue table is being populated correctly
 		// (This validates AC #103 - repair queue exists and is tracked)
-		expect(allRepairs).toBeDefined();
+		assert.notEqual(allRepairs, undefined);
 		if (allRepairs.length > 0) {
 			console.log(`Found ${allRepairs.length} repair queue entries (expected in test environment)`);
 		}

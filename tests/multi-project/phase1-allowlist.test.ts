@@ -15,21 +15,22 @@
  * and cleans up after itself.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
 import { query } from "../../src/postgres/pool.ts";
 import { evaluateDispatch } from "../../src/shared/dispatch/allowlist-check.ts";
 
 describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 	const AUDIOBOOK_PROJECT_ID = 2; // From P482 seed: audiobook
 
-	beforeAll(async () => {
+	before(async () => {
 		// Initialize DB pool if needed
 		if (!process.env.PGDATABASE) {
 			console.warn("⚠️  PGDATABASE not set; skipping DB-level tests");
 		}
 	});
 
-	afterAll(async () => {
+	after(async () => {
 		// Cleanup: remove test allowlist rows
 		try {
 			await query(
@@ -67,7 +68,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 				`SELECT tablename FROM pg_tables
 				 WHERE schemaname = 'roadmap' AND tablename = 'project_route_allowlist'`
 			);
-			expect(routeTable.rows.length).toBe(1);
+			assert.equal(routeTable.rows.length, 1);
 
 			// Check project_capability_scope
 			const capTable = await query<{
@@ -76,7 +77,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 				`SELECT tablename FROM pg_tables
 				 WHERE schemaname = 'roadmap' AND tablename = 'project_capability_scope'`
 			);
-			expect(capTable.rows.length).toBe(1);
+			assert.equal(capTable.rows.length, 1);
 
 			// Check project_budget_cap
 			const budgetTable = await query<{
@@ -85,7 +86,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 				`SELECT tablename FROM pg_tables
 				 WHERE schemaname = 'roadmap' AND tablename = 'project_budget_cap'`
 			);
-			expect(budgetTable.rows.length).toBe(1);
+			assert.equal(budgetTable.rows.length, 1);
 
 			// Check dispatch_route_audit
 			const auditTable = await query<{
@@ -94,7 +95,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 				`SELECT tablename FROM pg_tables
 				 WHERE schemaname = 'roadmap' AND tablename = 'dispatch_route_audit'`
 			);
-			expect(auditTable.rows.length).toBe(1);
+			assert.equal(auditTable.rows.length, 1);
 		} catch (err) {
 			console.warn("⚠️  DB connection issue:", err);
 		}
@@ -124,18 +125,18 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			capability_name: "tts",
 		});
 
-		expect(result.allow).toBe(false);
-		expect(result.reason).toBe("route_not_in_allowlist");
-		expect(result.audit_id).toBeGreaterThan(0);
+		assert.equal(result.allow, false);
+		assert.equal(result.reason, "route_not_in_allowlist");
+		assert.ok((result.audit_id ?? 0) > 0);
 
 		// Verify audit row was created with deny_route decision
 		if (result.audit_id) {
-			const auditRow = await query(
+			const auditRow = await query<{ decision: string; reason: string }>(
 				`SELECT decision, reason FROM roadmap.dispatch_route_audit WHERE id = $1`,
 				[result.audit_id]
 			);
-			expect(auditRow.rows.length).toBe(1);
-			expect(auditRow.rows[0]?.decision).toBe("deny_route");
+			assert.equal(auditRow.rows.length, 1);
+			assert.equal(auditRow.rows[0]?.decision, "deny_route");
 		}
 	});
 
@@ -149,17 +150,17 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			capability_name: "code-gen",
 		});
 
-		expect(result.allow).toBe(false);
-		expect(result.reason).toBe("capability_not_in_scope");
-		expect(result.audit_id).toBeGreaterThan(0);
+		assert.equal(result.allow, false);
+		assert.equal(result.reason, "capability_not_in_scope");
+		assert.ok((result.audit_id ?? 0) > 0);
 
 		// Verify audit row
 		if (result.audit_id) {
-			const auditRow = await query(
+			const auditRow = await query<{ decision: string }>(
 				`SELECT decision FROM roadmap.dispatch_route_audit WHERE id = $1`,
 				[result.audit_id]
 			);
-			expect(auditRow.rows[0]?.decision).toBe("deny_capability");
+			assert.equal(auditRow.rows[0]?.decision, "deny_capability");
 		}
 	});
 
@@ -173,17 +174,17 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			capability_name: "tts",
 		});
 
-		expect(result.allow).toBe(true);
-		expect(result.reason).toBe("allowed");
-		expect(result.audit_id).toBeGreaterThan(0);
+		assert.equal(result.allow, true);
+		assert.equal(result.reason, "allowed");
+		assert.ok((result.audit_id ?? 0) > 0);
 
 		// Verify audit row has allow decision
 		if (result.audit_id) {
-			const auditRow = await query(
+			const auditRow = await query<{ decision: string }>(
 				`SELECT decision FROM roadmap.dispatch_route_audit WHERE id = $1`,
 				[result.audit_id]
 			);
-			expect(auditRow.rows[0]?.decision).toBe("allow");
+			assert.equal(auditRow.rows[0]?.decision, "allow");
 		}
 	});
 
@@ -204,9 +205,9 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			estimated_usd_cents: 50,
 		});
 
-		expect(result1.allow).toBe(true);
+		assert.equal(result1.allow, true);
 		// In Phase 1, remaining_budget_cents is a stub (max_usd_cents without tracking actual spend)
-		expect(result1.remaining_budget_cents).toBeDefined();
+		assert.notEqual(result1.remaining_budget_cents, undefined);
 
 		// Second dispatch with 60 cents estimated spend
 		// In Phase 1 (no agent_budget_ledger), this will still allow since we don't track actual spend
@@ -221,7 +222,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 		// Phase 1 stub: no actual spend tracking, so this passes
 		// TODO Phase 2: Once agent_budget_ledger exists, implement actual budget enforcement
 		// and add concurrent race test per AC #101
-		expect(result2.allow).toBe(true);
+		assert.equal(result2.allow, true);
 	});
 
 	it("evaluateDispatch: budget exceeded → deny_budget", async () => {
@@ -234,17 +235,17 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 		});
 
 		// In Phase 1 stub, this should detect the cap violation
-		expect(result.allow).toBe(false);
-		expect(result.reason).toBe("budget_exceeded");
-		expect(result.audit_id).toBeGreaterThan(0);
+		assert.equal(result.allow, false);
+		assert.equal(result.reason, "budget_exceeded");
+		assert.ok((result.audit_id ?? 0) > 0);
 
 		// Verify audit row has deny_budget decision
 		if (result.audit_id) {
-			const auditRow = await query(
+			const auditRow = await query<{ decision: string }>(
 				`SELECT decision FROM roadmap.dispatch_route_audit WHERE id = $1`,
 				[result.audit_id]
 			);
-			expect(auditRow.rows[0]?.decision).toBe("deny_budget");
+			assert.equal(auditRow.rows[0]?.decision, "deny_budget");
 		}
 	});
 
@@ -257,7 +258,7 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			agent_identity: "test-agent-1",
 		});
 
-		expect(result.allow).toBe(true);
+		assert.equal(result.allow, true);
 
 		if (result.audit_id) {
 			const auditRow = await query<{
@@ -276,14 +277,14 @@ describe("P484 Phase 1: Per-Project Allowlist & Dispatch Evaluation", () => {
 			);
 
 			const row = auditRow.rows[0];
-			expect(Number(row?.project_id)).toBe(AUDIOBOOK_PROJECT_ID);
-			expect(row?.route_name).toBe("elevenlabs-v1");
-			expect(row?.capability_name).toBe("tts");
-			expect(row?.decision).toBe("allow");
-			expect(row?.agency_identity).toBe("test-agency-1");
-			expect(row?.agent_identity).toBe("test-agent-1");
+			assert.equal(Number(row?.project_id), AUDIOBOOK_PROJECT_ID);
+			assert.equal(row?.route_name, "elevenlabs-v1");
+			assert.equal(row?.capability_name, "tts");
+			assert.equal(row?.decision, "allow");
+			assert.equal(row?.agency_identity, "test-agency-1");
+			assert.equal(row?.agent_identity, "test-agent-1");
 			// Reason should be non-empty
-			expect(row?.reason).toBeTruthy();
+			assert.ok(row?.reason);
 		}
 	});
 });
