@@ -431,20 +431,82 @@ export class PgMessagingHandlers {
 		return { content: [{ type: "text", text: lines.join("\n") }] };
 	}
 
-	async listChannels(_args: {}): Promise<CallToolResult> {
+	async listChannels(args: {
+		limit?: number;
+		include_metadata?: boolean;
+	}): Promise<CallToolResult> {
 		try {
-			const { rows } = await query(
-				`SELECT DISTINCT channel, COUNT(*) as msg_count
-         FROM message_ledger
-         WHERE channel IS NOT NULL
-         GROUP BY channel
-         ORDER BY channel ASC`,
-			);
+			const limit = Math.min(Math.max(args.limit ?? 50, 1), 500);
+			const includeMetadata = args.include_metadata === true;
+
+			let sql = `SELECT DISTINCT channel, COUNT(*) as msg_count${includeMetadata ? ", MAX(created_at) as last_message_at" : ""}
+			       FROM message_ledger
+			       WHERE channel IS NOT NULL
+			       GROUP BY channel${includeMetadata ? "" : ""}
+			       ORDER BY channel ASC
+			       LIMIT $1`;
+			const params: (number)[] = [limit];
+
+			const [{ rows }, countResult] = await Promise.all([
+				query(sql, params),
+				query<{ total: string }>(
+					`SELECT COUNT(DISTINCT channel)::text AS total FROM message_ledger WHERE channel IS NOT NULL`,
+					[],
+				),
+			]);
+
+			const totalMatching = Number(countResult.rows[0]?.total ?? rows.length);
+			const truncated = totalMatching > rows.length;
+
 			if (!rows.length) {
-				return { content: [{ type: "text", text: "No channels found." }] };
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									total: 0,
+									returned: 0,
+									truncated: false,
+									limit,
+									filter: {},
+									note: "No channels found.",
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
 			}
-			const lines = rows.map((r: any) => `${r.channel}: ${r.msg_count} messages`);
-			return { content: [{ type: "text", text: lines.join("\n") }] };
+
+			const items = rows.map((r: any) => ({
+				channel: r.channel,
+				msg_count: Number(r.msg_count),
+				...(includeMetadata && {
+					last_message_at: r.last_message_at,
+				}),
+			}));
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								total: totalMatching,
+								returned: rows.length,
+								truncated,
+								limit,
+								filter: {},
+								items,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
 		} catch (err) {
 			return errorResult("Failed to list channels", err);
 		}

@@ -20,23 +20,103 @@ function errorResult(msg: string, err: unknown): CallToolResult {
 }
 
 export class PgAgentHandlers {
-	async listAgents(args: { status?: string }): Promise<CallToolResult> {
+	async listAgents(args: {
+		status?: string;
+		limit?: number;
+		include_terminal?: boolean;
+		include_metadata?: boolean;
+	}): Promise<CallToolResult> {
 		try {
-			const where = args.status ? `WHERE status = $1` : "";
-			const params = args.status ? [args.status] : [];
-			const { rows } = await query(
-				`SELECT agent_identity, agent_type, role, status, skills, created_at
-         FROM agent_registry ${where} ORDER BY agent_identity`,
-				params,
-			);
-			if (!rows || rows.length === 0) {
-				return { content: [{ type: "text", text: "No agents found." }] };
+			const limit = Math.min(Math.max(args.limit ?? 50, 1), 500);
+			const includeTerminal = args.include_terminal === true;
+			const includeMetadata = args.include_metadata === true;
+
+			let sql = `SELECT agent_identity, agent_type, role, status, created_at${includeMetadata ? ", skills, metadata" : ""}
+			       FROM agent_registry`;
+			const params: (string | number)[] = [];
+			const conditions: string[] = [];
+
+			if (args.status) {
+				conditions.push(`status = $${params.length + 1}`);
+				params.push(args.status);
+			} else if (!includeTerminal) {
+				conditions.push(`status NOT IN ('inactive', 'retired')`);
 			}
-			const lines = rows.map(
-				(r) =>
-					`${r.agent_identity} (${r.agent_type}) — role: ${r.role}, status: ${r.status}`,
-			);
-			return { content: [{ type: "text", text: lines.join("\n") }] };
+
+			if (conditions.length) {
+				sql += ` WHERE ${conditions.join(" AND ")}`;
+			}
+			sql += ` ORDER BY agent_identity LIMIT $${params.length + 1}`;
+			params.push(limit);
+
+			const [{ rows }, countResult] = await Promise.all([
+				query(sql, params),
+				query<{ total: string }>(
+					`SELECT COUNT(*)::text AS total FROM agent_registry${
+						conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""
+					}`,
+					params.slice(0, -1),
+				),
+			]);
+
+			const totalMatching = Number(countResult.rows[0]?.total ?? rows.length);
+			const truncated = totalMatching > rows.length;
+
+			if (!rows.length) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									total: 0,
+									returned: 0,
+									truncated: false,
+									limit,
+									filter: { status: args.status, includeTerminal },
+									note: includeTerminal
+										? "No agents match the filter."
+										: "No active agents. Pass include_terminal=true to see inactive/retired.",
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+
+			const items = rows.map((r: any) => ({
+				agent_identity: r.agent_identity,
+				agent_type: r.agent_type,
+				role: r.role,
+				status: r.status,
+				created_at: r.created_at,
+				...(includeMetadata && {
+					skills: r.skills,
+					metadata: r.metadata,
+				}),
+			}));
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								total: totalMatching,
+								returned: rows.length,
+								truncated,
+								limit,
+								filter: { status: args.status, includeTerminal },
+								items,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
 		} catch (err) {
 			return errorResult("Failed to list agents", err);
 		}

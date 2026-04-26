@@ -141,6 +141,21 @@ export const agentListSchema: JsonSchema = {
 			items: { type: "string" },
 			description: "Filter by required capabilities",
 		},
+		limit: {
+			type: "number",
+			description:
+				"Maximum results to return (default 50, max 500)",
+		},
+		include_terminal: {
+			type: "boolean",
+			description:
+				"Include terminal statuses (inactive, retired). Default false.",
+		},
+		include_metadata: {
+			type: "boolean",
+			description:
+				"Include metadata fields (skills, metadata). Default false.",
+		},
 	},
 	additionalProperties: false,
 };

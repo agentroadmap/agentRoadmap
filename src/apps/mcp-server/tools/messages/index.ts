@@ -12,7 +12,18 @@ import { PgMessagingHandlers } from "./pg-handlers.ts";
 
 const messageChannelsSchema: JsonSchema = {
 	type: "object",
-	properties: {},
+	properties: {
+		limit: {
+			type: "number",
+			description:
+				"Maximum channels to return (default 50, max 500)",
+		},
+		include_metadata: {
+			type: "boolean",
+			description:
+				"Include metadata fields (last_message_at). Default false.",
+		},
+	},
 	required: [],
 };
 
