@@ -25,6 +25,9 @@ import { getPool, query } from "../src/infra/postgres/pool.ts";
 import { loadStateNames } from "../src/core/workflow/state-names.ts";
 import { mcpText } from "./mcp-result.ts";
 import { getMcpUrl } from "../src/shared/runtime/endpoints.ts";
+import { listDispatchableAgencies } from "../src/infra/agency/liaison-service.ts";
+import { storeMessage, getNextSequence } from "../src/infra/agency/liaison-message-service.ts";
+import { createMessageEnvelope } from "../src/infra/agency/liaison-message-types.ts";
 
 const MCP_URL = getMcpUrl();
 const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? "default";
@@ -795,6 +798,46 @@ async function dispatchAgent(
 			logger.log(
 				`📬 Posted offer ${dispatchId} for ${agent} on P${proposalId} (${stage})`,
 			);
+
+			// P468: Emit liaison message to preferred agencies (additive — legacy squad_dispatch is primary)
+			try {
+				const agencies = await listDispatchableAgencies();
+				if (agencies.length > 0) {
+					const targetAgency = agencies[0];
+					const envelope = createMessageEnvelope({
+						agencyId: targetAgency.agency_id,
+						direction: "orchestrator_to_liaison",
+						kind: "offer_dispatch",
+						payload: {
+							dispatch_id: dispatchId,
+							proposal_id: proposalId,
+							stage,
+							phase,
+							role: agentLabel ?? agent,
+							task: taskPrompt,
+							required_capabilities:
+								requiredCapabilities.length > 0
+									? requiredCapabilities
+									: [agentLabel ?? agent],
+						},
+					});
+					const sequence = await getNextSequence(targetAgency.agency_id);
+					await storeMessage({
+						...(envelope as any),
+						sequence,
+						signature: "stub-orchestrator", // TODO(P472): proper signing
+					});
+					logger.log(
+						`📮 Emitted liaison message to ${targetAgency.agency_id} for dispatch ${dispatchId}`,
+					);
+				}
+			} catch (err) {
+				logger.warn(
+					`Failed to emit liaison message for dispatch ${dispatchId}:`,
+					err,
+				);
+			}
+
 			return cubicId;
 		}
 
