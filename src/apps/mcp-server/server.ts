@@ -15,6 +15,7 @@ import { RelayService } from "../../core/messaging/relay.ts";
 import { PipelineCron } from "../../core/pipeline/pipeline-cron.ts";
 import { Core } from "../../core/roadmap.ts";
 import * as pgPool from "../../postgres/pool.ts";
+import { loadStateNames } from "../../core/workflow/state-names.ts";
 import { getPackageName } from "../../shared/utils/app-info.ts";
 import { getVersion } from "../../shared/utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
@@ -447,6 +448,18 @@ export async function createMcpServer(
 	if (usePostgres) {
 		if (config.database) {
 			pgPool.initPoolFromConfig(config.database);
+		}
+
+		// Load state-names registry from DB (includes NOTIFY listener for live reloads)
+		try {
+			const pool = pgPool.getPool();
+			await loadStateNames(pool);
+			if (options.debug) {
+				console.error("[MCP] State-names registry loaded from database");
+			}
+		} catch (error) {
+			console.error("[MCP] Failed to load state-names registry:", error);
+			// Non-fatal; continue without the registry
 		}
 
 		// Postgres-backed tools

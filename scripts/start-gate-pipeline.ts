@@ -16,6 +16,7 @@ import { OfferProvider } from "../src/core/pipeline/offer-provider.ts";
 import { PipelineCron } from "../src/core/pipeline/pipeline-cron.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { closePool, getPool } from "../src/infra/postgres/pool.ts";
+import { loadStateNames } from "../src/core/workflow/state-names.ts";
 
 const executorMode = process.env.AGENTHIVE_GATE_EXECUTOR ?? "cubic";
 const useOfferDispatch = process.env.AGENTHIVE_USE_OFFER_DISPATCH === "1";
@@ -85,6 +86,15 @@ async function main() {
 	} catch (err) {
 		console.error("[GatePipeline] Failed to connect to database:", err);
 		process.exit(1);
+	}
+
+	// Load state-names registry from DB (includes NOTIFY listener for live reloads)
+	try {
+		await loadStateNames(pool);
+		console.log("[GatePipeline] State-names registry loaded from database");
+	} catch (error) {
+		console.error("[GatePipeline] Failed to load state-names registry:", error);
+		// Non-fatal; continue without the registry
 	}
 
 	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.

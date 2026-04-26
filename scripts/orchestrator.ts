@@ -1,4 +1,5 @@
 /**
+import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
  * AgentHive Orchestrator — Event-driven agent dispatcher with dynamic agent deployment.
  *
  * When state machine calls:
@@ -22,9 +23,10 @@ import {
 import { postWorkOffer } from "../src/core/pipeline/post-work-offer.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
 import { getPool, query } from "../src/infra/postgres/pool.ts";
+import { loadStateNames } from "../src/core/workflow/state-names.ts";
 import { mcpText } from "./mcp-result.ts";
 
-const MCP_URL = "http://127.0.0.1:6421/sse";
+const MCP_URL = getMcpUrl();
 const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? "default";
 const WORKTREE_ROOT =
 	process.env.AGENTHIVE_WORKTREE_ROOT ?? "/data/code/worktree";
@@ -769,7 +771,7 @@ async function dispatchAgent(
 			`${verb} cubic ${cubicId.substring(0, 8)} for ${agent} → P${proposalId} (${phase})`,
 		);
 
-		const taskPrompt = `${task}\n\nUse the MCP tools to do your work. Connect to http://127.0.0.1:6421/sse for proposal management.`;
+		const taskPrompt = `${task}\n\nUse the MCP tools to do your work. Connect to ${getMcpUrl()} for proposal management.`;
 
 		if (USE_OFFER_DISPATCH) {
 			// Post a work offer — any registered agency (e.g. copilot/agency-gary)
@@ -1722,6 +1724,15 @@ async function main() {
 	logger.log("Starting Orchestrator with dynamic agent deployment...");
 
 	const pool = getPool();
+
+	// Load state-names registry from DB (includes NOTIFY listener for live reloads)
+	try {
+		await loadStateNames(pool);
+		logger.log("State-names registry loaded from database");
+	} catch (error) {
+		logger.error("Failed to load state-names registry:", error);
+		// Non-fatal; continue without the registry
+	}
 
 	// P269: reap stale rows left by any prior abrupt stop, BEFORE LISTEN.
 	await reapStaleRows(
