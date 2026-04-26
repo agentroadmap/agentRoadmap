@@ -26,8 +26,8 @@ import {
 	liaisonRegister,
 	liaisonHeartbeat,
 	endLiaisonSession,
+	checkAndMarkDormant,
 } from "../src/infra/agency/liaison-service.ts";
-import { runWatchdogCycle } from "../src/infra/agency/stuck-detection.ts";
 
 const agentIdentity =
 	process.env.AGENTHIVE_AGENT_IDENTITY ?? `agency-${hostname()}`;
@@ -120,9 +120,12 @@ async function main() {
 
 		watchdogTimer = setInterval(async () => {
 			try {
-				await runWatchdogCycle();
+				const dormantCount = await checkAndMarkDormant();
+				if (dormantCount > 0) {
+					console.log(`[Agency] Dormancy sweep: ${dormantCount} marked dormant`);
+				}
 			} catch (err) {
-				console.error("[Agency] Watchdog error:", err);
+				console.error("[Agency] Dormancy sweep error:", err);
 			}
 		}, 60_000);
 	} catch (err) {
@@ -136,7 +139,7 @@ async function main() {
 			if (watchdogTimer) clearInterval(watchdogTimer);
 			if (sessionId) {
 				try {
-					await endLiaisonSession({ session_id: sessionId, end_reason: "sigterm" });
+					await endLiaisonSession(sessionId, "operator");
 				} catch (err) {
 					console.error("[Agency] endLiaisonSession error:", err);
 				}

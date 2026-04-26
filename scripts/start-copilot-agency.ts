@@ -23,7 +23,7 @@ import {
 	liaisonHeartbeat,
 	endLiaisonSession,
 } from "../src/infra/agency/liaison-service.ts";
-import { runWatchdogCycle } from "../src/infra/agency/stuck-detection.ts";
+import { checkAndMarkDormant } from "../src/infra/agency/liaison-service.ts";
 
 const agentIdentity =
 	process.env.AGENTHIVE_AGENT_IDENTITY ?? `copilot/agency-${hostname()}`;
@@ -85,9 +85,9 @@ async function main() {
 					session_id: sessionId!,
 					status: "active",
 				});
-				if (!result.heartbeat_ok) {
+				if (!result.success) {
 					console.warn(
-						`[CopilotAgency] Heartbeat failed: ${result.message}`,
+						`[CopilotAgency] Heartbeat unsuccessful for session ${sessionId}`,
 					);
 				}
 			} catch (err) {
@@ -95,15 +95,15 @@ async function main() {
 			}
 		}, 30_000);
 
-		// Start watchdog timer (every 60s) to detect stuck offers
+		// Start dormancy sweep timer (every 60s) — mark agencies silent > 90s as dormant
 		watchdogTimer = setInterval(async () => {
 			try {
-				const result = await runWatchdogCycle();
-				if (result.checked > 0 || result.marked_dormant > 0) {
-					console.log(`[CopilotAgency] Watchdog: ${result.checked} checked, ${result.marked_dormant} dormant`);
+				const dormantCount = await checkAndMarkDormant();
+				if (dormantCount > 0) {
+					console.log(`[CopilotAgency] Dormancy sweep: ${dormantCount} marked dormant`);
 				}
 			} catch (err) {
-				console.error("[CopilotAgency] Watchdog error:", err);
+				console.error("[CopilotAgency] Dormancy sweep error:", err);
 			}
 		}, 60_000);
 	} catch (err) {
@@ -122,7 +122,7 @@ async function main() {
 			// End liaison session
 			if (sessionId) {
 				try {
-					await endLiaisonSession(sessionId, `${sig.toLowerCase()}`);
+					await endLiaisonSession(sessionId, "operator");
 				} catch (err) {
 					console.error(
 						`[CopilotAgency] Failed to end liaison session:`,
