@@ -38,9 +38,9 @@ export function registerProjectTools(server: McpServer): void {
 	} as McpToolHandler);
 
 	server.addTool({
-		name: "project_list",
+		name: "project_registry_list",
 		description:
-			"List all projects (or active only). Returns {total, returned, truncated, limit, items[]}.",
+			"List all projects from the multi-project registry (P482). Returns {total, returned, truncated, limit, items[]}. Distinct from P297's project_list which returns a one-line summary.",
 		inputSchema: {
 			type: "object",
 			properties: {

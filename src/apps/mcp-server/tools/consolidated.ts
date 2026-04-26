@@ -43,8 +43,24 @@ function formatActions(domain: string, routes: RouteMap): CallToolResult {
 
 function extractArgs(input: RouterArgs): Record<string, unknown> {
 	const { action: _action, args, ...rest } = input;
+	// args may arrive as an object (well-behaved client) or as a JSON-encoded
+	// string (some MCP clients stringify nested object params before send).
+	// Tolerate both — parse the string form once before merging.
+	let argsObj: Record<string, unknown> | undefined;
 	if (args && typeof args === "object" && !Array.isArray(args)) {
-		return { ...rest, ...args };
+		argsObj = args as Record<string, unknown>;
+	} else if (typeof args === "string" && args.trim().length) {
+		try {
+			const parsed = JSON.parse(args);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				argsObj = parsed as Record<string, unknown>;
+			}
+		} catch {
+			// Leave argsObj undefined; rest-only fallback below
+		}
+	}
+	if (argsObj) {
+		return { ...rest, ...argsObj };
 	}
 	return rest;
 }
@@ -210,7 +226,7 @@ const opsRoutes: RouteMap = {
 	federation_failed_connections: "federation_failed_connections",
 	federation_remove_host: "federation_remove_host",
 	set_project: "project_set",
-	list_projects: "project_list",
+	list_projects: "project_registry_list",
 };
 
 const projectRoutes: RouteMap = {
