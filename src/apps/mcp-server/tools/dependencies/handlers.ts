@@ -1,220 +1,367 @@
 /**
- * MCP Tool Handlers for Proposal Dependencies
+ * MCP Tool Handlers for Proposal Dependencies (Postgres-backed)
+ * P470: Rewrite to use roadmap_proposal.proposal_dependencies table
  */
 
+import { query } from "../../../../postgres/pool.ts";
 import type { CallToolResult } from "../../types.ts";
-import {
-	addDependency,
-	canPromote,
-	checkCycle,
-	getDependencies,
-	getResolutionSummary,
-	removeDependency,
-	resolveDependency,
-	createStore,
-} from "../../../../core/dag/dependency-engine.ts";
-import type {
-	CreateDependencyInput,
-	CycleCheckResult,
-	DependencyQueryFilters,
-	DependencyResolutionSummary,
-	ProposalDependency,
-	ResolveDependencyInput,
-} from "../../../../core/dag/dependency-types.ts";
 
-/** Singleton store for dependency management */
-const dependencyStore = createStore();
+function errorResult(msg: string, err: unknown): CallToolResult {
+	return {
+		content: [
+			{
+				type: "text",
+				text: `⚠️ ${msg}: ${err instanceof Error ? err.message : String(err)}`,
+			},
+		],
+	};
+}
+
+interface ProposalDependency {
+	id: bigint;
+	from_proposal_id: string;
+	to_proposal_id: string;
+	dependency_type: string;
+	resolved: boolean;
+	resolved_at: string | null;
+	resolved_by: string | null;
+	created_at: string;
+	updated_at: string;
+}
 
 export class DependencyHandlers {
 	/**
 	 * Add a new dependency between proposals.
+	 * INSERT or return existing if (from, to, type) triplet exists.
+	 * Reject self-loops. Validate both proposal IDs exist.
 	 */
-	async addDependency(input: CreateDependencyInput): Promise<CallToolResult> {
-		const result = addDependency(dependencyStore, input);
+	async addDependency(input: {
+		fromProposalId: string;
+		toProposalId: string;
+		dependencyType?: string;
+	}): Promise<CallToolResult> {
+		try {
+			const fromId = input.fromProposalId;
+			const toId = input.toProposalId;
+			const depType = input.dependencyType ?? "blocks";
 
-		if (!result.success) {
+			if (fromId === toId) {
+				return errorResult("Self-loop rejected", "from_proposal_id cannot equal to_proposal_id");
+			}
+
+			const existFrom = await query(
+				"SELECT 1 FROM roadmap_proposal.proposal WHERE id = $1",
+				[fromId],
+			);
+			if (existFrom.rows.length === 0) {
+				return errorResult("Validation failed", `from_proposal_id ${fromId} does not exist`);
+			}
+
+			const existTo = await query(
+				"SELECT 1 FROM roadmap_proposal.proposal WHERE id = $1",
+				[toId],
+			);
+			if (existTo.rows.length === 0) {
+				return errorResult("Validation failed", `to_proposal_id ${toId} does not exist`);
+			}
+
+			const existing = await query<ProposalDependency>(
+				`SELECT * FROM roadmap_proposal.proposal_dependencies
+				 WHERE from_proposal_id = $1 AND to_proposal_id = $2 AND dependency_type = $3`,
+				[fromId, toId, depType],
+			);
+
+			if (existing.rows.length > 0) {
+				const dep = existing.rows[0];
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									success: true,
+									dependency: {
+										id: String(dep.id),
+										fromProposalId: dep.from_proposal_id,
+										toProposalId: dep.to_proposal_id,
+										dependencyType: dep.dependency_type,
+										resolved: dep.resolved,
+										createdAt: dep.created_at,
+									},
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
+
+			const result = await query<ProposalDependency>(
+				`INSERT INTO roadmap_proposal.proposal_dependencies
+				 (from_proposal_id, to_proposal_id, dependency_type)
+				 VALUES ($1, $2, $3)
+				 RETURNING *`,
+				[fromId, toId, depType],
+			);
+
+			const dep = result.rows[0];
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Failed to add dependency: ${result.error}`,
+						text: JSON.stringify(
+							{
+								success: true,
+								dependency: {
+									id: String(dep.id),
+									fromProposalId: dep.from_proposal_id,
+									toProposalId: dep.to_proposal_id,
+									dependencyType: dep.dependency_type,
+									resolved: dep.resolved,
+									createdAt: dep.created_at,
+								},
+							},
+							null,
+							2,
+						),
 					},
 				],
-				isError: true,
 			};
+		} catch (err) {
+			return errorResult("Failed to add dependency", err);
 		}
-
-		const dep = result.dependency!;
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify(
-						{
-							success: true,
-							dependency: {
-								id: dep.id,
-								fromProposalId: dep.fromProposalId,
-								toProposalId: dep.toProposalId,
-								dependencyType: dep.dependencyType,
-								resolved: dep.resolved,
-								createdAt: dep.createdAt,
-							},
-						},
-						null,
-						2,
-					),
-				},
-			],
-		};
 	}
 
 	/**
 	 * Get dependencies with optional filters.
 	 */
-	async getDependencies(filters: DependencyQueryFilters = {}): Promise<CallToolResult> {
-		const deps = getDependencies(dependencyStore, filters);
+	async getDependencies(input: {
+		fromProposalId?: string;
+		toProposalId?: string;
+		dependencyType?: string;
+		resolved?: boolean;
+	} = {}): Promise<CallToolResult> {
+		try {
+			let sql = "SELECT * FROM roadmap_proposal.proposal_dependencies WHERE 1=1";
+			const params: (string | boolean)[] = [];
+			let paramIdx = 1;
 
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify(
-						{
-							count: deps.length,
-							dependencies: deps.map((d) => ({
-								id: d.id,
-								fromProposalId: d.fromProposalId,
-								toProposalId: d.toProposalId,
-								dependencyType: d.dependencyType,
-								resolved: d.resolved,
-								createdAt: d.createdAt,
-								updatedAt: d.updatedAt,
-								notes: d.notes,
-							})),
-						},
-						null,
-						2,
-					),
-				},
-			],
-		};
-	}
+			if (input.fromProposalId) {
+				sql += ` AND from_proposal_id = $${paramIdx++}`;
+				params.push(input.fromProposalId);
+			}
+			if (input.toProposalId) {
+				sql += ` AND to_proposal_id = $${paramIdx++}`;
+				params.push(input.toProposalId);
+			}
+			if (input.dependencyType) {
+				sql += ` AND dependency_type = $${paramIdx++}`;
+				params.push(input.dependencyType);
+			}
+			if (input.resolved !== undefined) {
+				sql += ` AND resolved = $${paramIdx++}`;
+				params.push(input.resolved);
+			}
 
-	/**
-	 * Resolve or unresolve a dependency.
-	 */
-	async resolveDependency(input: ResolveDependencyInput): Promise<CallToolResult> {
-		const result = resolveDependency(dependencyStore, input);
+			sql += " ORDER BY created_at DESC";
 
-		if (!result.success) {
+			const result = await query<ProposalDependency>(sql, params);
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Failed to resolve dependency: ${result.error}`,
+						text: JSON.stringify(
+							{
+								count: result.rows.length,
+								dependencies: result.rows.map((d) => ({
+									id: String(d.id),
+									fromProposalId: d.from_proposal_id,
+									toProposalId: d.to_proposal_id,
+									dependencyType: d.dependency_type,
+									resolved: d.resolved,
+									createdAt: d.created_at,
+									updatedAt: d.updated_at,
+								})),
+							},
+							null,
+							2,
+						),
 					},
 				],
-				isError: true,
 			};
+		} catch (err) {
+			return errorResult("Failed to get dependencies", err);
 		}
+	}
 
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify(
-						{
-							success: true,
-							dependency: result.dependency,
-						},
-						null,
-						2,
-					),
-				},
-			],
-		};
+	/**
+	 * Resolve a dependency (mark resolved, set timestamp and resolver).
+	 */
+	async resolveDependency(input: {
+		id: string | number;
+		resolved?: boolean;
+		resolved_by?: string;
+	}): Promise<CallToolResult> {
+		try {
+			const depId = String(input.id);
+			const resolveTo = input.resolved !== false; // defaults to true if not specified
+			const resolvedValue = resolveTo ? true : false;
+
+			const result = await query<ProposalDependency>(
+				`UPDATE roadmap_proposal.proposal_dependencies
+				 SET resolved = $2, resolved_at = ${resolveTo ? "NOW()" : "NULL"}, resolved_by = $3, updated_at = NOW()
+				 WHERE id = $1
+				 RETURNING *`,
+				[depId, resolvedValue, input.resolved_by ?? null],
+			);
+
+			if (result.rows.length === 0) {
+				return errorResult("Not found", `dependency id ${depId} not found`);
+			}
+
+			const dep = result.rows[0];
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								success: true,
+								dependency: {
+									id: String(dep.id),
+									fromProposalId: dep.from_proposal_id,
+									toProposalId: dep.to_proposal_id,
+									dependencyType: dep.dependency_type,
+									resolved: dep.resolved,
+									resolvedAt: dep.resolved_at,
+									resolvedBy: dep.resolved_by,
+									updatedAt: dep.updated_at,
+								},
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (err) {
+			return errorResult("Failed to resolve dependency", err);
+		}
 	}
 
 	/**
 	 * Check if adding a dependency would create a cycle.
+	 * Uses recursive CTE to detect reachability.
 	 */
-	async checkCycle(input: CreateDependencyInput): Promise<CallToolResult> {
-		const result = checkCycle(dependencyStore, input);
+	async checkCycle(input: {
+		fromProposalId: string;
+		toProposalId: string;
+	}): Promise<CallToolResult> {
+		try {
+			const result = await query<{ found: boolean }>(
+				`WITH RECURSIVE reach AS (
+					SELECT to_proposal_id FROM roadmap_proposal.proposal_dependencies
+					WHERE from_proposal_id = $1 AND NOT resolved
+					UNION
+					SELECT d.to_proposal_id FROM roadmap_proposal.proposal_dependencies d
+					JOIN reach r ON d.from_proposal_id = r.to_proposal_id
+					WHERE NOT d.resolved
+				)
+				SELECT EXISTS(SELECT 1 FROM reach WHERE to_proposal_id = $2) as found`,
+				[input.toProposalId, input.fromProposalId],
+			);
 
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify(
-						{
-							wouldCreateCycle: result.wouldCreateCycle,
-							cyclePath: result.cyclePath,
-							message: result.message,
-						},
-						null,
-						2,
-					),
-				},
-			],
-		};
+			const wouldCreateCycle = result.rows[0]?.found ?? false;
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								wouldCreateCycle,
+								message: wouldCreateCycle
+									? "Adding this edge would create a cycle"
+									: "Safe to add this dependency",
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (err) {
+			return errorResult("Failed to check cycle", err);
+		}
 	}
 
 	/**
 	 * Remove a dependency by ID.
 	 */
-	async removeDependency(input: { id: number }): Promise<CallToolResult> {
-		const result = removeDependency(dependencyStore, input.id);
+	async removeDependency(input: { id: string | number }): Promise<CallToolResult> {
+		try {
+			const depId = String(input.id);
+			const result = await query(
+				"DELETE FROM roadmap_proposal.proposal_dependencies WHERE id = $1",
+				[depId],
+			);
 
-		if (!result.success) {
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Failed to remove dependency: ${result.error}`,
+						text: JSON.stringify(
+							{
+								success: true,
+								removed: result.rowCount,
+							},
+							null,
+							2,
+						),
 					},
 				],
-				isError: true,
 			};
+		} catch (err) {
+			return errorResult("Failed to remove dependency", err);
 		}
-
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify({ success: true, removedId: input.id }),
-				},
-			],
-		};
 	}
 
 	/**
-	 * Check if a proposal can be promoted (all blocking deps resolved).
+	 * Check if a proposal can be promoted (no unresolved blocks).
 	 */
 	async canPromote(input: { proposalId: string }): Promise<CallToolResult> {
-		const promotable = canPromote(dependencyStore, input.proposalId);
-		const summary = getResolutionSummary(dependencyStore, input.proposalId);
+		try {
+			const blockers = await query<{ from_proposal_id: string; dependency_type: string }>(
+				`SELECT from_proposal_id, dependency_type FROM roadmap_proposal.proposal_dependencies
+				 WHERE to_proposal_id = $1 AND dependency_type = 'blocks' AND NOT resolved`,
+				[input.proposalId],
+			);
 
-		return {
-			content: [
-				{
-					type: "text",
-					text: JSON.stringify(
-						{
-							proposalId: input.proposalId,
-							canPromote: promotable,
-							summary: {
-								totalBlocking: summary.totalBlocking,
-								resolvedBlocking: summary.resolvedBlocking,
-								unresolvedBlocking: summary.unresolvedBlocking,
-								unresolvedDetails: summary.unresolvedDetails,
+			const canPromote = blockers.rows.length === 0;
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								proposalId: input.proposalId,
+								canPromote,
+								blockedBy: blockers.rows.map((b) => ({
+									fromId: b.from_proposal_id,
+									type: b.dependency_type,
+								})),
 							},
-						},
-						null,
-						2,
-					),
-				},
-			],
-		};
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (err) {
+			return errorResult("Failed to check promotion", err);
+		}
 	}
 }
