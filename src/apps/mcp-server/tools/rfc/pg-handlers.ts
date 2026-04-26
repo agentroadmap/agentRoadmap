@@ -912,7 +912,7 @@ export async function submitReview(args: {
 		}
 		await query(
 			`INSERT INTO roadmap_workforce.agent_registry (agent_identity, agent_type, role, skills, status)
-			 VALUES ($1, 'specialist', 'reviewer', '["review"]'::jsonb, 'active')
+			 VALUES ($1, 'llm', 'reviewer', '["review","specialist"]'::jsonb, 'active')
 			 ON CONFLICT (agent_identity) DO NOTHING`,
 			[args.reviewer],
 		);
