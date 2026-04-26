@@ -276,14 +276,14 @@ AgentHive runs on a **two-tier Postgres topology**:
 
 **The keystone invariant:** `roadmap_proposal.proposal.project_id` (in `hiveControl`) is a **foreign key into `roadmap.project.project_id`**, which **points at a tenant DB connection record** — it is **NOT** a tenancy discriminator on rows that share a database with other tenants. Two projects never share a table inside a single DB.
 
-**Single Postgres instance, multiple databases on it.** All databases (`hiveControl`, `agenthive`, future tenants) live on the same `127.0.0.1:5432` Postgres server. We do NOT run multiple Postgres clusters or hosts. The two-tier topology is logical (database-level), not physical (host-level). A future move of a single tenant to its own host is possible (P517) but explicitly out of the current plan.
+**Default placement: one Postgres instance, multiple databases on it.** Today all databases (`hiveControl` + project DBs) live on the same `127.0.0.1:5432` Postgres server. The two-tier topology is **logical** (database + role boundary), so isolation does not require physical separation. Moving a tenant to its own host later is a normal operational decision — the architecture supports it but does not require it. **Naming is fixed:** the control database is always `hiveControl`; each project database is named after the project slug.
 
 **Why two databases on one instance (not single-DB-with-project_id):**
 - **Blast radius:** a runaway query against tenant data cannot lock control-plane tables (different DB = different lock space, different connection, different role).
 - **Backup/RTO:** each database gets its own `pg_dump` schedule and retention; control-plane has its own.
 - **Credentials:** each database has its own role with grants only on its own schemas; tenant role cannot reach control-plane data.
 - **Tenancy by accident:** prevents the multi-tenant-without-isolation failure mode.
-- **Placement (future option only):** if a tenant later outgrows the shared instance, moving it to its own host is a self-contained migration that doesn't re-architect the control plane (P517 covers this; not part of the keystone plan).
+- **Placement flexibility:** because isolation is database-level, moving any single database to its own Postgres host later is a self-contained migration that doesn't re-architect the control plane (P517 covers the operational pattern). Default placement is one instance; multi-instance is available when justified.
 
 **Connection resolution at runtime:**
 - All control-plane queries connect to `hiveControl` (DSN in `databases.control` of `roadmap.yaml`, env-overridable per §config-resolver).
