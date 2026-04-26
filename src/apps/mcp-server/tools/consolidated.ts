@@ -94,7 +94,13 @@ function createRouterTool(
 	};
 }
 
+// Agents frequently call the underlying tool name (with prefix) instead of
+// the consolidated short action — e.g. `prop_get`, `prop_list`, `prop_claim`.
+// They also try `mcp_get_proposal_projection` directly. Accept all canonical
+// short names AND the raw tool names, so a misremembered call doesn't strand
+// a gate/review run with "Unknown action".
 const proposalRoutes: RouteMap = {
+	// canonical short actions
 	list: "prop_list",
 	get: "prop_get",
 	detail: "mcp_get_proposal_projection",
@@ -125,6 +131,27 @@ const proposalRoutes: RouteMap = {
 	sync_worktrees: "worktree_sync",
 	merge_status: "worktree_merge_status",
 	get_detail: "prop_get_detail",
+	// raw-tool aliases (agents often dispatch on raw tool names)
+	prop_list: "prop_list",
+	prop_get: "prop_get",
+	prop_get_detail: "prop_get_detail",
+	prop_create: "prop_create",
+	prop_update: "prop_update",
+	prop_delete: "prop_delete",
+	prop_transition: "prop_transition",
+	prop_set_maturity: "prop_set_maturity",
+	prop_claim: "prop_claim",
+	prop_release: "prop_release",
+	prop_renew: "prop_renew",
+	prop_leases: "prop_leases",
+	mcp_get_proposal_projection: "mcp_get_proposal_projection",
+	worktree_merge_status: "worktree_merge_status",
+	worktree_merge: "worktree_merge",
+	worktree_sync: "worktree_sync",
+	add_acceptance_criteria: "add_acceptance_criteria",
+	verify_ac: "verify_ac",
+	list_ac: "list_ac",
+	delete_ac: "delete_ac",
 };
 
 const messageRoutes: RouteMap = {

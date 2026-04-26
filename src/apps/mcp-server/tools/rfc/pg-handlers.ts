@@ -71,8 +71,23 @@ function classifyTransition(from: string, to: string): string {
 	return "mature";
 }
 
-function parseNumericIdentifier(identifier: string): number | null {
-	const trimmed = identifier.trim();
+/**
+ * Coerce a proposal identifier to its canonical string form. Some MCP clients
+ * pass `proposal_id` as a JS number (e.g. `594`); the downstream resolver
+ * calls `.trim()` on it, which throws "identifier.trim is not a function" and
+ * leaves the gate/review agents unable to read the proposal at all. Tolerate
+ * both strings and numbers at the boundary.
+ */
+function coerceIdentifier(identifier: string | number | null | undefined): string {
+	if (identifier === null || identifier === undefined) return "";
+	if (typeof identifier === "number") {
+		return Number.isFinite(identifier) ? String(identifier) : "";
+	}
+	return identifier;
+}
+
+function parseNumericIdentifier(identifier: string | number): number | null {
+	const trimmed = coerceIdentifier(identifier).trim();
 	if (!/^\d+$/.test(trimmed)) {
 		return null;
 	}
@@ -81,8 +96,9 @@ function parseNumericIdentifier(identifier: string): number | null {
 }
 
 async function resolveProposalRecord(
-	identifier: string,
+	identifierIn: string | number,
 ): Promise<ResolvedProposal | null> {
+	const identifier = coerceIdentifier(identifierIn);
 	const numericId = parseNumericIdentifier(identifier);
 	const { rows } = await query<ResolvedProposal>(
 		`SELECT
@@ -111,7 +127,7 @@ async function resolveProposalRecord(
 	return rows[0] ?? null;
 }
 
-async function resolveProposalId(identifier: string): Promise<number | null> {
+async function resolveProposalId(identifier: string | number): Promise<number | null> {
 	const proposal = await resolveProposalRecord(identifier);
 	return proposal?.id ?? null;
 }
@@ -889,8 +905,16 @@ export async function submitReview(args: {
 	verdict: string;
 	findings?: Record<string, any>;
 	notes?: string;
+	// Common aliases agents try when they don't recall the canonical name.
+	// Treated as fallbacks for `notes` so a misnamed arg doesn't strand a gate run.
+	review?: string;
+	body?: string;
+	content?: string;
 	change_requirements?: string[];
 }): Promise<CallToolResult> {
+	if (!args.notes) {
+		args.notes = args.review ?? args.body ?? args.content;
+	}
 	try {
 		const proposalId = await resolveProposalId(args.proposal_id);
 		if (proposalId === null) {
@@ -1073,9 +1097,24 @@ export async function addDiscussion(args: {
 	proposal_id: string;
 	author: string;
 	content: string;
+	// Common aliases agents try. Coerce to `content` before validation so
+	// `discussion: "..."` or `text: "..."` doesn't strand the agent.
+	discussion?: string;
+	text?: string;
+	body?: string;
+	message?: string;
 	parent_id?: number;
 	context_prefix?: string;
 }): Promise<CallToolResult> {
+	if (!args.content) {
+		args.content =
+			args.discussion ?? args.text ?? args.body ?? args.message ?? "";
+	}
+	if (!args.author) {
+		// Default authoring identity so cubic/gate agents don't bounce on a
+		// missing arg — they're system-issued, not user-issued.
+		(args as any).author = "system";
+	}
 	try {
 		const proposalId = await resolveProposalId(args.proposal_id);
 		if (proposalId === null) {

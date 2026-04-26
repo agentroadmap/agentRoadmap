@@ -237,8 +237,17 @@ export class GateEvaluatorAgent {
 	}
 
 	/**
-	 * Record gate decision in gate_decision_log
-	 * P206 AC-2 & AC-5: Records verdict='approve'/'reject' with metadata
+	 * Record gate decision in gate_decision_log.
+	 *
+	 * Operational contract: on `reject` and `pending` verdicts, the rationale
+	 * and `ac_verification.details` payload are the canonical channel back to
+	 * the enhancing agent. MCP discussions/messages are best-effort and may
+	 * never reach the downstream cubic — so any failure list, remediation
+	 * instructions, evidence pointers, and explicit next-step hints MUST live
+	 * here. The next enhancing agent reads `gate_decision_log` to decide what
+	 * to revise; if details are missing, the loop stalls.
+	 *
+	 * P206 AC-2 & AC-5: Records verdict='approve'/'reject' with metadata.
 	 */
 	private async recordGateDecision(
 		proposal: ProposalBrief,
@@ -257,6 +266,8 @@ export class GateEvaluatorAgent {
 				? acStatus.passRate
 				: null;
 
+			const rationaleText = renderRationale(decision);
+
 			await this.queryFn(
 				`INSERT INTO roadmap_proposal.gate_decision_log
 				 (proposal_id, from_state, to_state, maturity, gate, decided_by,
@@ -269,13 +280,26 @@ export class GateEvaluatorAgent {
 					gate.to_state,
 					gate.name,
 					decision.verdict,
-					decision.reason,
+					rationaleText,
 					JSON.stringify({
 						pass_rate: acPassRate,
-						...decision.metadata,
+						...(decision.metadata ?? {}),
+						// Full machine-readable structure. The enhancing agent
+						// reads `details` from here to plan its next revision.
+						details: decision.details ?? null,
 					}),
 				],
 			);
+
+			// Operational guard: non-approve verdicts without details strand
+			// the enhancing agent. Log loudly so the gap is visible.
+			if (decision.verdict !== "approve" && !decision.details) {
+				console.warn(
+					`[GateEvaluator] ⚠ ${decision.verdict} on ${proposal.display_id} ` +
+					`without structured details — enhancing agent will only see the ` +
+					`one-line reason. Populate decision.details for actionable rejections.`,
+				);
+			}
 
 			console.log(
 				`[GateEvaluator] Recorded decision: ${decision.verdict} for ${proposal.display_id}`,
@@ -285,6 +309,56 @@ export class GateEvaluatorAgent {
 			throw err;
 		}
 	}
+}
+
+/**
+ * Render a GateDecision into a multi-section rationale string. The enhancing
+ * agent reads this via MCP/proposal browser when it doesn't parse the JSONB.
+ * Keep the format stable and grep-friendly — downstream tooling looks for the
+ * `## Failures`, `## Remediation`, `## Next step` headings.
+ */
+function renderRationale(decision: GateDecision): string {
+	const head = decision.reason || `Gate ${decision.verdict}`;
+	const d = decision.details;
+	if (!d) return head;
+
+	const parts: string[] = [head];
+
+	if (d.failures && d.failures.length > 0) {
+		parts.push("\n## Failures");
+		for (const f of d.failures) {
+			const code = f.code ? `[${f.code}] ` : "";
+			const ev = f.evidence ? ` — evidence: ${f.evidence}` : "";
+			parts.push(`- (${f.severity}) ${code}${f.summary}${ev}`);
+		}
+	}
+
+	if (d.remediation && d.remediation.length > 0) {
+		parts.push("\n## Remediation");
+		for (const r of d.remediation) {
+			const refs = r.applies_to_failure_codes?.length
+				? ` (fixes: ${r.applies_to_failure_codes.join(", ")})`
+				: "";
+			parts.push(`- ${r.action}${refs}`);
+		}
+	}
+
+	if (d.reviewer_breakdown && d.reviewer_breakdown.length > 0) {
+		parts.push("\n## Reviewer breakdown");
+		for (const r of d.reviewer_breakdown) {
+			parts.push(`- ${r.reviewer_role}: ${r.verdict.toUpperCase()} — ${r.headline}`);
+		}
+	}
+
+	if (d.evidence_uri) {
+		parts.push(`\n## Evidence\n${d.evidence_uri}`);
+	}
+
+	if (d.next_step) {
+		parts.push(`\n## Next step\n${d.next_step}`);
+	}
+
+	return parts.join("\n");
 }
 
 /**

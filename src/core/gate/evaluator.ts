@@ -17,10 +17,53 @@ export type GateEvaluatorMode = "auto" | "ai-agent" | "quorum";
 
 export type GateVerdict = "approve" | "reject" | "pending";
 
+/**
+ * Structured detail attached to non-transition gate decisions.
+ *
+ * Operational rule: on `reject` or `pending` verdicts the gate evaluator MUST
+ * populate `details` so the enhancing agent can act on the rejection without
+ * relying on MCP discussions/messages — those are not guaranteed to reach
+ * downstream agents. The `rationale` column in `gate_decision_log` is rendered
+ * from this structure (text fallback) and the `ac_verification` JSONB column
+ * captures the full structure machine-readably.
+ *
+ * On `approve` verdicts `details` may be omitted.
+ */
+export interface GateDecisionDetails {
+	/** Required: 1–N concrete things blocking advancement, each actionable. */
+	failures?: Array<{
+		severity: "critical" | "major" | "minor";
+		code?: string;          // machine-readable identifier (e.g., 'AC-1', 'SCHEMA-MISMATCH')
+		summary: string;        // one line, human-readable
+		evidence?: string;      // file:line reference, query snippet, or pointer to artifact
+	}>;
+	/** Required if failures non-empty: remediation steps the enhancer should take. */
+	remediation?: Array<{
+		action: string;
+		applies_to_failure_codes?: string[];
+	}>;
+	/** Optional pointer to a longer write-up (markdown doc, gate-review file). */
+	evidence_uri?: string;
+	/** Optional per-reviewer breakdown when the decision aggregates multiple voices. */
+	reviewer_breakdown?: Array<{
+		reviewer_role: string;
+		verdict: "approve" | "reject" | "pending" | "abstain";
+		headline: string;
+	}>;
+	/** Optional explicit next-step instruction for the enhancing agent. */
+	next_step?: string;
+}
+
 export interface GateDecision {
 	verdict: GateVerdict;
 	reason: string;
 	metadata?: Record<string, unknown>;
+	/**
+	 * Required on `reject` and `pending`. The enhancing agent reads this from
+	 * `gate_decision_log.ac_verification.details` to decide what to revise.
+	 * MCP discussions/messages are best-effort; this is the canonical channel.
+	 */
+	details?: GateDecisionDetails;
 }
 
 export interface GateEvaluatorConfig {
