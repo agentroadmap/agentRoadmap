@@ -209,6 +209,8 @@ const opsRoutes: RouteMap = {
 	federation_list_certificates: "federation_list_certificates",
 	federation_failed_connections: "federation_failed_connections",
 	federation_remove_host: "federation_remove_host",
+	set_project: "project_set",
+	list_projects: "project_list",
 };
 
 const projectRoutes: RouteMap = {
