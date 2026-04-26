@@ -244,6 +244,130 @@ Three cases for in-flight work:
 - Reconciliation only releases the lease; partial work is preserved in the tenant
 - Next claimant picks up where the previous left off (idempotency required of all dispatch operations — this is enforced by the `(proposal_id, phase, role)` unique constraint)
 
+## 5b. Per-tenant lease reconciliation (C1 fix)
+
+Leases live inside each tenant DB (`<tenant>.proposal.proposal_lease`), not in
+hiveCentral. hiveCentral only owns the *fan-out queue*: a row per tenant in
+`roadmap.dr_orphan_lease_request` with `(project_db_dsn, failover_time, cutoff_ts)`.
+
+The per-tenant reconciler daemon (one process per tenant DB, started by
+systemd alongside the tenant) consumes its assigned rows and performs the
+orphan UPDATE inside the tenant DB:
+
+```sql
+-- Tenant-side; runs inside <tenant> DB:
+UPDATE proposal.proposal_lease pl
+   SET status='released',
+       released_at=now(),
+       released_reason='dr_failover_orphan'
+ WHERE pl.status='active'
+   AND (pl.last_renewed_at IS NULL OR pl.last_renewed_at < $1::timestamptz);  -- C3 NULL-safe
+```
+
+After the UPDATE, the daemon UPDATEs its `dr_orphan_lease_request` row to
+`request_status='complete'`. Check 4 of the post-failover verifier asserts
+no row remains `pending` more than 5 minutes after `requested_at`.
+
+**Why a queue-and-daemon, not FDW or dblink:** v1 deliberately has no FDW
+between hiveCentral and tenant DBs (avoids cross-domain coupling and
+blast-radius creep). The queue is the bounded-context API; the daemon is
+the implementation.
+
+## 5c. Tenant-DB DR coupling on shared instance (I3 fix)
+
+In v1, hiveCentral and the tenant DBs share **one Postgres instance**.
+Losing the instance loses both. This document's 5-minute control-plane RTO
+claim is **specifically** about hiveCentral's structural durability after
+the instance comes back — not about tenant data.
+
+| Domain | RTO | RPO | Recovery path |
+|---|---|---|---|
+| hiveCentral (control plane) | ≤ 5 min | ≤ 60 s | Promote standby + lease reconcile (this doc) |
+| Tenant DBs (project state, code artifacts) | ≤ 30 min | ≤ 24 h | Restore from off-host logical pg_dump (§8) |
+
+When the v3 split lands and tenants move to separate physical instances
+(post-v1), the tenant-RTO improves; v1 explicitly accepts the longer
+tenant-restore window because (a) project state is mostly idempotent and
+(b) the alternative (per-tenant streaming standbys) is an order of
+magnitude more operational cost than v1 can absorb.
+
+## 5d. Vault topology + DR (I4 fix)
+
+The vault that holds orchestrator/identity signing keys is the **single
+trust root** for workload-token verification. Its topology must be
+specified or the §5 "tokens survive failover" claim doesn't hold.
+
+**v1 vault topology:**
+
+| Component | Where | DR |
+|---|---|---|
+| Primary vault (HashiCorp Vault, KV-v2 + Transit) | Same DC as hiveCentral primary, separate host | Continuous Raft replication to a vault standby in the same DC |
+| Vault standby | Co-located with PG standby (separate host from PG) | Auto-takes-over on Vault Raft leader loss |
+| Sealed root keys | Operator-held Shamir shards (3-of-5) | Off-host (paper) — restored only for vault re-init |
+
+**Failover-time interaction:** vault is **independent** of PG. PG failover
+does not touch vault. If both PG primary AND vault primary die in the same
+event (both in DC1):
+
+- PG standby (DC1 second host) promotes per this doc.
+- Vault standby (DC1 third host) takes Raft leadership automatically.
+- Workload-token verifiers re-fetch via the standby vault address (HA URL
+  in `runtime_flag.vault_url` is a `vault.hivecentral.local` DNS that
+  routes to the active node).
+
+**Failure of vault HA itself** is rare but covered by a cached-public-key
+fallback in MCP and PgBouncer auth hooks: each verifier caches the
+orchestrator's public key for 5 minutes (configurable via
+`runtime_flag.workload_verifier_cache_ttl_seconds`). If vault is briefly
+unreachable during failover, cached keys serve. Beyond cache TTL, workload
+verification fails closed (deny by default; operator must restore vault).
+
+This is why §5's "tokens survive failover" works: vault HA is independent
+of PG, and a 5-min cache covers the brief unreachable window.
+
+## 5e. Operator decision SLA + escalation (I5 fix)
+
+Real RTO = detection (60 s) + **operator decision** + script (≤ 4 min).
+The operator decision was previously undefined. v1 commitment:
+
+| Tier | SLA | Mechanism |
+|---|---|---|
+| Primary on-call (24×7) | 5 min decision | PagerDuty page on PG primary heartbeat fail > 60 s |
+| Backup on-call | +10 min if primary doesn't ack | PagerDuty escalation policy `dr-failover-decision` |
+| Engineering manager | +15 min if both on-call silent | PagerDuty escalation policy `dr-failover-decision` |
+
+**Total worst-case operator-decision latency: 30 min.** Real RTO budget
+under worst-case escalation: 60 s + 30 min + 4 min ≈ **35 min**.
+Best-case (primary on-call awake and on console): 60 s + 30 s + 4 min
+≈ **5 min** — matches the §1 target.
+
+**Mandatory drill cadence:**
+
+- Quarterly drill in business hours (primary on-call lives the script)
+- Quarterly drill **after-hours** (backup on-call lives the script,
+  primary deliberately doesn't ack — exercises the escalation path)
+
+Drill outcomes recorded as `governance.decision_log` kind=`dr_drill` with
+measured operator-decision latency in `payload.operator_decision_seconds`.
+
+## 5f. Clock skew tolerance (I2 fix)
+
+The 60-second cutoff in §5b assumes agency host clocks are within ±30 s of
+the hiveCentral DB clock. NTP commonly drifts further on poorly configured
+hosts. v1 mitigations:
+
+1. **Pre-flight on script start:** `chronyc tracking` on hiveCentral and
+   every reachable agency reports `Last offset` < 5 s. If any host
+   exceeds ±5 s, the script aborts with `pre-flight-clock-skew` error and
+   the operator either fixes NTP first or runs with `--widen-window`.
+2. **Configurable cutoff:** `--widen-window=180` (default 60) on the
+   failover script, mirrored by `runtime_flag.dr_lease_cutoff_seconds`.
+   Setting to 180 s tolerates ±90 s clock drift.
+3. **Drill instrumentation:** every drill logs `clock_skew_max_seconds`
+   into `governance.decision_log.payload`. If the running max climbs
+   above 30 s for 3 consecutive drills, that triggers a Tier-A proposal
+   to widen the default cutoff.
+
 ## 5. Workload-token continuity
 
 Workload tokens (`did:hive:spawn:<dispatch_id>:<spawn_serial>`) are signed by the orchestrator key. The signing key lives in **vault**, not in the DB.
@@ -295,16 +419,24 @@ Drill runbook is checked into `docs/dr/drill-runbook.md` (to be written under P5
 
 ## 10. Acceptance criteria for P591
 
-- [ ] Topology diagram + script files under `scripts/dr/` exist and are committed
-- [ ] `lease-reconcile.sql` + `post-failover-verify.sql` SQL files committed
-- [ ] One successful end-to-end failover drill in staging, logged in `governance.decision_log`
-- [ ] RPO measurement during drill ≤ 60s
-- [ ] RTO measurement during drill ≤ 5 min
-- [ ] Lease reconciliation pass releases zero orphans on a clean drill (no in-flight work)
-- [ ] Lease reconciliation pass releases all orphans on a "stuck-claim" drill (deliberately killed mid-flight agent before failover)
-- [ ] Hash chain integrity check passes after failover
-- [ ] Backup restore-test job runs weekly without intervention
-- [ ] Runbook is reviewed by at least one external operator (two-person ops principle)
+The authoritative AC list is in `roadmap_proposal.proposal_acceptance_criteria`
+(WHERE proposal_id=591); this document mirrors. If they diverge, the DB wins.
+Latest snapshot (post-skeptic-squad revision):
+
+1. Topology diagram + DR scripts committed under `scripts/dr/`
+2. `lease-reconcile.sql` + `post-failover-verify.sql` committed AND target the v3 tenant-DB layout (per-tenant fan-out queue, not `roadmap_workforce.*`)
+3. One end-to-end failover drill in staging logged to `governance.decision_log` kind=`dr_drill` with RPO/RTO measurements
+4. RPO measurement during drill ≤ 60 s
+5. RTO measurement during drill ≤ 5 min
+6. Lease reconciliation releases zero orphans on a clean drill
+7. Lease reconciliation releases all orphans on a stuck-claim drill (deliberately killed mid-flight agent)
+8. Hash-chain integrity check fully recomputes `this_hash = sha256(prev_hash || canonical_payload)` — not linkage-only
+9. `catalog_snapshot_baseline` DDL committed AND hourly snapshot job scheduled, OR Check 5 explicitly removed and deferred (v1: deferred to P604/observability)
+10. `failover.sh`: `psql -v` parameter binding everywhere (no heredoc interpolation); idempotent PgBouncer config edit; `pg_ctl promote -w`; reverse-order PgBouncer flip AFTER lease-reconcile
+11. `lease-reconcile.sql` (and the documented per-tenant SQL contract): NULL-safe predicate `(last_renewed_at IS NULL OR last_renewed_at < cutoff.ts)`
+12. Design doc explicitly answers: tenant-DB DR coupling on shared instance, vault topology + DR, operator-decision SLA + escalation policy, clock-skew tolerance
+13. Backup restore-test job runs weekly without intervention
+14. Runbook reviewed by at least one external operator (two-person ops principle)
 
 ## 11. Open questions for review
 

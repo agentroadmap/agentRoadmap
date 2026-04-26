@@ -47,12 +47,17 @@ if ! ssh -o ConnectTimeout=5 "${STANDBY}" "true"; then
   fail "Cannot SSH to standby ${STANDBY}. Aborting." 1
 fi
 
-STANDBY_IN_RECOVERY=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc 'SELECT pg_is_in_recovery();'" || echo "ERROR")
+# I9: hard-fail on SSH errors instead of swallowing with a sentinel string.
+# Previously `|| echo "ERROR"` masked transient SSH failures and caused
+# downstream string comparisons to silently misbehave.
+STANDBY_IN_RECOVERY=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc 'SELECT pg_is_in_recovery();'") \
+  || fail "SSH/psql to standby ${STANDBY} failed during pg_is_in_recovery() check." 1
 if [[ "$STANDBY_IN_RECOVERY" != "t" ]]; then
   fail "Standby is not in recovery mode (already promoted? primary?). Got: $STANDBY_IN_RECOVERY" 1
 fi
 
-LAG_LSN=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc \"SELECT pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn());\"" || echo "ERROR")
+LAG_LSN=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc \"SELECT pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn());\"") \
+  || fail "SSH/psql to standby ${STANDBY} failed during replay-lag check." 1
 log "  Standby replay lag (bytes behind receive): ${LAG_LSN}"
 # We don't fail on lag — the operator already accepted RPO ≤ 60s.
 
@@ -72,44 +77,64 @@ done
 # Step 2: Promote standby
 # ----------------------------------------------------------------
 log "Step 2: Promote standby ${STANDBY}"
-ssh "${STANDBY}" "sudo -u postgres pg_ctl promote -D /var/lib/postgresql/16/main" \
+# I8: -w makes pg_ctl wait for the promotion to actually complete (default
+# timeout 60s) instead of returning while the postmaster is still mid-promote.
+# Without -w the shell-side wait loop can race against an in-flight promote.
+ssh "${STANDBY}" "sudo -u postgres pg_ctl promote -w -t 60 -D /var/lib/postgresql/16/main" \
   || fail "pg_ctl promote failed on ${STANDBY}"
 
-# Wait up to 30s for promotion to complete
+# Belt-and-braces: even with -w, re-poll pg_is_in_recovery() in case the
+# remote pg_ctl returns success before pg_is_in_recovery() flips to f.
 for i in {1..30}; do
-  STANDBY_IN_RECOVERY=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc 'SELECT pg_is_in_recovery();'" 2>/dev/null || echo "ERROR")
+  STANDBY_IN_RECOVERY=$(ssh "${STANDBY}" "sudo -u postgres psql -tAc 'SELECT pg_is_in_recovery();'" 2>/dev/null) \
+    || { sleep 1; continue; }
   [[ "$STANDBY_IN_RECOVERY" == "f" ]] && break
   sleep 1
 done
 
-if [[ "$STANDBY_IN_RECOVERY" != "f" ]]; then
+if [[ "${STANDBY_IN_RECOVERY:-}" != "f" ]]; then
   fail "Standby did not exit recovery within 30s; manual investigation required."
 fi
 log "  Standby promoted; new primary is ${STANDBY}"
 
 # ----------------------------------------------------------------
-# Step 3: Flip PgBouncer pool target
+# Step 3 (C5: was Step 4): Lease reconciliation FIRST — must complete before
+# clients can reach the new primary. If we flip PgBouncer first, in-flight
+# clients connect to the new primary and observe stale 'active' leases for
+# orphan agents until reconciliation runs ~30s later. Reverse the order so
+# the reconcile-then-flip window is closed.
 # ----------------------------------------------------------------
-log "Step 3: Update PgBouncer config and reload"
+log "Step 3: Run lease reconciliation against the newly promoted primary"
+# C1: lease-reconcile.sql now iterates tenant DBs internally (per project.project_db).
+# It connects directly to the standby host (not via PgBouncer) since PgBouncer
+# is still pointed at the dead primary at this stage.
+psql -U admin -h "${STANDBY}" -p 5432 -d hiveCentral \
+  -v failover_time="${FAILOVER_TIME}" \
+  -f "${DR_DIR}/lease-reconcile.sql" \
+  >> "$LOG" 2>&1 \
+  || fail "Lease reconciliation failed; see ${LOG}"
+log "  Lease reconciliation complete"
+
+# ----------------------------------------------------------------
+# Step 4 (C5: was Step 3): Flip PgBouncer pool target — only after orphan
+# leases have been released, so newly-arriving clients see a consistent state.
+# ----------------------------------------------------------------
+log "Step 4: Update PgBouncer config and reload"
 if [[ ! -f "$PGBOUNCER_CONF" ]]; then
   fail "PgBouncer config not found at $PGBOUNCER_CONF" 1
 fi
 
 cp "$PGBOUNCER_CONF" "${PGBOUNCER_CONF}.bak.${FAILOVER_TIME//[:]/-}"
-sed -i "s/host=${PRIMARY}/host=${STANDBY}/g" "$PGBOUNCER_CONF"
+# I7: idempotent edit — if the config already points at STANDBY (e.g. operator
+# manually edited or a re-run after partial success), don't run sed and risk
+# a no-op-then-revert pattern. Detect explicitly and skip.
+if grep -q "host=${STANDBY}" "$PGBOUNCER_CONF" && ! grep -q "host=${PRIMARY}" "$PGBOUNCER_CONF"; then
+  log "  PgBouncer config already targets ${STANDBY}; no edit needed (idempotent re-run)."
+else
+  sed -i "s/host=${PRIMARY}/host=${STANDBY}/g" "$PGBOUNCER_CONF"
+fi
 systemctl reload pgbouncer || fail "PgBouncer reload failed"
 log "  PgBouncer reloaded; pool now targets ${STANDBY}"
-
-# ----------------------------------------------------------------
-# Step 4: Lease reconciliation
-# ----------------------------------------------------------------
-log "Step 4: Run lease reconciliation"
-psql -U admin -h 127.0.0.1 -p 6432 -d hiveCentral \
-  -v failover_time="'${FAILOVER_TIME}'" \
-  -f "${DR_DIR}/lease-reconcile.sql" \
-  >> "$LOG" 2>&1 \
-  || fail "Lease reconciliation failed; see ${LOG}"
-log "  Lease reconciliation complete"
 
 # ----------------------------------------------------------------
 # Step 5: Post-failover verification
@@ -139,28 +164,19 @@ log "  Active agencies reconnected within 30s: ${RECONNECTED}"
 # ----------------------------------------------------------------
 # Step 7: Log the event in governance.decision_log
 # ----------------------------------------------------------------
+# C2: bind variables via psql -v (parameter binding) instead of shell-string
+# interpolation into a SQL heredoc. The previous form was vulnerable to SQL
+# injection if any of $FAILOVER_TIME / $PRIMARY / $STANDBY / $LOG contained
+# a single quote (e.g. malicious env override on a shared operator host).
 log "Step 7: Record DR event in governance.decision_log"
-psql -U admin -h 127.0.0.1 -p 6432 -d hiveCentral <<SQL >> "$LOG" 2>&1
-INSERT INTO roadmap.governance_decision_log (entry_kind, actor_did, payload, prev_hash, this_hash, occurred_at)
-VALUES (
-  'dr_failover_completed',
-  'did:hive:dr-operator',
-  jsonb_build_object(
-    'failover_time', '${FAILOVER_TIME}',
-    'old_primary', '${PRIMARY}',
-    'new_primary', '${STANDBY}',
-    'log_path', '${LOG}'
-  ),
-  COALESCE((SELECT this_hash FROM roadmap.governance_decision_log ORDER BY entry_id DESC LIMIT 1),
-           repeat('0', 64)),
-  encode(digest(
-    COALESCE((SELECT this_hash FROM roadmap.governance_decision_log ORDER BY entry_id DESC LIMIT 1),
-             repeat('0', 64))
-    || 'dr_failover_${FAILOVER_TIME}',
-    'sha256'), 'hex'),
-  now()
-);
-SQL
+psql -U admin -h 127.0.0.1 -p 6432 -d hiveCentral \
+  -v failover_time="${FAILOVER_TIME}" \
+  -v old_primary="${PRIMARY}" \
+  -v new_primary="${STANDBY}" \
+  -v log_path="${LOG}" \
+  -f "${DR_DIR}/record-dr-event.sql" \
+  >> "$LOG" 2>&1 \
+  || log "  (warning: failed to record DR event; investigate)"
 
 log "=== Failover complete at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 log "Next manual step: rebuild ${PRIMARY} as the new standby (separate runbook)."
