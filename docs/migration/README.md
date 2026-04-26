@@ -2,13 +2,13 @@
 
 **Status**: Simulation Complete (READ-ONLY)  
 **Date**: 2026-04-26  
-**Scope**: P501 hiveControl Bootstrap (Stage B)
+**Scope**: P501 hiveCentral Bootstrap (Stage B)
 
 ---
 
 ## Overview
 
-This directory contains comprehensive simulation, risk assessment, and runbooks for the **P501 DDL Deployment** — the first production-facing step in the P429 two-database topology migration (agenthive → hiveControl split).
+This directory contains comprehensive simulation, risk assessment, and runbooks for the **P501 DDL Deployment** — the first production-facing step in the P429 two-database topology migration (agenthive → hiveCentral split).
 
 **Key finding**: The simulation confirms the migration is technically feasible with **zero service interruption** during P501. Critical risks are well-understood and mitigated by subsequent proposals (P502–P505).
 
@@ -25,7 +25,7 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
 - Phase 1: Database & role creation (no data)
 - Phase 2: Schema install via pg_dump → pg_restore (~30s)
 - Phase 3: Sequence enumeration (critical for P505 cutover)
-- Phase 4: Parity verification (agenthive vs hiveControl schema match)
+- Phase 4: Parity verification (agenthive vs hiveCentral schema match)
 - Phase 5: PgBouncer configuration update
 - Phase 6: Version stamping & finalization
 
@@ -42,7 +42,7 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
 
 1. **Schema Duplication in agenthive** (HIGH severity, CONFIRMED likelihood)
    - Current state: Both `roadmap.*` (76 tables) and `roadmap_proposal.*` (22 tables) exist
-   - agenthive will be faithfully cloned to hiveControl (duplication preserved)
+   - agenthive will be faithfully cloned to hiveCentral (duplication preserved)
    - Mitigation: Delegate cleanup to P520 (post-migration schema rationalization)
    - Go-live impact: ACCEPTABLE (no impact on cutover, cleanup can happen later)
 
@@ -53,8 +53,8 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
    - Go-live impact: HIGH (blocks cutover if untested)
 
 3. **Logical Replication Setup Timing** (MEDIUM severity, MEDIUM likelihood)
-   - Gap between P501 (hiveControl created) and P502 (replication starts)
-   - Window of vulnerability: hiveControl exists but unconnected
+   - Gap between P501 (hiveCentral created) and P502 (replication starts)
+   - Window of vulnerability: hiveCentral exists but unconnected
    - Mitigation: P502 MUST start within 5 minutes of P501; P503 validates 48h consistency
    - Go-live impact: MEDIUM (affects P502–P505 timeline)
 
@@ -64,7 +64,7 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
    - Go-live impact: LOW (quick rollback via ini restore)
 
 5. **Disk Space Exhaustion During Dump/Restore** (MEDIUM severity, LOW likelihood)
-   - 152 MB agenthive → dump → restore to hiveControl
+   - 152 MB agenthive → dump → restore to hiveCentral
    - Mitigation: Pre-flight disk check (≥ 500 MB free)
    - Go-live impact: LOW (halt and retry)
 
@@ -82,13 +82,13 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
 
 **Rollback Paths**:
 
-- **Rollback-A** (Phases 0–4): `DROP DATABASE hiveControl` + agenthive remains live
+- **Rollback-A** (Phases 0–4): `DROP DATABASE hiveCentral` + agenthive remains live
 - **Rollback-B** (Phase 4 parity fail): Investigate divergence or re-run P501
 - **Rollback-C** (Phase 5 PgBouncer): Restore pgbouncer.ini, reload
 - **Rollback-D** (Post-Phase 5): Full revert before P502 starts
 - **Rollback-E** (P502+ replication): Disable subscription, revert env
 - **Rollback-F** (P505 cutover): Emergency env flip back to agenthive (1–2 min)
-- **Rollback-G** (P506+ fallback): 7-day window to fallback from hiveControl to agenthive if catastrophic failure
+- **Rollback-G** (P506+ fallback): 7-day window to fallback from hiveCentral to agenthive if catastrophic failure
 
 **Time to restore**: 1–2 minutes for all paths  
 **Data loss**: ZERO for all paths
@@ -126,7 +126,7 @@ This directory contains comprehensive simulation, risk assessment, and runbooks 
 
 **Service restart procedure** (only needed for P518 cutover, not P501):
 - Graceful shutdown (connection drain)
-- Restart (connects to new hiveControl env)
+- Restart (connects to new hiveCentral env)
 - Health verification
 
 ---
@@ -215,7 +215,7 @@ Captured during simulation for reference:
 ### 5. Logical Replication Timing is Critical
 - **Gap between P501 and P502** is a vulnerability window
 - **Mitigation**: P502 starts immediately; P503 validates 48h consistency
-- **Risk**: If P502 setup fails, hiveControl is orphaned (remediation: re-run P502 or delete hiveControl)
+- **Risk**: If P502 setup fails, hiveCentral is orphaned (remediation: re-run P502 or delete hiveCentral)
 
 ---
 
@@ -246,7 +246,7 @@ Captured during simulation for reference:
 
 ### Post-P501 (T+5min to T+1h)
 
-1. Operator reports: "P501 Phase 6 finalized; hiveControl bootstrap complete"
+1. Operator reports: "P501 Phase 6 finalized; hiveCentral bootstrap complete"
 2. Comms Lead updates status page: "Infrastructure optimization complete"
 3. Database Architect reviews logs and approves P502 entry
 4. Schedule P502 (logical replication setup) for next phase
@@ -257,9 +257,9 @@ Captured during simulation for reference:
 
 | Proposal | Stage | Phase | Purpose |
 |----------|-------|-------|---------|
-| P429 | Architecture | - | Two-database topology (agenthive → hiveControl split) |
+| P429 | Architecture | - | Two-database topology (agenthive → hiveCentral split) |
 | P496–P500 | Stage A | Foundation | Vault, pool registry, config, PgBouncer, test infra |
-| **P501** | **Stage B** | **Bootstrap** | **hiveControl DDL deployment (THIS PROPOSAL)** |
+| **P501** | **Stage B** | **Bootstrap** | **hiveCentral DDL deployment (THIS PROPOSAL)** |
 | P502 | Stage B | Replication | Logical replication setup + initial tail |
 | P503 | Stage B | Validation | Read-shadow 48h consistency gate |
 | P504 | Stage C | Rehearsal | Dry-run on production clone + sequence bumping |
@@ -277,20 +277,20 @@ Captured during simulation for reference:
 Run this query to confirm P501 success:
 
 ```sql
--- hiveControl must have these 6 schemas
+-- hiveCentral must have these 6 schemas
 SELECT schema_name FROM information_schema.schemata 
 WHERE schema_name LIKE 'roadmap%' 
 ORDER BY schema_name;
 
 -- Expected: roadmap, roadmap_control, roadmap_efficiency, roadmap_messaging, roadmap_proposal, roadmap_workforce
 
--- hiveControl must have ≥ 98 tables
+-- hiveCentral must have ≥ 98 tables
 SELECT COUNT(*) as table_count FROM information_schema.tables
 WHERE table_schema LIKE 'roadmap%';
 
 -- Expected: ≥ 98
 
--- hiveControl must have ≥ 101 sequences
+-- hiveCentral must have ≥ 101 sequences
 SELECT COUNT(*) as seq_count FROM pg_sequences
 WHERE schemaname LIKE 'roadmap%';
 
@@ -301,8 +301,8 @@ SELECT COUNT(*) FROM roadmap.ddl_sequence_metadata;
 
 -- Expected: 101
 
--- PgBouncer must route to hiveControl
-SELECT COUNT(*) FROM pg_stat_activity WHERE datname='hiveControl';
+-- PgBouncer must route to hiveCentral
+SELECT COUNT(*) FROM pg_stat_activity WHERE datname='hiveCentral';
 
 -- Expected: > 0 (after Phase 5 reload)
 ```
@@ -332,6 +332,6 @@ SELECT COUNT(*) FROM pg_stat_activity WHERE datname='hiveControl';
 |----------|-------|---------|
 | "Is P501 safe to execute?" | Database Architect | [Architect Name] |
 | "What if P501 fails mid-phase?" | DB-Deploy Witness | [Operator Name] |
-| "What if hiveControl becomes unavailable after P501?" | Escalation Contact | [VP Eng / Manager] |
+| "What if hiveCentral becomes unavailable after P501?" | Escalation Contact | [VP Eng / Manager] |
 | "How do we know sequences are correct?" | Database Architect | Review P504 rehearsal logs |
 | "Can we pause between phases?" | Operator | Yes, if < 24h elapsed; must re-check pre-flight |

@@ -5,7 +5,7 @@ project:
 database:
   # DEPRECATED single-DB config. Kept for transition compatibility only.
   # Once P429 ships, the runtime reads `databases.control` and resolves
-  # tenant DSNs from `hiveControl.roadmap.project`. See CONVENTIONS.md §6.0.
+  # tenant DSNs from `hiveCentral.roadmap.project`. See CONVENTIONS.md §6.0.
   provider: Postgres
   name: agenthive
   schema: roadmap
@@ -14,7 +14,7 @@ database:
 databases:
   # TARGET two-tier topology (CONVENTIONS.md §6.0). Live values land with P429.
   control:
-    name: hiveControl
+    name: hiveCentral
     schema: roadmap
     host: 127.0.0.1
     port: 5432
@@ -25,7 +25,7 @@ databases:
       Never holds project tenant data.
   projects:
     # Each project gets its own database. The list below is the seed
-    # registry; the source of truth at runtime is `hiveControl.roadmap.project`.
+    # registry; the source of truth at runtime is `hiveCentral.roadmap.project`.
     - slug: agenthive
       name: AgentHive
       db_name: agenthive

@@ -13,7 +13,7 @@
 - env var `AGENTHIVE_DATABASE_URL` defines pool name (e.g., "agenthive")
 - PgBouncer routes to backend Postgres on port 5432 based on pool config
 
-**P501 Impact**: hiveControl is created and added to PgBouncer pools, but services **remain on agenthive pool** (env unchanged). No connectivity changes during P501 itself.
+**P501 Impact**: hiveCentral is created and added to PgBouncer pools, but services **remain on agenthive pool** (env unchanged). No connectivity changes during P501 itself.
 
 ---
 
@@ -181,11 +181,11 @@ SQL
 **Why**: P501 does not change service connections. Services remain on agenthive until P518 cutover execution.
 
 **When P502–P503 run** (subsequent proposals):
-- Services may experience brief read-shadow noise (extra replicated reads from hiveControl)
+- Services may experience brief read-shadow noise (extra replicated reads from hiveCentral)
 - This is transparent; no service code changes needed
 
 **When P505–P518 run** (cutover):
-- Services are cut over to hiveControl (env var flip)
+- Services are cut over to hiveCentral (env var flip)
 - Connection pools reconnect transparently
 - No application-level changes needed
 
@@ -195,19 +195,19 @@ SQL
 
 ### 1. LISTEN Channels Not Replicated (P502 Risk)
 
-**Issue**: Logical replication does not replicate LISTEN subscriptions. If agenthive-orchestrator and agenthive-state-feed are LISTEN'ing on agenthive channels, those subscriptions are NOT replicated to hiveControl.
+**Issue**: Logical replication does not replicate LISTEN subscriptions. If agenthive-orchestrator and agenthive-state-feed are LISTEN'ing on agenthive channels, those subscriptions are NOT replicated to hiveCentral.
 
 **Impact**:
-- During P503 shadow phase (services read from both agenthive and hiveControl), LISTEN events only arrive from agenthive
+- During P503 shadow phase (services read from both agenthive and hiveCentral), LISTEN events only arrive from agenthive
 - If a state transition triggers a NOTIFY on agenthive, only services LISTEN'ing on agenthive receive it
-- On cutover (P518), services switch to hiveControl env; LISTEN channels must be re-established
+- On cutover (P518), services switch to hiveCentral env; LISTEN channels must be re-established
 
 **Mitigation**:
 - Services re-establish LISTEN channels upon connection pool reset
 - Applications use connection pool `idle_in_transaction_session_timeout` to force channel renewal
 - P505 runbook includes a "wait 30s for LISTEN re-establishment" step
 
-**Acceptance Criteria**: Post-cutover validation (P518) confirms LISTEN channels active on hiveControl
+**Acceptance Criteria**: Post-cutover validation (P518) confirms LISTEN channels active on hiveCentral
 
 ### 2. In-Flight Transactions (P505 Risk)
 
@@ -225,14 +225,14 @@ SQL
 
 **Issue**: After env flip (cutover), PgBouncer pools to agenthive are still active until connections naturally idle and reconnect.
 
-**Impact**: Brief (< 30s) window where some connections go to old pool (agenthive), some to new (hiveControl)
+**Impact**: Brief (< 30s) window where some connections go to old pool (agenthive), some to new (hiveCentral)
 
 **Mitigation**:
 - P505 includes explicit pool drain: `pg_terminate_backend()` on all agenthive connections after env flip
 - PgBouncer RELOAD re-initializes pools
-- New connections automatically route to hiveControl
+- New connections automatically route to hiveCentral
 
-**Acceptance Criteria**: Post-cutover query shows all active connections on hiveControl within 30s
+**Acceptance Criteria**: Post-cutover query shows all active connections on hiveCentral within 30s
 
 ### 4. Agent Heartbeat State (Orchestrator Nuance)
 
@@ -250,7 +250,7 @@ SQL
 
 ## Service Restart Procedure (for P518 Cutover)
 
-**When**: After env var flip to hiveControl  
+**When**: After env var flip to hiveCentral  
 **Who**: Operator (automated via deployment system)  
 **Time**: < 1 minute total
 
@@ -262,7 +262,7 @@ for svc in agenthive-mcp agenthive-orchestrator agenthive-gate-pipeline \
 done
 # Wait 10s for connections to close
 
-# Step 2: Restart (connects to new hiveControl env)
+# Step 2: Restart (connects to new hiveCentral env)
 for svc in agenthive-mcp agenthive-orchestrator agenthive-gate-pipeline \
            agenthive-state-feed agenthive-a2a agenthive-copilot-agency; do
   systemctl start $svc

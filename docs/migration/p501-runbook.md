@@ -1,19 +1,19 @@
-# P501 DDL Deployment Runbook — hiveControl Bootstrap
+# P501 DDL Deployment Runbook — Control-Plane Database Bootstrap
 
 **Status**: Simulation + Risk Assessment (READ-ONLY)  
 **Date**: 2026-04-26  
-**Stage**: B (hiveControl bootstrap)  
+**Stage**: B (control-plane DB bootstrap; default name `hiveCentral`)  
 **Target Window**: < 5 minutes (no service interruption expected)
 
 ## Executive Summary
 
-This runbook details the **schema-only** deployment of the control-plane DDL from `agenthive` database to the new `hiveControl` database. No data migration happens here — P502 handles logical replication.
+This runbook details the **schema-only** deployment of the control-plane DDL from `agenthive` database to the new `${CONTROL_DB}` database. No data migration happens here — P502 handles logical replication.
 
 **Key Invariants**:
 1. All control-plane tables live in **six schemas**: `roadmap`, `roadmap_proposal`, `roadmap_control`, `roadmap_efficiency`, `roadmap_messaging`, `roadmap_workforce`
 2. Service **downtime = 0s** (new database accepts connections in parallel during schema install)
 3. Current state: **agenthive has 76 base tables + 22 views** across roadmap* schemas (152 MB)
-4. Fallback: `DROP DATABASE hiveControl` immediately reverts schema; agenthive remains operational
+4. Fallback: `DROP DATABASE ${CONTROL_DB}` immediately reverts schema; agenthive remains operational
 
 ---
 
@@ -21,10 +21,20 @@ This runbook details the **schema-only** deployment of the control-plane DDL fro
 
 Run these commands to validate the environment before any DDL deployment.
 
-### 0.1 Verify hiveControl does not exist (or is safe to drop)
+### 0.0 Parameterize the control-DB name (configurable per installation)
+
+The control database is named `hiveCentral` by default, but the name is **per-installation configurable**. Set this variable once at the top of the operator shell session — every subsequent step references `${CONTROL_DB}` instead of a hard-coded literal:
+
+```bash
+export CONTROL_DB="${CONTROL_DB:-hiveCentral}"
+```
+
+Operators packaging a different installation may set `CONTROL_DB=hiveCtl`, `CONTROL_DB=agenthive_meta`, etc. The runbook works unchanged. After cutover, the same value must land in `roadmap.yaml → databases.control.name` and `/etc/agenthive/env → PGDATABASE` (control plane services only).
+
+### 0.1 Verify ${CONTROL_DB} does not exist (or is safe to drop)
 ```bash
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c \
-  "SELECT datname FROM pg_database WHERE datname='hiveControl';"
+  "SELECT datname FROM pg_database WHERE datname='${CONTROL_DB}';"
 ```
 **Expected**: Empty result, or you proceed to 0.2 and drop it.
 
@@ -52,9 +62,9 @@ psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c \
 ```bash
 df -h /var/lib/postgresql | grep -E 'Size|^/'
 ```
-**Expected**: ≥ 300 MB free (agenthive is 152 MB; hiveControl will be similar).
+**Expected**: ≥ 300 MB free (agenthive is 152 MB; ${CONTROL_DB} will be similar).
 
-### 0.5 Verify PgBouncer is running (will add hiveControl later)
+### 0.5 Verify PgBouncer is running (will add ${CONTROL_DB} later)
 ```bash
 psql -U agenthive_admin -p 6432 -d postgres -c "SHOW stats_databases LIMIT 1;"
 ```
@@ -64,27 +74,27 @@ psql -U agenthive_admin -p 6432 -d postgres -c "SHOW stats_databases LIMIT 1;"
 
 ## Phase 1: Database & Role Preparation (T+0min)
 
-### 1.1 Terminate any existing connections to hiveControl
+### 1.1 Terminate any existing connections to ${CONTROL_DB}
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres <<SQL
 SELECT pg_terminate_backend(pid) 
 FROM pg_stat_activity 
-WHERE datname='hiveControl' AND pid <> pg_backend_pid();
+WHERE datname='${CONTROL_DB}' AND pid <> pg_backend_pid();
 SQL
 ```
 **Expected**: Returns count of terminated sessions (usually 0 on first run).
 
-### 1.2 Drop hiveControl if it exists (idempotent)
+### 1.2 Drop ${CONTROL_DB} if it exists (idempotent)
 ```bash
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c \
-  "DROP DATABASE IF EXISTS hiveControl;"
+  "DROP DATABASE IF EXISTS ${CONTROL_DB};"
 ```
 **Expected**: No error.
 
-### 1.3 Create hiveControl owned by agenthive_admin
+### 1.3 Create ${CONTROL_DB} owned by agenthive_admin
 ```bash
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c \
-  "CREATE DATABASE hiveControl OWNER agenthive_admin;"
+  "CREATE DATABASE ${CONTROL_DB} OWNER agenthive_admin;"
 ```
 **Expected**: CREATE DATABASE message (no error).
 
@@ -148,17 +158,17 @@ grep -c "^CREATE VIEW" /tmp/control_schema_dump.sql
 - CREATE INDEX: ≥ 300
 - CREATE VIEW: ≥ 30
 
-### 2.3 Restore schemas to hiveControl
+### 2.3 Restore schemas to ${CONTROL_DB}
 ```bash
-time psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl \
+time psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} \
   -v ON_ERROR_STOP=1 \
   < /tmp/control_schema_dump.sql
 ```
 **Expected**: Completes in < 30s. Exit code: 0. No ERROR lines (some warnings about non-existent relations are acceptable if they're for cross-schema references not present in schema-only dump).
 
-### 2.4 Verify schema structure in hiveControl
+### 2.4 Verify schema structure in ${CONTROL_DB}
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 SELECT 
   table_schema,
   COUNT(*) as table_count
@@ -183,7 +193,7 @@ SQL
 
 ### 2.5 Verify key tables exist (spot check)
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 SELECT 
   table_schema, 
   table_name 
@@ -202,7 +212,7 @@ SQL
 
 ### 3.1 Create metadata table to track sequences
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 CREATE TABLE IF NOT EXISTS roadmap.ddl_sequence_metadata (
   schema_name TEXT NOT NULL,
   seq_name TEXT NOT NULL,
@@ -215,7 +225,7 @@ SQL
 
 ### 3.2 Enumerate all control sequences
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 INSERT INTO roadmap.ddl_sequence_metadata (schema_name, seq_name, last_value)
 SELECT 
   n.nspname, 
@@ -230,7 +240,7 @@ SQL
 
 ### 3.3 Verify sequences captured
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} -c \
   "SELECT COUNT(*) as sequence_count FROM roadmap.ddl_sequence_metadata;"
 ```
 **Expected**: ≥ 101 sequences (verified from agenthive).
@@ -239,7 +249,7 @@ psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
 
 ## Phase 4: Parity Check (Verification)
 
-### 4.1 Compare table structure (agenthive vs hiveControl)
+### 4.1 Compare table structure (agenthive vs ${CONTROL_DB})
 ```bash
 # Run parity-check.ts (if available; otherwise manual verification below)
 node --import jiti/register scripts/deploy/parity-check.ts
@@ -252,8 +262,8 @@ psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/agenthive -c \
   "SELECT table_schema, COUNT(*) as col_count FROM information_schema.columns WHERE table_schema LIKE 'roadmap%' GROUP BY table_schema ORDER BY table_schema;" \
   > /tmp/agenthive_cols.txt
 
-# hiveControl
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
+# ${CONTROL_DB}
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} -c \
   "SELECT table_schema, COUNT(*) as col_count FROM information_schema.columns WHERE table_schema LIKE 'roadmap%' GROUP BY table_schema ORDER BY table_schema;" \
   > /tmp/hivecontrol_cols.txt
 
@@ -268,8 +278,8 @@ diff /tmp/agenthive_cols.txt /tmp/hivecontrol_cols.txt
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/agenthive -c \
   "SELECT COUNT(*) FROM pg_indexes WHERE schemaname LIKE 'roadmap%';" | tee /tmp/agenthive_idx.txt
 
-# hiveControl
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
+# ${CONTROL_DB}
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} -c \
   "SELECT COUNT(*) FROM pg_indexes WHERE schemaname LIKE 'roadmap%';" | tee /tmp/hivecontrol_idx.txt
 
 # Compare
@@ -281,12 +291,12 @@ diff /tmp/agenthive_idx.txt /tmp/hivecontrol_idx.txt
 
 ## Phase 5: PgBouncer Configuration (T+4min)
 
-### 5.1 Append hiveControl pool config to pgbouncer.ini
+### 5.1 Append ${CONTROL_DB} pool config to pgbouncer.ini
 ```bash
 cat >> /etc/pgbouncer/pgbouncer.ini << 'INI'
 
 [databases]
-hiveControl = host=127.0.0.1 port=5432 dbname=hiveControl pool_size=20
+${CONTROL_DB} = host=127.0.0.1 port=5432 dbname=${CONTROL_DB} pool_size=20
 INI
 ```
 
@@ -296,9 +306,9 @@ psql -p 6432 -U postgres -d pgbouncer -c "RELOAD;"
 ```
 **Expected**: No error.
 
-### 5.3 Smoke test: Connect to hiveControl via bouncer
+### 5.3 Smoke test: Connect to ${CONTROL_DB} via bouncer
 ```bash
-psql -p 6432 -U agenthive_admin -d hiveControl -c "SELECT COUNT(*) FROM roadmap.project;"
+psql -p 6432 -U agenthive_admin -d ${CONTROL_DB} -c "SELECT COUNT(*) FROM roadmap.project;"
 ```
 **Expected**:
 ```
@@ -312,23 +322,23 @@ psql -p 6432 -U agenthive_admin -d hiveControl -c "SELECT COUNT(*) FROM roadmap.
 
 ## Phase 6: Finalize (T+5min, complete)
 
-### 6.1 Mark version in hiveControl
+### 6.1 Mark version in ${CONTROL_DB}
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 CREATE TABLE IF NOT EXISTS roadmap.ddl_version (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 INSERT INTO roadmap.ddl_version (version) 
-VALUES ('hiveControl-bootstrap-v1')
+VALUES ('${CONTROL_DB}-bootstrap-v1')
 ON CONFLICT DO NOTHING;
 SQL
 ```
 
 ### 6.2 Final validation
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/${CONTROL_DB} << 'SQL'
 SELECT 
   COUNT(DISTINCT table_schema) as schema_count,
   COUNT(*) as table_count
@@ -346,7 +356,7 @@ SQL
 
 ### 6.3 Log completion
 ```bash
-echo "P501 hiveControl bootstrap COMPLETE at $(date)" | tee -a /var/log/agenthive/p501-bootstrap.log
+echo "P501 ${CONTROL_DB} bootstrap COMPLETE at $(date)" | tee -a /var/log/agenthive/p501-bootstrap.log
 ```
 
 ---
@@ -356,8 +366,8 @@ echo "P501 hiveControl bootstrap COMPLETE at $(date)" | tee -a /var/log/agenthiv
 If any phase fails and you need to revert:
 
 ```bash
-# 1. Drop the failed hiveControl
-psql -U admin -d postgres -c "DROP DATABASE IF EXISTS hiveControl;"
+# 1. Drop the failed ${CONTROL_DB}
+psql -U admin -d postgres -c "DROP DATABASE IF EXISTS ${CONTROL_DB};"
 
 # 2. agenthive remains untouched and operational
 # 3. Services continue using agenthive (old configuration)
@@ -369,14 +379,14 @@ psql -U admin -d postgres -c "DROP DATABASE IF EXISTS hiveControl;"
 
 ## Success Criteria
 
-- [x] hiveControl database created
+- [x] ${CONTROL_DB} database created
 - [x] All six control schemas present
 - [x] Table count ≥ 98 across all schemas
 - [x] Index count matches agenthive
 - [x] Sequences enumerated (≥ 101)
 - [x] PgBouncer config updated + reload succeeds
-- [x] Smoke test connects via bouncer to hiveControl
-- [x] Zero data rows in hiveControl (schema-only, as expected)
+- [x] Smoke test connects via bouncer to ${CONTROL_DB}
+- [x] Zero data rows in ${CONTROL_DB} (schema-only, as expected)
 - [x] Total wall-clock time < 5 minutes
 
 ---

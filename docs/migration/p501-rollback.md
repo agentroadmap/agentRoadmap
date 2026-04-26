@@ -10,28 +10,28 @@
 
 If any phase fails before the PgBouncer reload (Phase 5), execute:
 
-### Rollback-A: Drop hiveControl Database (SAFE)
+### Rollback-A: Drop hiveCentral Database (SAFE)
 
 ```bash
-# Step 1: Terminate any connections to hiveControl (should be none at this stage)
+# Step 1: Terminate any connections to hiveCentral (should be none at this stage)
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres << 'SQL'
 SELECT pg_terminate_backend(pid) 
 FROM pg_stat_activity 
-WHERE datname='hiveControl' AND pid <> pg_backend_pid();
+WHERE datname='hiveCentral' AND pid <> pg_backend_pid();
 SQL
 ```
 
 ### Step 2: Drop the database
 ```bash
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres << 'SQL'
-DROP DATABASE IF EXISTS hiveControl;
+DROP DATABASE IF EXISTS hiveCentral;
 SQL
 ```
 
-### Step 3: Verify hiveControl is gone
+### Step 3: Verify hiveCentral is gone
 ```bash
 psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c \
-  "SELECT COUNT(*) FROM pg_database WHERE datname='hiveControl';"
+  "SELECT COUNT(*) FROM pg_database WHERE datname='hiveCentral';"
 ```
 **Expected**: 0
 
@@ -77,14 +77,14 @@ If Phase 4 parity check fails with FATAL divergence:
 
 1. **Halt P501 immediately**
 
-2. **Rollback-A (drop hiveControl)**
+2. **Rollback-A (drop hiveCentral)**
 
 3. **Investigate schema divergence**:
    ```bash
-   # What changed between agenthive and hiveControl in this one table?
+   # What changed between agenthive and hiveCentral in this one table?
    psql -d agenthive -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='roadmap_proposal' AND table_name='frontier_audit_log' ORDER BY ordinal_position;" > /tmp/agenthive_cols.txt
    
-   psql -d hiveControl -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='roadmap_proposal' AND table_name='frontier_audit_log' ORDER BY ordinal_position;" > /tmp/hivecontrol_cols.txt
+   psql -d hiveCentral -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='roadmap_proposal' AND table_name='frontier_audit_log' ORDER BY ordinal_position;" > /tmp/hivecontrol_cols.txt
    
    diff /tmp/agenthive_cols.txt /tmp/hivecontrol_cols.txt
    ```
@@ -111,12 +111,12 @@ If Phase 5 PgBouncer reload fails:
 
 #### Step 1: Identify pgbouncer.ini state
 ```bash
-grep -n hiveControl /etc/pgbouncer/pgbouncer.ini
+grep -n hiveCentral /etc/pgbouncer/pgbouncer.ini
 ```
 
-#### Step 2: If hiveControl config is malformed, remove it
+#### Step 2: If hiveCentral config is malformed, remove it
 ```bash
-# Edit pgbouncer.ini and remove the hiveControl entry, OR
+# Edit pgbouncer.ini and remove the hiveCentral entry, OR
 # Restore from backup
 cp /etc/pgbouncer/pgbouncer.ini.backup /etc/pgbouncer/pgbouncer.ini
 ```
@@ -133,9 +133,9 @@ psql -p 6432 -U agenthive_admin -d agenthive -c "SELECT COUNT(*) FROM roadmap_pr
 ```
 **Expected**: 319
 
-#### Step 5: Rollback hiveControl (if it exists)
+#### Step 5: Rollback hiveCentral (if it exists)
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveControl;"
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveCentral;"
 ```
 
 **Time to restore**: < 1 minute  
@@ -146,13 +146,13 @@ psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DA
 
 ## Rollback After Phase 5 Success (Pre-P502)
 
-If P501 succeeds (hiveControl created, PgBouncer reloaded) but P502 encounters issues before logical replication starts:
+If P501 succeeds (hiveCentral created, PgBouncer reloaded) but P502 encounters issues before logical replication starts:
 
 ### Rollback-D: Full Revert to agenthive
 
-#### Step 1: Verify hiveControl is empty (no data, schema-only)
+#### Step 1: Verify hiveCentral is empty (no data, schema-only)
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveCentral -c \
   "SELECT COUNT(*) as row_count FROM (
     SELECT 1 FROM roadmap_proposal.proposal
     UNION ALL
@@ -161,13 +161,13 @@ psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
     SELECT 1 FROM roadmap.project
   ) t;"
 ```
-**Expected**: 0 (no data rows in hiveControl)
+**Expected**: 0 (no data rows in hiveCentral)
 
-#### Step 2: Remove hiveControl from pgbouncer.ini
+#### Step 2: Remove hiveCentral from pgbouncer.ini
 ```bash
-# Option A: Edit manually and remove hiveControl lines
+# Option A: Edit manually and remove hiveCentral lines
 sudo nano /etc/pgbouncer/pgbouncer.ini
-# Find [databases] section, remove: hiveControl = ...
+# Find [databases] section, remove: hiveCentral = ...
 
 # Option B: Restore from backup
 cp /etc/pgbouncer/pgbouncer.ini.backup /etc/pgbouncer/pgbouncer.ini
@@ -178,9 +178,9 @@ cp /etc/pgbouncer/pgbouncer.ini.backup /etc/pgbouncer/pgbouncer.ini
 psql -p 6432 -U postgres -d pgbouncer -c "RELOAD;"
 ```
 
-#### Step 4: Drop hiveControl
+#### Step 4: Drop hiveCentral
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveControl;"
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveCentral;"
 ```
 
 #### Step 5: Verify agenthive is live
@@ -200,25 +200,25 @@ Services remain on agenthive env config; PgBouncer re-routes to agenthive pool.
 
 ## Rollback After P502 Begins (Replication Active)
 
-If P502 starts logical replication and issues arise, rollback is **slightly more complex** because agenthive and hiveControl may diverge:
+If P502 starts logical replication and issues arise, rollback is **slightly more complex** because agenthive and hiveCentral may diverge:
 
 ### Rollback-E: Stop Replication, Revert to agenthive
 
-#### Step 1: Stop logical replication subscription on hiveControl
+#### Step 1: Stop logical replication subscription on hiveCentral
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl << 'SQL'
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveCentral << 'SQL'
 ALTER SUBSCRIPTION agenthive_repl_sub DISABLE;
 SQL
 ```
 
 #### Step 2: Verify subscription is disabled
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveControl -c \
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/hiveCentral -c \
   "SELECT subname, subenabled FROM pg_subscription;"
 ```
 **Expected**: agenthive_repl_sub with subenabled=false
 
-#### Step 3: Remove hiveControl from pgbouncer.ini
+#### Step 3: Remove hiveCentral from pgbouncer.ini
 (Same as Rollback-D Step 2)
 
 #### Step 4: Reload PgBouncer
@@ -231,9 +231,9 @@ psql -p 6432 -U agenthive_admin -d agenthive -c \
 ```
 **Expected**: 319 + any writes that occurred during replication window
 
-#### Step 6: Optionally drop hiveControl
+#### Step 6: Optionally drop hiveCentral
 ```bash
-psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveControl;"
+psql -d postgresql://admin:${ADMIN_PASSWORD}@127.0.0.1:5432/postgres -c "DROP DATABASE IF EXISTS hiveCentral;"
 ```
 
 **Time to restore**: < 2 minutes  
@@ -286,21 +286,21 @@ Next review: [time] with all reviewers
 
 ## Post-Cutover Fallback (P505 Completed, P506 Window)
 
-After cutover succeeds and hiveControl is live, there is a 7-day "fallback window" (P506 sunset) where agenthive's control schemas remain in place:
+After cutover succeeds and hiveCentral is live, there is a 7-day "fallback window" (P506 sunset) where agenthive's control schemas remain in place:
 
-### Rollback-G: Fallback to agenthive if hiveControl Fails
+### Rollback-G: Fallback to agenthive if hiveCentral Fails
 
-**This is a LAST-RESORT scenario in case hiveControl suffers catastrophic failure (corruption, hardware failure).**
+**This is a LAST-RESORT scenario in case hiveCentral suffers catastrophic failure (corruption, hardware failure).**
 
 #### Precondition:
-- hiveControl is live (services on hiveControl for days 0–7)
-- Logical replication is still active, mirroring writes from hiveControl back to agenthive
-- agenthive.roadmap_proposal.* contain all data written to hiveControl
+- hiveCentral is live (services on hiveCentral for days 0–7)
+- Logical replication is still active, mirroring writes from hiveCentral back to agenthive
+- agenthive.roadmap_proposal.* contain all data written to hiveCentral
 
-#### Step 1 (Escalation Contact decision): If hiveControl is unrecoverable
+#### Step 1 (Escalation Contact decision): If hiveCentral is unrecoverable
 ```
 Decision: FALLBACK to agenthive
-Reason: hiveControl corruption/failure; agenthive is 100% up-to-date via logical replication
+Reason: hiveCentral corruption/failure; agenthive is 100% up-to-date via logical replication
 Action: Flip env back to agenthive; restart services
 ```
 
@@ -319,18 +319,18 @@ psql -p 6432 -U agenthive_admin -d agenthive -c \
 ```
 **Expected**: Count ≥ 319 (includes any cutover-window writes)
 
-#### Step 4 (Escalation Contact): Investigate hiveControl failure
+#### Step 4 (Escalation Contact): Investigate hiveCentral failure
 - Was this a replication lag issue (could be temporary)?
 - Was this a disk/hardware failure?
-- Is hiveControl recoverable?
+- Is hiveCentral recoverable?
 
-#### Step 5 (DB-Deploy): Once hiveControl is fixed
-- Re-bootstrap hiveControl from backup
+#### Step 5 (DB-Deploy): Once hiveCentral is fixed
+- Re-bootstrap hiveCentral from backup
 - Re-run logical replication setup
 - Prepare for a re-cutover (P518-v2)
 
 **Time to restore**: 1–2 minutes  
-**Data loss**: Zero (agenthive replicated all hiveControl writes)  
+**Data loss**: Zero (agenthive replicated all hiveCentral writes)  
 **Service interruption**: 1–2 minutes (service restart)
 
 ---
@@ -339,7 +339,7 @@ psql -p 6432 -U agenthive_admin -d agenthive -c \
 
 | Phase | Rollback Procedure | Time to Restore | Data Loss | Service Interruption |
 |-------|-------------------|-----------------|-----------|----------------------|
-| 0–4 (Pre-PgBouncer) | Rollback-A (DROP hiveControl) | < 1 min | ZERO | ZERO |
+| 0–4 (Pre-PgBouncer) | Rollback-A (DROP hiveCentral) | < 1 min | ZERO | ZERO |
 | 5 (PgBouncer Reload) | Rollback-C (restore ini) | < 1 min | ZERO | < 5s (reload) |
 | Post-5 (Pre-replication) | Rollback-D (full revert) | < 2 min | ZERO | ZERO |
 | 502+ (Replication Active) | Rollback-E (disable sub) | < 2 min | ZERO | ZERO |
@@ -367,9 +367,9 @@ psql -p 6432 -U agenthive_admin -d agenthive -c \
 
 2. **PgBouncer state**: After any rollback, PgBouncer pools are already disconnected. New connections via env flip will create new pools automatically.
 
-3. **Sequence state**: If P501 completes but rollback occurs, sequence values in hiveControl may have drifted from agenthive (sequences are not replicated until P502). This is acceptable because hiveControl is deleted.
+3. **Sequence state**: If P501 completes but rollback occurs, sequence values in hiveCentral may have drifted from agenthive (sequences are not replicated until P502). This is acceptable because hiveCentral is deleted.
 
-4. **In-flight transactions**: If a service had an open transaction to hiveControl and we rollback the env, that transaction is lost. Mitigation: services use connection pooling (30s timeout) and short transactions, so impact is minimal.
+4. **In-flight transactions**: If a service had an open transaction to hiveCentral and we rollback the env, that transaction is lost. Mitigation: services use connection pooling (30s timeout) and short transactions, so impact is minimal.
 
 ---
 

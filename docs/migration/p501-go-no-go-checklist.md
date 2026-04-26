@@ -1,6 +1,6 @@
 # P501 Go/No-Go Decision Checklist
 
-**Purpose**: Pre-flight validation that P501 hiveControl bootstrap is ready to execute  
+**Purpose**: Pre-flight validation that P501 hiveCentral bootstrap is ready to execute  
 **Execution**: Run 24 hours before P501 scheduled window  
 **Authority**: Gate review (P501 proposal must reach REVIEW state for this checklist to be activated)  
 **Approval**: Database Architect + Infrastructure Lead + two senior DBAs
@@ -36,7 +36,7 @@
   # Expected: No critical maintenance in window
   ```
 
-- [ ] **Network Connectivity**: agenthive and hiveControl (Postgres backend) are reachable
+- [ ] **Network Connectivity**: agenthive and hiveCentral (Postgres backend) are reachable
   ```bash
   ping 127.0.0.1
   # Expected: Responses (local machine)
@@ -259,7 +259,7 @@ Name: [Signature]
 Date: [YYYY-MM-DD HH:MM UTC]
 Status: GO / NO-GO / CONDITIONAL GO
 Conditions (if conditional): [List any mitigations]
-Authority: Approved to proceed with P501 hiveControl bootstrap
+Authority: Approved to proceed with P501 hiveCentral bootstrap
 ```
 
 ### Infrastructure Lead Sign-Off
@@ -308,7 +308,7 @@ Message template: Approved
 
 **Within 1 hour of P501 completion**:
 
-- [ ] **Operator Reports Success**: "P501 Phase 6 finalized; hiveControl bootstrap complete"
+- [ ] **Operator Reports Success**: "P501 Phase 6 finalized; hiveCentral bootstrap complete"
 
 - [ ] **Comms Lead Updates Status Page**: "P501 deployment successful"
 

@@ -41,7 +41,7 @@ AgentHive is not a greenfield repo. Work against the system that exists today.
 
 | Surface | Current convention |
 | --- | --- |
-| Runtime database | PostgreSQL. **Two-tier topology** (target): `hiveControl` for control plane, one DB per project tenant (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). Today still single-DB `agenthive`; see §6.0. |
+| Runtime database | PostgreSQL. **Two-tier topology** (target): `hiveCentral` for control plane, one DB per project tenant (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). Today still single-DB `agenthive`; see §6.0. |
 | MCP service | `agenthive-mcp.service` on `127.0.0.1:6421` |
 | Runtime config | `roadmap.yaml` |
 | Main proposal storage code | `src/infra/postgres/proposal-storage-v2.ts` |
@@ -260,7 +260,7 @@ Notes:
 
 AgentHive runs on a **two-tier Postgres topology**:
 
-1. **`hiveControl`** — the **control-plane database**. Single, shared, contains everything that is global to the platform:
+1. **`hiveCentral`** — the **control-plane database**. Single, shared, contains everything that is global to the platform:
    - Proposal lifecycle (`roadmap_proposal.proposal`, `roadmap.workflows`, `roadmap.workflow_templates`, gate decisions, reviews, dependencies, discussions)
    - Agent registry (`roadmap.agent_registry`, teams, cubics, leases)
    - Runtime configuration (`roadmap.runtime_flag`, `roadmap.host_model_policy`, model registry)
@@ -274,9 +274,11 @@ AgentHive runs on a **two-tier Postgres topology**:
    - Per-project credentials, backups, replicas, and geographic placement
    - All DDL labeled "tenant" in `database/ddl/tenant/` and migrations in `scripts/migrations/tenant/`
 
-**The keystone invariant:** `roadmap_proposal.proposal.project_id` (in `hiveControl`) is a **foreign key into `roadmap.project.project_id`**, which **points at a tenant DB connection record** — it is **NOT** a tenancy discriminator on rows that share a database with other tenants. Two projects never share a table inside a single DB.
+**The keystone invariant:** `roadmap_proposal.proposal.project_id` (in `hiveCentral`) is a **foreign key into `roadmap.project.project_id`**, which **points at a tenant DB connection record** — it is **NOT** a tenancy discriminator on rows that share a database with other tenants. Two projects never share a table inside a single DB.
 
-**Default placement: one Postgres instance, multiple databases on it.** Today all databases (`hiveControl` + project DBs) live on the same `127.0.0.1:5432` Postgres server. The two-tier topology is **logical** (database + role boundary), so isolation does not require physical separation. Moving a tenant to its own host later is a normal operational decision — the architecture supports it but does not require it. **Naming is fixed:** the control database is always `hiveControl`; each project database is named after the project slug.
+**Default placement: one Postgres instance, multiple databases on it.** Today all databases (`hiveCentral` + project DBs) live on the same `127.0.0.1:5432` Postgres server. The two-tier topology is **logical** (database + role boundary), so isolation does not require physical separation. Moving a tenant to its own host later is a normal operational decision — the architecture supports it but does not require it.
+
+**Default naming, configurable per installation:** the control database is `hiveCentral` by default and each project database is named after its project slug. The control-DB name is configurable via `databases.control.name` in `roadmap.yaml` (or the `PGDATABASE` env override during bootstrap), so operators may pick a different name (e.g. `hiveCtl`, `agenthive_meta`) at install time. Post-deploy renaming via `ALTER DATABASE … RENAME TO` plus a coordinated config update is supported. **No code references the literal name** — every service reads it from env / `roadmap.yaml` — so renaming is a config + restart, not a code change.
 
 **Why two databases on one instance (not single-DB-with-project_id):**
 - **Blast radius:** a runaway query against tenant data cannot lock control-plane tables (different DB = different lock space, different connection, different role).
@@ -286,18 +288,18 @@ AgentHive runs on a **two-tier Postgres topology**:
 - **Placement flexibility:** because isolation is database-level, moving any single database to its own Postgres host later is a self-contained migration that doesn't re-architect the control plane (P517 covers the operational pattern). Default placement is one instance; multi-instance is available when justified.
 
 **Connection resolution at runtime:**
-- All control-plane queries connect to `hiveControl` (DSN in `databases.control` of `roadmap.yaml`, env-overridable per §config-resolver).
-- A handler that needs project tenant data resolves the DSN via `config.getProjectDb(slug_or_id)`, which queries `hiveControl.roadmap.project` and returns the tenant DSN.
-- Connection pools are keyed per-DB; never reuse a `hiveControl` pool for tenant queries.
+- All control-plane queries connect to `hiveCentral` (DSN in `databases.control` of `roadmap.yaml`, env-overridable per §config-resolver).
+- A handler that needs project tenant data resolves the DSN via `config.getProjectDb(slug_or_id)`, which queries `hiveCentral.roadmap.project` and returns the tenant DSN.
+- Connection pools are keyed per-DB; never reuse a `hiveCentral` pool for tenant queries.
 
 **Today's reality (transition state):**
 - The live database is still single-DB `agenthive` — control-plane and the agenthive-tenant data share one Postgres instance.
-- P429 is the keystone migration that extracts `hiveControl` and recasts `agenthive` as the first project tenant DB.
+- P429 is the keystone migration that extracts `hiveCentral` and recasts `agenthive` as the first project tenant DB.
 - P487 defines the per-project DB schema bootstrap and registry connection model.
 - Until P429 lands, `project_id = 1` is implicit and refers to the agenthive tenant inside the same DB. Do not seed projects with `project_id > 1` outside test fixtures.
 
 **Schema-qualification rules under the new topology:**
-- Inside `hiveControl`: continue to schema-qualify with `roadmap.` and `roadmap_proposal.`
+- Inside `hiveCentral`: continue to schema-qualify with `roadmap.` and `roadmap_proposal.`
 - Inside a tenant DB: project-chosen schemas (e.g., `audio.`, `song.`); never use `roadmap.` in a tenant DB.
 - Cross-DB joins are forbidden. If a handler needs both, it issues two queries and joins in code.
 
@@ -608,7 +610,7 @@ When you start work that touches one of these areas, **read the keystone proposa
 
 | Concern | Keystone | Sub-proposals (under keystone) | Obsoleted (do not use) |
 | :--- | :--- | :--- | :--- |
-| **Multi-tenancy DB topology** (hiveControl + per-project tenant DBs, two-tier) | **P429** | Foundation: P495, P496, P497, P498, P499, P500, P520. Bootstrap: P501, P502, P503. Cutover: P504, P505, P518, P506. Tenant lifecycle: P507, P508, P509. Cleanup: P511, P512. Real tenants: P513, P514. Long tail: P515, P516, P517. | P430 (column classification → P506), P431 (control DB bootstrap → P501), P432 (project DB isolation → P429), P487 (memory artifact, never created) |
+| **Multi-tenancy DB topology** (hiveCentral + per-project tenant DBs, two-tier) | **P429** | Foundation: P495, P496, P497, P498, P499, P500, P520. Bootstrap: P501, P502, P503. Cutover: P504, P505, P518, P506. Tenant lifecycle: P507, P508, P509. Cleanup: P511, P512. Real tenants: P513, P514. Long tail: P515, P516, P517. | P430 (column classification → P506), P431 (control DB bootstrap → P501), P432 (project DB isolation → P429), P487 (memory artifact, never created) |
 | **Multi-tenancy program plan** (4-phase rollout orchestration) | **P471** | Blocks: P429, P448, P453✓, P463, P472, P473, P474, P475, P476✓, plus the entire P429 wave above | P471 IS the master plan; do not create competing program proposals |
 | **MCP tool surface hardening** (input validation, naming, error envelopes) | **P475** | Implements principle from **P456** (REVIEW mature). Companion fixes shipped: P457✓ (context_prefix CHECK widening), P486 (extractArgs+collision detection), P521 (auto-register reviewer FK). | P380 (type errors — fixed by P457 and P475) |
 | **State machine + dispatch hardening** (concurrency, idempotency, retry, leases, races) | **P433** | Blocks: P437 (idempotency), P438 (claim fail-closed), P439 (concurrency ceilings), P440 (retry+terminal), P442 (operator stop), P443 (causal IDs), P444 (host/provider/route sep), P445 (race tests), P446 (MCP runtime reliability). P441 (service topology) is adjacent but separate. | — |

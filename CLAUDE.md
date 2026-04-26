@@ -14,7 +14,7 @@
 
 - **Host policy:** Only `nous+xiaomi` models on this host. Anthropic models are forbidden.
 - **MCP:** `http://127.0.0.1:6421/sse` (SSE transport). System crontab at `/etc/cron.d/agenthive-reporting`.
-- **DB topology (target):** `hiveControl` for control plane + one DB per project tenant (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). See CONVENTIONS.md §6.0.
+- **DB topology (target):** `hiveCentral` for control plane + one DB per project tenant (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). See CONVENTIONS.md §6.0.
 - **DB today (transition):** still single-DB `agenthive@127.0.0.1:5432`, user `xiaomi`. Schema-qualify with `roadmap.` Until P429 lands, treat the live DB as both control plane and the agenthive tenant.
 - **Project resolution:** when adding code that needs project-scoped data, use `config.getProjectDb(slug)` (post-P474). Do NOT add `WHERE project_id = $1` filters to control-plane tables — `project_id` is a tenant-DB pointer, not a row discriminator.
 - **Worktree:** Use CWD-based convention, not hardcoded paths. Sibling worktree resolved from CWD.

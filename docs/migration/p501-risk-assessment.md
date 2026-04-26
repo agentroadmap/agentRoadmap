@@ -1,4 +1,4 @@
-# P501 Risk Assessment — hiveControl Bootstrap
+# P501 Risk Assessment — hiveCentral Bootstrap
 
 **Assessment Date**: 2026-04-26  
 **Scope**: DDL deployment only (no data migration)  
@@ -18,7 +18,7 @@
 Both `roadmap.proposal` and `roadmap_proposal.proposal` exist with 319 rows each. Foreign keys are distributed across schemas inconsistently.
 
 **Impact if Unmitigated**:
-1. hiveControl bootstraps BOTH schemas, duplicating storage and complexity
+1. hiveCentral bootstraps BOTH schemas, duplicating storage and complexity
 2. Services must know which schema to query (proposal data from roadmap_proposal, not roadmap)
 3. Post-cutover (P506), dropping the old roadmap.* tables requires careful coordination to avoid breaking services still referencing them
 4. Logical replication (P502) may not handle both schemas symmetrically
@@ -26,7 +26,7 @@ Both `roadmap.proposal` and `roadmap_proposal.proposal` exist with 319 rows each
 **Mitigation**:
 - **ACCEPT THIS RISK**: P501 faithfully clones both schemas; migration is not the place to fix schema design
 - **Delegate cleanup**: Create P520 (schema rationalization post-migration) to drop duplicate roadmap.* tables after confirming ALL services use roadmap_proposal.*
-- **Document the current state**: Add a DDL comment in hiveControl marking which schemas are canonical:
+- **Document the current state**: Add a DDL comment in hiveCentral marking which schemas are canonical:
   ```sql
   COMMENT ON SCHEMA roadmap_proposal IS 'CANONICAL: control-plane proposal data; roadmap.* is legacy';
   COMMENT ON SCHEMA roadmap IS 'LEGACY: superceded by roadmap_proposal.*; slated for cleanup in P520';
@@ -41,14 +41,14 @@ Both `roadmap.proposal` and `roadmap_proposal.proposal` exist with 319 rows each
 **Finding**: P501 captures sequence metadata in `roadmap.ddl_sequence_metadata`, but the cutover sequence-bump script (P505) must:
 1. Enumerate all 101 sequences from the metadata
 2. For each sequence, read its current max value from agenthive
-3. Set hiveControl's sequence to max + 1000 (safety buffer)
+3. Set hiveCentral's sequence to max + 1000 (safety buffer)
 
-If any sequence is missed or the script fails mid-run, new inserts into hiveControl will collide with agenthive sequences during the replication tail phase (P502), causing constraint violations.
+If any sequence is missed or the script fails mid-run, new inserts into hiveCentral will collide with agenthive sequences during the replication tail phase (P502), causing constraint violations.
 
 **Impact if Unmitigated**:
-- hiveControl inserts fail: "duplicate key value violates unique constraint"
+- hiveCentral inserts fail: "duplicate key value violates unique constraint"
 - Services error; cutover must abort
-- Data integrity loss (some writes to hiveControl, some still on agenthive, split-brain)
+- Data integrity loss (some writes to hiveCentral, some still on agenthive, split-brain)
 
 **Mitigation**:
 - **Phase 3 of runbook enumerates all sequences**: Run query and verify count ≥ 101
@@ -60,21 +60,21 @@ If any sequence is missed or the script fails mid-run, new inserts into hiveCont
 
 ### RISK #3: Logical Replication Setup Timing (SEVERITY: MEDIUM, LIKELIHOOD: MEDIUM)
 
-**Finding**: P501 creates empty hiveControl; P502 sets up logical replication to tail agenthive. Between P501 (T=0) and P502 start (T=T502), hiveControl is empty and unconnected to agenthive.
+**Finding**: P501 creates empty hiveCentral; P502 sets up logical replication to tail agenthive. Between P501 (T=0) and P502 start (T=T502), hiveCentral is empty and unconnected to agenthive.
 
-If an operator manually inserts data into hiveControl before P502 starts, or if P502 fails to create the subscription, the initial_state may be inconsistent:
+If an operator manually inserts data into hiveCentral before P502 starts, or if P502 fails to create the subscription, the initial_state may be inconsistent:
 - agenthive has been written to by services (proposal IDs 320+)
-- hiveControl snapshot is from P501 time (proposal ID 319)
+- hiveCentral snapshot is from P501 time (proposal ID 319)
 - Replication lag is unknown
 
 **Impact if Unmitigated**:
-- hiveControl is out of sync on cutover
+- hiveCentral is out of sync on cutover
 - Read-shadow (P503) detects inconsistencies
 - Cutover aborted; cascade delay in timeline
 
 **Mitigation**:
 - **P502 MUST create subscription immediately after P501 succeeds**: no manual steps in between
-- **CI gate blocks any writes to hiveControl between P501 and P502 go-live**: deployment blocks any service connecting to hiveControl env var until P502 completes
+- **CI gate blocks any writes to hiveCentral between P501 and P502 go-live**: deployment blocks any service connecting to hiveCentral env var until P502 completes
 - **P503 validates zero-delta for 48h before cutover approval**: if any delta appears, cutover is blocked and root cause investigated
 - **Acceptance Criteria**: P502 starts within 5 minutes of P501; subscription created in < 1 minute; replication lag = 0 within 10 minutes
 
@@ -82,7 +82,7 @@ If an operator manually inserts data into hiveControl before P502 starts, or if 
 
 ### RISK #4: PgBouncer Configuration Collision (SEVERITY: MEDIUM, LIKELIHOOD: LOW)
 
-**Finding**: Phase 5 of the runbook appends hiveControl pool to pgbouncer.ini and reloads. If pgbouncer.ini already has a malformed entry or PgBouncer was recently modified, RELOAD may fail or route connections incorrectly.
+**Finding**: Phase 5 of the runbook appends hiveCentral pool to pgbouncer.ini and reloads. If pgbouncer.ini already has a malformed entry or PgBouncer was recently modified, RELOAD may fail or route connections incorrectly.
 
 **Impact if Unmitigated**:
 - `RELOAD` command hangs or errors
@@ -93,9 +93,9 @@ If an operator manually inserts data into hiveControl before P502 starts, or if 
 **Mitigation**:
 - **Pre-flight check (Phase 5.0)**: Verify current pgbouncer.ini syntax:
   ```bash
-  psql -p 6432 pgbouncer -c "SHOW DATABASES;" | grep -q hiveControl
+  psql -p 6432 pgbouncer -c "SHOW DATABASES;" | grep -q hiveCentral
   ```
-  If hiveControl already listed, use `RELOAD` without appending.
+  If hiveCentral already listed, use `RELOAD` without appending.
 - **Verify reload succeeds**: Phase 5.2 smoke test confirms connection works
 - **Acceptance Criteria**: RELOAD completes in < 5s; smoke test succeeds; no dropped connections (confirm by checking pg_stat_activity for disconnections)
 
@@ -107,7 +107,7 @@ If an operator manually inserts data into hiveControl before P502 starts, or if 
 
 **Impact if Unmitigated**:
 - Dump completes but file is truncated (restore fails with "unexpected end of file")
-- Restore fails partway through, leaving hiveControl in inconsistent state
+- Restore fails partway through, leaving hiveCentral in inconsistent state
 - Operator must rollback and diagnose disk issue
 - Timeline slip
 
@@ -132,22 +132,22 @@ If an operator manually inserts data into hiveControl before P502 starts, or if 
 - `vector` (pgvector, 0.8.2)
 - `tablefunc` (in roadmap_proposal schema)
 
-hiveControl bootstrap must include these extensions. If an extension version mismatch or missing dependency exists, schema creation may fail or behave differently.
+hiveCentral bootstrap must include these extensions. If an extension version mismatch or missing dependency exists, schema creation may fail or behave differently.
 
 **Mitigation**:
 - **Dump includes extension creation**: `pg_dump --schema-only` emits `CREATE EXTENSION` statements
 - **Pre-flight: Verify extensions loaded**: Phase 2.4 spot-check that extensions are present after restore
-- **Acceptance Criteria**: All 4 extensions present in hiveControl with matching versions
+- **Acceptance Criteria**: All 4 extensions present in hiveCentral with matching versions
 
 ---
 
 ### RISK #7: View Dependency Ordering (SEVERITY: LOW, LIKELIHOOD: LOW)
 
-**Finding**: hiveControl has 30+ views (e.g., `v_proposal_full`, `v_proposal_queue`). Views depend on base tables. If base tables are not fully created before views, or if views reference dropped tables, restoration may fail.
+**Finding**: hiveCentral has 30+ views (e.g., `v_proposal_full`, `v_proposal_queue`). Views depend on base tables. If base tables are not fully created before views, or if views reference dropped tables, restoration may fail.
 
 **Impact if Unmitigated**:
 - Restore errors like "relation does not exist" for view bodies
-- hiveControl ends up with missing views
+- hiveCentral ends up with missing views
 - Services querying views fail post-cutover
 
 **Mitigation**:
@@ -167,8 +167,8 @@ hiveControl bootstrap must include these extensions. If an extension version mis
 - If roadmap.project schema is out of sync, constraint fails
 
 **Mitigation**:
-- **Phase 4: Parity check includes FK definitions**: Verify all FK definitions match between agenthive and hiveControl
-- **No cross-DB FKs**: FKs never point outside hiveControl (cross-DB FKs are forbidden in P429 architecture)
+- **Phase 4: Parity check includes FK definitions**: Verify all FK definitions match between agenthive and hiveCentral
+- **No cross-DB FKs**: FKs never point outside hiveCentral (cross-DB FKs are forbidden in P429 architecture)
 - **Acceptance Criteria**: Parity check confirms all FKs present and matching; no FK definition divergence
 
 ---
@@ -179,7 +179,7 @@ hiveControl bootstrap must include these extensions. If an extension version mis
 If the network connection to agenthive drops mid-dump, the file is corrupted. Mitigation: re-run Phase 2.1. Acceptance: dump completes successfully in one attempt (rare).
 
 ### RISK #10: Manual Intervention Between Phases (SEVERITY: MEDIUM, LIKELIHOOD: LOW)
-If operator makes manual changes to hiveControl between phases (e.g., adding a table), parity check fails. Mitigation: treat hiveControl as read-only between P501 start and P502 completion. Acceptance: parity check passes with zero manual changes.
+If operator makes manual changes to hiveCentral between phases (e.g., adding a table), parity check fails. Mitigation: treat hiveCentral as read-only between P501 start and P502 completion. Acceptance: parity check passes with zero manual changes.
 
 ---
 
@@ -207,7 +207,7 @@ If operator makes manual changes to hiveControl between phases (e.g., adding a t
 - [ ] Phase 2.4: Table and index counts match agenthive (spot checks)
 - [ ] Phase 3: ≥ 101 sequences enumerated and inserted into ddl_sequence_metadata
 - [ ] Phase 4: Parity check passes (all tables, columns, indexes, FKs match)
-- [ ] Phase 5: PgBouncer reload succeeds; smoke test connects to hiveControl via bouncer
+- [ ] Phase 5: PgBouncer reload succeeds; smoke test connects to hiveCentral via bouncer
 - [ ] Phase 6: ddl_version stamped; final validation query returns correct counts
 - [ ] **Runbook approval**: Frozen runbook reviewed by 2 senior DBAs; signed off
 - [ ] **Timeline**: P502 start date confirmed; replication script ready
@@ -232,7 +232,7 @@ If operator makes manual changes to hiveControl between phases (e.g., adding a t
 
 1. **Backup restoration time**: Assumed < 30s for 152 MB DB. Verify on actual infrastructure.
 2. **PgBouncer reload impact**: Assumed zero connection drop. Verify with monitoring.
-3. **Service startup on hiveControl**: Assumed services can reconnect to new DSN in < 30s. Verify with connection pooling tests.
+3. **Service startup on hiveCentral**: Assumed services can reconnect to new DSN in < 30s. Verify with connection pooling tests.
 4. **Logical replication lag**: Assumed negligible (< 100ms) during 48h tail. Verify with monitoring + P503.
 
 ---
@@ -242,7 +242,7 @@ If operator makes manual changes to hiveControl between phases (e.g., adding a t
 | Condition | Severity | Action | Owner |
 |-----------|----------|--------|-------|
 | Phase dump hangs > 60s | CRITICAL | Kill dump, rollback, investigate network | DB-Deploy |
-| Phase restore fails (ERROR) | CRITICAL | Rollback (DROP hiveControl), rerun after fix | DB-Deploy |
+| Phase restore fails (ERROR) | CRITICAL | Rollback (DROP hiveCentral), rerun after fix | DB-Deploy |
 | Parity check fails (fatal) | CRITICAL | Halt P502, investigate schema divergence | Database Architect |
 | Sequence count < 101 | HIGH | Halt P504 rehearsal, investigate enum script | DB-Deploy |
 | PgBouncer RELOAD fails | HIGH | Halt Phase 5, manually restore pgbouncer.ini | Infra Ops |
