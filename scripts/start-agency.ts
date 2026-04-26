@@ -22,6 +22,12 @@ import { hostname } from "node:os";
 import { spawnAgent, resolveActiveRouteProvider } from "../src/core/orchestration/agent-spawner.ts";
 import { OfferProvider } from "../src/core/pipeline/offer-provider.ts";
 import { closePool, getPool } from "../src/infra/postgres/pool.ts";
+import {
+	liaisonRegister,
+	liaisonHeartbeat,
+	endLiaisonSession,
+} from "../src/infra/agency/liaison-service.ts";
+import { runWatchdogCycle } from "../src/infra/agency/stuck-detection.ts";
 
 const agentIdentity =
 	process.env.AGENTHIVE_AGENT_IDENTITY ?? `agency-${hostname()}`;
@@ -85,9 +91,56 @@ async function main() {
 	await pool.query("SELECT 1");
 	console.log("[Agency] Database connection verified");
 
+	const provider = await resolveProvider();
+	console.log(`[Agency] Provider resolved as: ${provider}`);
+
+	// P464: Register agency in liaison protocol (additive — failure is non-fatal).
+	let sessionId: string | null = null;
+	let heartbeatTimer: NodeJS.Timeout | null = null;
+	let watchdogTimer: NodeJS.Timeout | null = null;
+	try {
+		const result = await liaisonRegister({
+			agency_id: agentIdentity,
+			display_name: agentIdentity.split("/").slice(-1)[0],
+			provider,
+			host_id: hostname(),
+			capabilities: [provider, "agent-spawner"],
+			metadata: { version: "1.0", pid: process.pid },
+		});
+		sessionId = result.session_id;
+		console.log(`[Agency] Registered liaison session: ${sessionId}`);
+
+		heartbeatTimer = setInterval(async () => {
+			try {
+				await liaisonHeartbeat({ session_id: sessionId!, status: "active" });
+			} catch (err) {
+				console.error("[Agency] Heartbeat error:", err);
+			}
+		}, 30_000);
+
+		watchdogTimer = setInterval(async () => {
+			try {
+				await runWatchdogCycle();
+			} catch (err) {
+				console.error("[Agency] Watchdog error:", err);
+			}
+		}, 60_000);
+	} catch (err) {
+		console.warn("[Agency] liaisonRegister failed (non-fatal, will continue with legacy path):", err);
+	}
+
 	for (const sig of ["SIGTERM", "SIGINT"] as const) {
 		process.on(sig, async () => {
 			console.log(`[Agency] ${sig} — draining in-flight claims...`);
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
+			if (watchdogTimer) clearInterval(watchdogTimer);
+			if (sessionId) {
+				try {
+					await endLiaisonSession({ session_id: sessionId, end_reason: "sigterm" });
+				} catch (err) {
+					console.error("[Agency] endLiaisonSession error:", err);
+				}
+			}
 			await offerProvider.stop();
 			await offerProvider.waitForIdle(30_000);
 			await closePool();
@@ -95,8 +148,6 @@ async function main() {
 		});
 	}
 
-	const provider = await resolveProvider();
-	console.log(`[Agency] Provider resolved as: ${provider}`);
 	await offerProvider.run();
 	console.log(`[Agency] ${agentIdentity} listening for work offers`);
 }
