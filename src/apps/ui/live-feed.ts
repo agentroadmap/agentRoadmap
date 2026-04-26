@@ -85,7 +85,7 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 								COALESCE(pe.payload->>'agent', pe.payload->>'agent_identity', 'agent') ||
 								CASE
 									WHEN pe.payload->>'expires_at' IS NOT NULL THEN
-										' until ' || pe.payload->>'expires_at'
+										' until ' || (pe.payload->>'expires_at')
 									ELSE ''
 								END
 						WHEN pe.event_type = 'lease_released' THEN
@@ -93,7 +93,7 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 								COALESCE(pe.payload->>'agent', pe.payload->>'agent_identity', 'agent') ||
 								CASE
 									WHEN pe.payload->>'release_reason' IS NOT NULL THEN
-										' (' || pe.payload->>'release_reason' || ')'
+										' (' || (pe.payload->>'release_reason') || ')'
 									ELSE ''
 								END
 						WHEN pe.event_type = 'status_changed' THEN

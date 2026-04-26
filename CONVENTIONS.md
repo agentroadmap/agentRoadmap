@@ -469,6 +469,119 @@ AgentHive is multi-agent. Git discipline is part of system safety.
 
 Precision matters more than confidence theater.
 
+### 8d. Project scope (P477 AC-2)
+
+The web control plane is multi-project: every operator action belongs to one of the rows in `roadmap.project`. Scope flows through one HTTP header.
+
+- **Header**: `X-Project-Id: <project_id>` (or query param `?project_id=`).
+- **Server resolution**: `RoadmapServer.resolveProjectScope(req)` validates the requested id against `roadmap.project WHERE status='active'`. Garbage / unknown / archived ids fall back to the lowest-id active project so the UI can never lock itself out.
+- **Default**: when no header is sent, the lowest-id active project is used. That keeps existing CLI tooling working without changes.
+- **Echo**: `/api/control-plane/overview` returns `{project: {project_id, slug, name}}` so the UI can detect divergence (e.g. localStorage stale across browser tabs) and re-render.
+
+Read endpoints that honor scope today:
+
+| Endpoint | Scope mechanism |
+|---|---|
+| `/api/control-plane/overview` | `cubics`, `message_ledger` filter by `project_id`; `agent_health` / `agent_runs` joined through `agent_registry`. `model_routes` stays global (infra-level config). |
+| `/api/agents` | `agent_registry.project_id = <scope>` |
+| `/api/agents/:id` | Returns 404 if the agent's `agent_registry.project_id` doesn't match the request scope (cross-project read denied). |
+| `/api/dispatches` | `squad_dispatch.project_id = <scope>`; `?all=1` bypass returns rows from every project (debug only). Echoes `{project: {project_id, slug, name}}`. |
+| `/api/projects` | The switcher itself — always returns the full active list. |
+| WebSocket `subscribe` | Payload may carry `project_id`; the server stores it per-socket in `wsProjectScope`. Re-sending `subscribe` with a new id triggers a fresh snapshot push without reconnect. |
+
+Endpoints **not yet** scoped (transitional — control-plane / filesystem):
+
+| Endpoint | Why unscoped today |
+|---|---|
+| `/api/proposals` (REST), `proposal_snapshot` / `proposal_insert` / `proposal_update` (WS) | `roadmap.proposal` has no `project_id` column; it lives in the control plane. Scoping moves to tenant-DB resolution once P429/P482-P485 lands. The WS subscribe still records the operator's project so the wiring is in place; the broadcast already short-circuits the scope check when payloads carry `project_id`. |
+| `/api/channels`, `/api/messages`, `/api/pulse` | Filesystem-backed (markdown messages dir, `pulse.log`); naturally scoped per project worktree. Will gain `project_id` filtering only if we migrate to `roadmap.message_ledger`. |
+| `/api/routes` | Global infra config — model routes are shared across projects by design. |
+
+When wiring a new endpoint that touches a scoped table, always either:
+- filter via `WHERE project_id = $scope` if the table carries the column, or
+- join through `agent_registry` / `cubics` / `squad_dispatch` to inherit a scope, or
+- explicitly mark the endpoint as "global" / "control-plane" and document it in the table above.
+
+Frontend uses `useProjectScope()` from `src/apps/dashboard-web/hooks/useProjectScope.ts`. The hook returns a `scopedFetch` wrapper that adds the header automatically; **don't** call `window.fetch` from a component if the URL is project-scoped — use the scoped fetcher so the user's selection is respected. Non-React code (e.g. `lib/api.ts` `fetchWithRetry`) reads the same id from `lib/project-scope-storage.ts` and stamps `X-Project-Id` on every request. The current selection persists in `localStorage["roadmap.project_scope.v1"]` and propagates intra-tab via the `roadmap:project-scope-changed` CustomEvent (cross-tab via the storage event). The WebSocket hook listens to the same event and pushes a fresh `subscribe` payload through the open socket on scope change — never reconnects, to avoid snapshot floods.
+
+### 8c. Control-plane stop actions (P477 AC-4)
+
+Operator-initiated stops are exposed as four privileged endpoints, all behind `requireOperator` (§8b). Each writes the actor + reason into the target row so the audit trail outlives the `operator_audit_log`.
+
+| Endpoint | Action name | Effect |
+|---|---|---|
+| `POST /api/agents/:identity/stop` | `agent.stop` | Soft-cancels every `agent_runs` row for that identity where `status='running'`. Sets `status='cancelled'`, `cancelled_by/at/reason`. Workers honor this on next heartbeat — the server does **not** kill processes directly. |
+| `POST /api/cubics/:cubic_id/stop` | `cubic.stop` | Flips an active cubic to `expired`, clears `lock_holder/lock_phase/locked_at`, sets `stopped_by/at/reason`. Idempotent — already-terminal cubics return `{success: true, already_terminal: true}`. |
+| `POST /api/proposals/:id/state-machine/halt` | `state-machine.halt` | Sets `proposal.gate_scanner_paused = true`. Gate-scanner / orchestrator must skip paused proposals; the partial index `idx_proposal_gate_paused` keeps the lookup cheap. |
+| `POST /api/proposals/:id/state-machine/resume` | `state-machine.resume` | Clears the pause. Separate action so a narrower operator can be granted halt-only or resume-only. |
+
+Body is JSON `{reason}` (optional, free text, capped at 200 chars in the audit summary). The operator name in the resulting trail is taken from the bearer token, never from the request body — same anti-spoof rule as `agent.message`.
+
+When wiring new code that observes these stop signals: read `agent_runs.status='cancelled'` (workers), `cubics.status='expired'` (orchestrator), or `proposal.gate_scanner_paused = true` (gate scanner). Don't introduce side-channels.
+
+### 8b. Control-plane operator authorization (P477 AC-7)
+
+Privileged web actions (operator → agent reminder, future stop actions, multi-project mutations) go through one gate: `requireOperator(req, { action, ... })` in `src/apps/server/operator-auth.ts`. Read endpoints stay unauthenticated; only mutating calls are gated.
+
+The model:
+
+- Bearer-token authentication via `Authorization: Bearer …` (or `X-Operator-Token`).
+- Tokens are SHA-256 hashed before storage in `roadmap.operator_token` — plaintext lives only in the issuance response.
+- Per-token `allowed_actions text[]`; `'*'` means full operator powers, otherwise list specific actions like `agent.message`, `audit.read`, `cubic.stop`, `agent.stop`.
+- **Default posture is fail-closed**: with zero rows in `operator_token`, every gated call returns `503 unconfigured`. Adding the table without inserting a token does **not** silently expose endpoints.
+- Every gated call writes a row into `roadmap.operator_audit_log` regardless of decision (`allow / deny / anonymous / unconfigured`). The audit log is the source of truth when reviewing operator actions; never delete it.
+
+Decision → HTTP status:
+
+| decision | status | meaning |
+|---|---|---|
+| allow | 200 | token valid, action in allowed_actions |
+| deny | 401 | token unknown |
+| deny | 403 | token valid but action not allowed / revoked / expired |
+| anonymous | 401 | no Authorization header but tokens exist |
+| unconfigured | 503 | `operator_token` is empty — bootstrap a token first |
+
+Bootstrapping the first token (the API endpoint to issue tokens is itself gated):
+
+```sh
+npm run operator:issue -- --name=ops-1 --allowed='*'
+npm run operator:list
+npm run operator:revoke -- --id=3 --reason="rotation"
+```
+
+The issued plaintext token is printed once; store it in your password manager. Lost tokens cannot be recovered — issue a new one and revoke the old.
+
+When wiring a new privileged endpoint, never bypass the gate: always call
+
+```ts
+const auth = await requireOperator(req, { action: "<dotted.action>", targetKind, targetIdentity, requestSummary });
+if (auth.rejected) return auth.rejected;
+// proceed; auth.outcome.operatorName is the canonical operator id —
+// prefer it over anything in the request body to prevent spoofing.
+```
+
+### 8a. Web bundle builds (P477 AC-6)
+
+The dashboard-web bundle (`src/web/main.js`) is the file `roadmap browser` actually serves. **Never hand-rebuild it with bare `bun build` from inside a worktree** — worktree `node_modules/wouter` is a symlink into AgentHive's tree, and bun resolves wouter's `import "react"` up to a *different* React copy than the app's. Two Reacts in one bundle = `useContext()` blows up at runtime with "Cannot read properties of null".
+
+Use the canonical script instead:
+
+```sh
+npm run build:web         # tailwind + bundle, deploys src/web/main.{js,css}
+npm run build:web -- --js-only   # skip tailwind (faster iteration)
+npm run build:web:watch          # bun --watch on the bundle
+```
+
+The script (`scripts/build-web.cjs`):
+
+- chdirs to the AgentHive repo root before bundling, regardless of where it's invoked from;
+- builds into `.build-web-staging/` then atomically renames into `src/web/`, so a partial bundle can never reach the browser;
+- fails the build if it detects `AgentHive/node_modules/react` references in the bundle (the dual-React fingerprint).
+
+`npm run build` now runs `build:web --js-only` as its last step, so a top-level build is enough; CSS is already produced by the tailwind step earlier in the chain.
+
+After a build, the served bundle's mtime should bump; hard-refresh the browser (Ctrl+Shift+R) — react-tooltip, wouter, and the tailwind chunks all get cached aggressively.
+
 ## 9. Quick Checklist for New Agents
 
 Before you start:

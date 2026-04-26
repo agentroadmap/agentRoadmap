@@ -59,6 +59,229 @@ import {
 import { createScreen } from "./tui.ts";
 import { query as pgQuery } from "../../infra/postgres/pool.ts";
 
+type DecisionRow = {
+	decision: string;
+	authority: string;
+	rationale: string | null;
+	binding: boolean;
+	decided_at: string | Date;
+};
+type ReviewRow = {
+	reviewer_identity: string;
+	verdict: string;
+	notes: string | null;
+	findings: string | null;
+	is_blocking: boolean;
+	reviewed_at: string | Date;
+};
+type DiscussionRow = {
+	author_identity: string;
+	context_prefix: string | null;
+	body: string;
+	created_at: string | Date;
+};
+
+function getRoadmapWebUrl(): string {
+	const explicit = process.env.AGENTHIVE_ROADMAP_URL?.trim();
+	if (explicit) return explicit.replace(/\/$/, "");
+	const port = process.env.AGENTHIVE_ROADMAP_PORT?.trim() || "6420";
+	return `http://127.0.0.1:${port}`;
+}
+
+async function fetchProposalFromWeb(
+	proposalId: string,
+): Promise<Record<string, unknown> | null> {
+	const baseUrl = getRoadmapWebUrl();
+	const idForUrl = encodeURIComponent(proposalId);
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 1500);
+	try {
+		const res = await fetch(`${baseUrl}/api/proposals/${idForUrl}`, {
+			signal: controller.signal,
+		});
+		if (!res.ok) return null;
+		return (await res.json()) as Record<string, unknown>;
+	} catch {
+		// Web server not running — caller falls back to direct pg.
+		return null;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+type ProposalExtrasBundle = {
+	decisions: DecisionRow[];
+	reviews: ReviewRow[];
+	discussions: DiscussionRow[];
+	acceptanceCriteriaItems: Array<{
+		index: number;
+		text: string;
+		checked: boolean;
+		role?: string;
+		evidence?: string;
+	}>;
+	activityLog: Array<{
+		timestamp: string;
+		actor: string;
+		action: string;
+		reason?: string;
+	}>;
+};
+
+const EMPTY_EXTRAS_BUNDLE: ProposalExtrasBundle = {
+	decisions: [],
+	reviews: [],
+	discussions: [],
+	acceptanceCriteriaItems: [],
+	activityLog: [],
+};
+
+// Single-roundtrip aggregate query so the popup acquires ONE pool slot
+// instead of 3-4 parallel ones (which used to time-out at 5 s when
+// the per-process pg-Pool was contended).
+async function fetchProposalExtrasFromPg(
+	proposalId: string,
+): Promise<ProposalExtrasBundle> {
+	const idNum = parseInt(proposalId.replace(/^[A-Za-z-]+/, ""), 10);
+	if (Number.isNaN(idNum)) return EMPTY_EXTRAS_BUNDLE;
+	try {
+		const { rows } = await pgQuery<{
+			decisions: DecisionRow[] | null;
+			reviews: ReviewRow[] | null;
+			discussions: DiscussionRow[] | null;
+			acceptance_criteria: ProposalExtrasBundle["acceptanceCriteriaItems"] | null;
+			activity_log: ProposalExtrasBundle["activityLog"] | null;
+		}>(
+			`
+			SELECT
+				(SELECT COALESCE(jsonb_agg(d ORDER BY d.decided_at DESC), '[]'::jsonb)
+				   FROM (SELECT decision, authority, rationale, binding, decided_at
+				           FROM roadmap_proposal.proposal_decision
+				          WHERE proposal_id = $1) d) AS decisions,
+				(SELECT COALESCE(jsonb_agg(r ORDER BY r.reviewed_at DESC), '[]'::jsonb)
+				   FROM (SELECT reviewer_identity, verdict, notes, findings,
+				                is_blocking, reviewed_at
+				           FROM roadmap_proposal.proposal_reviews
+				          WHERE proposal_id = $1) r) AS reviews,
+				(SELECT COALESCE(jsonb_agg(x ORDER BY x.created_at DESC), '[]'::jsonb)
+				   FROM (SELECT author_identity, context_prefix,
+				                COALESCE(body, body_markdown) AS body,
+				                created_at
+				           FROM roadmap_proposal.proposal_discussions
+				          WHERE proposal_id = $1) x) AS discussions,
+				(SELECT COALESCE(jsonb_agg(jsonb_build_object(
+				          'index', ac.item_number,
+				          'text', ac.criterion_text,
+				          'checked', ac.status = 'pass',
+				          'role', ac.verified_by,
+				          'evidence', ac.verification_notes
+				        ) ORDER BY ac.item_number ASC), '[]'::jsonb)
+				   FROM roadmap_proposal.proposal_acceptance_criteria ac
+				  WHERE ac.proposal_id = $1) AS acceptance_criteria,
+				(SELECT COALESCE(jsonb_agg(
+				          jsonb_build_object(
+				            'timestamp', e->>'TS',
+				            'actor', COALESCE(e->>'Agent', 'system'),
+				            'action',
+				              CASE
+				                WHEN e->>'Activity' = 'Created' THEN 'created proposal'
+				                WHEN e->>'Activity' = 'StatusChange' THEN
+				                  'state ' || COALESCE(e->>'From', '?') ||
+				                  ' → ' || COALESCE(e->>'To', '?')
+				                WHEN e->>'Activity' = 'MaturityChange' THEN
+				                  'maturity ' || COALESCE(e->>'From', 'new') ||
+				                  ' → ' || COALESCE(e->>'To', '?')
+				                WHEN e->>'Activity' = 'LeaseClaim' THEN 'lease claimed'
+				                WHEN e->>'Activity' = 'LeaseRelease' THEN 'lease released'
+				                WHEN e->>'Activity' = 'ReviewSubmitted' THEN 'review submitted'
+				                ELSE COALESCE(e->>'Activity', '(unknown)')
+				              END,
+				            'reason', e->>'Reason'
+				          )
+				        ORDER BY ord), '[]'::jsonb)
+				   FROM roadmap_proposal.proposal p,
+				        LATERAL jsonb_array_elements(p.audit)
+				          WITH ORDINALITY AS t(e, ord)
+				  WHERE p.id = $1) AS activity_log
+			`,
+			[idNum],
+		);
+		const r = rows[0];
+		if (!r) return EMPTY_EXTRAS_BUNDLE;
+		return {
+			decisions: r.decisions ?? [],
+			reviews: r.reviews ?? [],
+			discussions: r.discussions ?? [],
+			acceptanceCriteriaItems: r.acceptance_criteria ?? [],
+			activityLog: r.activity_log ?? [],
+		};
+	} catch (err) {
+		console.error(
+			`[popup] pg fetch for ${proposalId} failed: ${(err as Error).message}`,
+		);
+		return EMPTY_EXTRAS_BUNDLE;
+	}
+}
+
+async function fetchProposalDetailExtras(proposalId: string): Promise<{
+	decisions: DecisionRow[];
+	reviews: ReviewRow[];
+	discussions: DiscussionRow[];
+}> {
+	const baseUrl = getRoadmapWebUrl();
+	const idForUrl = encodeURIComponent(proposalId);
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 4000);
+
+	try {
+		const [decRes, revRes, noteRes] = await Promise.all([
+			fetch(`${baseUrl}/api/proposals/${idForUrl}/decisions`, {
+				signal: controller.signal,
+			}),
+			fetch(`${baseUrl}/api/proposals/${idForUrl}/reviews`, {
+				signal: controller.signal,
+			}),
+			fetch(`${baseUrl}/api/proposals/${idForUrl}/notes`, {
+				signal: controller.signal,
+			}),
+		]);
+		if (!decRes.ok || !revRes.ok || !noteRes.ok) {
+			console.error(
+				`[popup] web service returned ${decRes.status}/${revRes.status}/${noteRes.status}`,
+			);
+			return { decisions: [], reviews: [], discussions: [] };
+		}
+		const decBody = (await decRes.json()) as { decisions?: DecisionRow[] };
+		const revBody = (await revRes.json()) as { reviews?: ReviewRow[] };
+		const noteBody = (await noteRes.json()) as {
+			notes?: Array<DiscussionRow & { body_markdown?: string }>;
+		};
+		return {
+			decisions: decBody.decisions ?? [],
+			reviews: revBody.reviews ?? [],
+			discussions: (noteBody.notes ?? []).map((n) => ({
+				author_identity: n.author_identity,
+				context_prefix: n.context_prefix,
+				body: (n as { body?: string; body_markdown?: string }).body
+					?? n.body_markdown
+					?? "",
+				created_at: n.created_at,
+			})),
+		};
+	} catch (err) {
+		// Service unreachable — show popup with empty extras rather than
+		// hammering the per-process pg pool which is what caused
+		// "timeout exceeded when trying to connect" in the first place.
+		console.error(
+			`[popup] failed to fetch extras for ${proposalId} via ${baseUrl}: ${(err as Error).message}`,
+		);
+		return { decisions: [], reviews: [], discussions: [] };
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+
 function getPriorityDisplay(priority?: "high" | "medium" | "low"): string {
 	switch (priority) {
 		case "high":
@@ -1644,36 +1867,57 @@ export async function createProposalPopup(
 } | null> {
 	if (output.isTTY === false) return null;
 
-	// Fetch decisions, reviews, and discussions from database
-	const proposalIdNum = parseInt(proposal.id.replace(/^[A-Za-z-]+/, ""), 10);
-	if (Number.isNaN(proposalIdNum)) {
-		throw new Error(`Cannot parse proposal ID: ${proposal.id}`);
+	// Hydrate AC + activity + decisions/reviews/discussions for the popup.
+	// Strategy: try the web service first (1 round-trip, no local pool
+	// pressure), but if it isn't running (TUI must work standalone), fall
+	// back to ONE aggregate pg query that uses a single pool slot.
+	const webProposal = await fetchProposalFromWeb(proposal.id);
+	let extras: ProposalExtrasBundle;
+	if (
+		webProposal &&
+		Array.isArray(
+			(webProposal as { acceptanceCriteriaItems?: unknown })
+				.acceptanceCriteriaItems,
+		)
+	) {
+		const webExtras = await fetchProposalDetailExtras(proposal.id);
+		extras = {
+			decisions: webExtras.decisions,
+			reviews: webExtras.reviews,
+			discussions: webExtras.discussions,
+			acceptanceCriteriaItems:
+				(webProposal.acceptanceCriteriaItems as ProposalExtrasBundle["acceptanceCriteriaItems"]) ??
+				[],
+			activityLog:
+				((webProposal as { activityLog?: unknown }).activityLog as
+					| ProposalExtrasBundle["activityLog"]
+					| undefined) ?? [],
+		};
+		const merged = { ...proposal } as Proposal & Record<string, unknown>;
+		if (typeof webProposal.implementationPlan === "string") {
+			(merged as Proposal & { implementationPlan?: string }).implementationPlan =
+				webProposal.implementationPlan as string;
+		}
+		if (typeof webProposal.implementationNotes === "string") {
+			(merged as Proposal & { implementationNotes?: string }).implementationNotes =
+				webProposal.implementationNotes as string;
+		}
+		if (typeof webProposal.finalSummary === "string") {
+			(merged as Proposal & { finalSummary?: string }).finalSummary =
+				webProposal.finalSummary as string;
+		}
+		proposal = merged as Proposal;
+	} else {
+		extras = await fetchProposalExtrasFromPg(proposal.id);
 	}
-
-	const [decResult, revResult, discResult] = await Promise.all([
-		pgQuery(
-			`SELECT decision, authority, rationale, binding, decided_at
-			 FROM roadmap_proposal.proposal_decision
-			 WHERE proposal_id = $1 ORDER BY decided_at DESC`,
-			[proposalIdNum],
-		),
-		pgQuery(
-			`SELECT reviewer_identity, verdict, notes, findings, is_blocking, reviewed_at
-			 FROM roadmap_proposal.proposal_reviews
-			 WHERE proposal_id = $1 ORDER BY reviewed_at DESC`,
-			[proposalIdNum],
-		),
-		pgQuery(
-			`SELECT author_identity, context_prefix, body, created_at
-			 FROM roadmap_proposal.proposal_discussions
-			 WHERE proposal_id = $1 ORDER BY created_at DESC`,
-			[proposalIdNum],
-		),
-	]);
-
-	const decisions = decResult.rows as any;
-	const reviews = revResult.rows as any;
-	const discussions = discResult.rows as any;
+	const merged2 = { ...proposal } as Proposal & Record<string, unknown>;
+	merged2.acceptanceCriteriaItems = extras.acceptanceCriteriaItems;
+	(merged2 as Proposal & { activityLog?: unknown }).activityLog =
+		extras.activityLog;
+	proposal = merged2 as Proposal;
+	const decisions = extras.decisions;
+	const reviews = extras.reviews;
+	const discussions = extras.discussions;
 
 	const { headerContent, bodyContent } = generateDetailContent(
 		proposal,
@@ -1689,6 +1933,8 @@ export async function createProposalPopup(
 		height: "80%",
 		border: "line",
 		style: {
+			bg: "black",
+			fg: "white",
 			border: { fg: "gray" },
 		},
 		keys: true,
@@ -1696,15 +1942,15 @@ export async function createProposalPopup(
 		autoPadding: true,
 	});
 
+	// Tiny invisible "background" placeholder so the existing close()
+	// API (popup.background.destroy()) keeps working without leaking widgets.
 	const background = box({
-		parent: screen,
-		top: Number(popup.top ?? 0) - 1,
-		left: Number(popup.left ?? 0) - 2,
-		width: Number(popup.width ?? 0) + 4,
-		height: Number(popup.height ?? 0) + 2,
-		style: {
-			bg: "black",
-		},
+		parent: popup,
+		top: 0,
+		left: 0,
+		width: 0,
+		height: 0,
+		hidden: true,
 	});
 
 	popup.setFront?.();

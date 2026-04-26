@@ -2650,6 +2650,7 @@ export async function renderBoardTui(
 
 		// Auto-refresh proposals from DB every 5s
 		const proposalRefreshTimer = setInterval(async () => {
+			if (popupOpen || filterPopupOpen || moveOp) return;
 			try {
 				const fresh = await core.queryProposals({
 					includeCrossBranch: false,

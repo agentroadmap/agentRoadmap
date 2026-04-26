@@ -20,6 +20,7 @@
 - **Worktree:** Use CWD-based convention, not hardcoded paths. Sibling worktree resolved from CWD.
 - **Services:** Need `sudo` to restart. Code changes must be merged to `main` for services to see them.
 - **Hotfix workflow:** See CONVENTIONS.md section 5 (Hotfix Workflow) and section 15 (Escalation Matrix) for terminal states and escape paths.
+- **Web bundle:** Use `npm run build:web` for the dashboard-web bundle (`src/web/main.js`). The script forces CWD to repo root and rejects dual-React. Never hand-run `bun build src/web/main.tsx` from a worktree — see CONVENTIONS.md §8a.
 
 ### Repo Context
 

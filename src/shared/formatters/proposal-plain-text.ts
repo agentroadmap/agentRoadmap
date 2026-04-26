@@ -13,10 +13,17 @@ type ChecklistFormattingOptions = {
 	hideChecked?: boolean;
 };
 
-export function formatDateForDisplay(dateStr: string): string {
+export function formatDateForDisplay(dateStr: string | Date | null | undefined): string {
 	if (!dateStr) return "";
-	const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-	return hasTime ? dateStr : dateStr;
+	if (dateStr instanceof Date) return dateStr.toISOString();
+	if (typeof dateStr !== "string") {
+		try {
+			return new Date(dateStr as unknown as number).toISOString();
+		} catch {
+			return String(dateStr);
+		}
+	}
+	return dateStr;
 }
 
 function buildChecklistItems(
