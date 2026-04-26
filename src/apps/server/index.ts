@@ -421,6 +421,9 @@ export class RoadmapServer {
 		if (!subscribedTables) return;
 
 		for (const table of tables) {
+			if (subscribedTables.has(table)) {
+				continue;
+			}
 			subscribedTables.add(table);
 			console.log(`[WS] Client subscribed to table: ${table}`);
 
@@ -1319,8 +1322,6 @@ export class RoadmapServer {
 	private async handleGetProposal(proposalId: string): Promise<Response> {
 		const liveProposal = await this.core.getProposal(proposalId);
 		if (liveProposal) {
-			const store = await this.getContentStoreInstance();
-			store.upsertProposal(liveProposal);
 			return Response.json(liveProposal);
 		}
 
@@ -1331,7 +1332,6 @@ export class RoadmapServer {
 			const fallbackId = ensurePrefix(proposalId);
 			const fallback = await this.core.filesystem.loadProposal(fallbackId);
 			if (fallback) {
-				store.upsertProposal(fallback);
 				return Response.json(fallback);
 			}
 			return Response.json({ error: "Proposal not found" }, { status: 404 });
