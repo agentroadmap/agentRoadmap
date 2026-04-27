@@ -89,6 +89,7 @@ type ResolvedPoolConfig = {
 	connectionTimeoutMillis: number;
 	queryTimeoutMillis: number;
 	statementTimeoutMillis: number;
+	max: number;
 };
 
 type ParsedDatabaseUrl = {
@@ -201,6 +202,16 @@ const resolvedPassword =
 				process.env.PG_STATEMENT_TIMEOUT_MS,
 			30000,
 		),
+		// Pool size: pg-pool defaults to 10. Long-lived LISTEN clients
+		// (state-names, pipeline-cron, websocket-server, feature-flag-service)
+		// each pin a slot for the lifetime of the process, so 10 is razor-thin
+		// — a couple of leaked LISTENs (cf. P522) and the pool is dead. Bump
+		// the default to 30 and let ops override via PG_POOL_MAX. Defense in
+		// depth alongside the per-listener leak fixes.
+		max: parsePositiveInteger(
+			(config as PoolConfig | undefined)?.max ?? process.env.PG_POOL_MAX,
+			30,
+		),
 	};
 }
 
@@ -215,6 +226,7 @@ function getPoolSignature(config: ResolvedPoolConfig): string {
 		connectionTimeoutMillis: config.connectionTimeoutMillis,
 		queryTimeoutMillis: config.queryTimeoutMillis,
 		statementTimeoutMillis: config.statementTimeoutMillis,
+		max: config.max,
 	});
 }
 
@@ -251,6 +263,7 @@ export function getPool(config?: AgentHivePoolConfig): Pool {
 			connectionTimeoutMillis: resolvedConfig.connectionTimeoutMillis,
 			query_timeout: resolvedConfig.queryTimeoutMillis,
 			statement_timeout: resolvedConfig.statementTimeoutMillis,
+			max: resolvedConfig.max,
 			allowExitOnIdle: true,
 		});
 		poolSignature = nextSignature;
