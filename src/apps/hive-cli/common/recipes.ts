@@ -407,6 +407,7 @@ export function validateRecipe(recipe: Recipe): string | undefined {
     "model",
     "route",
     "budget",
+    "config",
     "context-policy",
     "dispatch",
     "offer",
