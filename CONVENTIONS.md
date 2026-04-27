@@ -102,6 +102,7 @@ Important live facts:
 - If you notice an improvement, consolidation opportunity, concept unification, or a current or potential issue, create or update a proposal instead of leaving it as chat-only context.
 - Never commit credentials, copied env files, or secrets from `.env`, `/etc/agenthive/env`, or local shell history.
 - Do not claim a deployment, migration, or verification step that you did not actually perform.
+- Gate cubic agents MUST call prop_transition (records gate_decision_log + flips status) and set_maturity after a verdict. The P611 reconciler is the safety net — omitting these is a protocol violation, not an acceptable shortcut.
 
 ## 4a. Folder Discipline (mandatory for every cubic agent)
 
@@ -664,6 +665,13 @@ discover it; do NOT guess.
 
 #### Output contract for gate / review agents
 
+A gate agent run is only complete when all three of these have occurred:
+1. `prop_transition` called with `decision` = one of `advance | hold | reject | waive | escalate`
+2. `set_maturity` called to reflect the new state
+3. `add_discussion` entry exists summarising the rationale (linked AC references, risk notes)
+
+Calling only `add_discussion` without `prop_transition` leaves the proposal stranded. The P611 reconciler is a safety net for trigger failures — it is not a substitute for correct agent protocol.
+
 For gate-review dispatches (D1/D2/D3/D4) and any non-advance verdict
 (hold/reject/escalate), structured findings MUST be emitted to **stdout**
 in this format. The orchestrator parses your stdout into
@@ -711,6 +719,25 @@ are NOT authoritative. When you enhance a proposal:
 4. A markdown supplement is OK for long-form rationale, transcripts, or
    diagrams that don't fit in TEXT columns — but it must mirror the DB,
    not replace it. If they diverge, the DB wins.
+
+#### Gate spawn author_identity convention
+
+Author identities for gate agents follow the pattern:
+
+```
+<provider>/<role>-d<depth_level>-p<proposal_id>
+```
+
+Examples:
+- `claude/skeptic-alpha-d1-p472`
+- `nous/gate-review-d2-p611`
+
+The DB template is stored at `roadmap.gate_task_templates.author_identity_template`.
+Gate agents MUST use the template from the DB, not a hardcoded string, so that
+author_identity stays consistent across provider switches.
+
+System-generated audit entries use `system/auto-advance` (trigger) and
+`system/reconciler` (backstop) — both registered in `roadmap_workforce.agent_registry`.
 
 #### What stops a gate run
 
