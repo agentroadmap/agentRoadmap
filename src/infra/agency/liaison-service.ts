@@ -213,6 +213,26 @@ export async function liaisonHeartbeat(
   }
 
   const row = result.rows[0];
+  const agencyId: string = row.agency_id;
+
+  // Auto-reactivate dormant agencies that sent a heartbeat (AC-9).
+  // CAS guard: only fires when current DB status is 'dormant'.
+  if (agencyId) {
+    await query(
+      `WITH reactivated AS (
+         UPDATE roadmap.agency
+         SET status = 'active', status_reason = NULL
+         WHERE agency_id = $1 AND status = 'dormant'
+         RETURNING agency_id
+       )
+       INSERT INTO roadmap.agent_lifecycle_log (agency_id, event_type, details)
+       SELECT agency_id, 'auto_reactivated',
+              jsonb_build_object('reason', 'heartbeat_received', 'session_id', $2)
+       FROM reactivated`,
+      [agencyId, session_id]
+    );
+  }
+
   return {
     success: true,
     agency_status: row.agency_status,

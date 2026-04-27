@@ -21,11 +21,17 @@ export interface ReapResult {
 	leases: number;
 	dispatches: number;
 	sequencesRealigned: number;
+	pokeAttemptsPruned: number;
+	lifecycleLogPruned: number;
 }
 
 const TRANSITION_STALE_MIN = 15;
 const LEASE_STALE_MIN = 10;
 const DISPATCH_STALE_MIN = 20;
+const POKE_ATTEMPT_RETENTION_DAYS = 7;
+const LIFECYCLE_LOG_RETENTION_DAYS = Number(
+	process.env.LIFECYCLE_LOG_RETENTION_DAYS ?? "30",
+);
 
 // Task #24/#28: schemas whose IDENTITY sequences we realign at boot.
 // fn_realign_identity_sequences is a no-op when nothing drifted, so this
@@ -42,6 +48,8 @@ export async function reapStaleRows(
 		leases: 0,
 		dispatches: 0,
 		sequencesRealigned: 0,
+		pokeAttemptsPruned: 0,
+		lifecycleLogPruned: 0,
 	};
 
 	try {
@@ -83,7 +91,7 @@ export async function reapStaleRows(
 
 	try {
 		const r = await pool.query(
-			`UPDATE roadmap_workforce.squad_dispatch
+			`UPDATE roadmap_workforce.squad_dispatch sd
 			 SET dispatch_status='cancelled',
 			     completed_at=now(),
 			     metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('reaped_at', to_jsonb(now()), 'reaped_reason', 'stale dispatch >${DISPATCH_STALE_MIN}m')
@@ -91,6 +99,11 @@ export async function reapStaleRows(
 			   AND assigned_at IS NOT NULL
 			   AND assigned_at < now() - ($1 || ' min')::interval
 			   AND completed_at IS NULL
+			   AND NOT EXISTS (
+			     SELECT 1 FROM roadmap.liaison_poke_attempt lpa
+			     WHERE lpa.agency_id = sd.agent_identity
+			       AND lpa.outcome IS NULL
+			   )
 			 RETURNING id`,
 			[String(DISPATCH_STALE_MIN)],
 		);
@@ -118,6 +131,37 @@ export async function reapStaleRows(
 	} catch (err) {
 		logger.warn(
 			`[${tag}] blocked dispatch reap failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+
+	// P251: Prune resolved poke_attempt rows older than retention window (AC-2).
+	try {
+		const r = await pool.query(
+			`DELETE FROM roadmap.liaison_poke_attempt
+			 WHERE outcome IS NOT NULL
+			   AND resolved_at < now() - ($1 || ' days')::interval
+			 RETURNING id`,
+			[String(POKE_ATTEMPT_RETENTION_DAYS)],
+		);
+		result.pokeAttemptsPruned = r.rowCount ?? 0;
+	} catch (err) {
+		logger.warn(
+			`[${tag}] poke_attempt pruning failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+
+	// P251: Prune agent_lifecycle_log rows older than retention window (AC-10).
+	try {
+		const r = await pool.query(
+			`DELETE FROM roadmap.agent_lifecycle_log
+			 WHERE event_at < now() - ($1 || ' days')::interval
+			 RETURNING id`,
+			[String(LIFECYCLE_LOG_RETENTION_DAYS)],
+		);
+		result.lifecycleLogPruned = r.rowCount ?? 0;
+	} catch (err) {
+		logger.warn(
+			`[${tag}] agent_lifecycle_log pruning failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
 
@@ -150,10 +194,12 @@ export async function reapStaleRows(
 		result.transitions ||
 		result.leases ||
 		result.dispatches ||
-		result.sequencesRealigned
+		result.sequencesRealigned ||
+		result.pokeAttemptsPruned ||
+		result.lifecycleLogPruned
 	) {
 		logger.log(
-			`[${tag}] reaped: ${result.transitions} transition(s), ${result.leases} lease(s), ${result.dispatches} dispatch(es), ${result.sequencesRealigned} sequence(s) realigned`,
+			`[${tag}] reaped: ${result.transitions} transition(s), ${result.leases} lease(s), ${result.dispatches} dispatch(es), ${result.sequencesRealigned} sequence(s) realigned, ${result.pokeAttemptsPruned} poke_attempt(s) pruned, ${result.lifecycleLogPruned} lifecycle_log row(s) pruned`,
 		);
 	} else {
 		logger.log(`[${tag}] no stale rows`);

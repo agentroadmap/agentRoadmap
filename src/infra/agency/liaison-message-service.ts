@@ -266,6 +266,119 @@ export async function verifyMessageSignature(
     return true;
 }
 
+// ─── P251: Poke/Pong Liveness ────────────────────────────────────────────────
+
+/**
+ * Emit a liaison_poke to an agency.
+ * Inserts a liaison_message (kind='liaison_poke') and a liaison_poke_attempt row.
+ * Returns the message_id and the new attempt id.
+ */
+export async function sendLiaisonPoke(
+    agencyId: string,
+    idleThresholdMin: number,
+    pokeTimeoutSeconds = 60
+): Promise<{ pokeMessageId: string; attemptId: bigint }> {
+    const nonce = crypto.randomUUID();
+    const sequence = await getNextSequence(agencyId);
+    const signedAt = new Date().toISOString();
+    const messageId = crypto.randomUUID();
+    const correlationId = crypto.randomUUID();
+    const payload = { nonce, idle_threshold_min: idleThresholdMin };
+    const signature = generateMessageSignature(agencyId, 'liaison_poke', payload, signedAt);
+
+    await storeMessage({
+        message_id: messageId,
+        agency_id: agencyId,
+        direction: 'orchestrator->liaison',
+        kind: 'liaison_poke',
+        correlation_id: correlationId,
+        payload,
+        signed_at: signedAt,
+        signature,
+        sequence,
+    });
+
+    const result = await query<{ id: string }>(
+        `INSERT INTO roadmap.liaison_poke_attempt
+            (agency_id, poke_message_id, poked_at, timeout_at)
+         VALUES ($1, $2::uuid, now(), now() + ($3 || ' seconds')::interval)
+         RETURNING id`,
+        [agencyId, messageId, String(pokeTimeoutSeconds)]
+    );
+
+    if (result.rows.length === 0) {
+        throw new Error(`Failed to insert poke_attempt for agency ${agencyId}`);
+    }
+
+    return { pokeMessageId: messageId, attemptId: BigInt(result.rows[0].id) };
+}
+
+/**
+ * Process a received liaison_pong.
+ * CAS-resolves the open poke_attempt for the agency.
+ * Sets outcome='resolved' if within timeout, 'poke_late' if after timeout.
+ * Inserts an agent_lifecycle_log row for the event.
+ */
+export async function receiveLiaisonPong(
+    agencyId: string,
+    _nonce: string
+): Promise<void> {
+    await query(
+        `WITH resolved AS (
+            UPDATE roadmap.liaison_poke_attempt
+            SET
+                pong_received_at = now(),
+                outcome = CASE WHEN now() > timeout_at THEN 'poke_late' ELSE 'resolved' END,
+                resolved_at = now()
+            WHERE id = (
+                SELECT id FROM roadmap.liaison_poke_attempt
+                WHERE agency_id = $1 AND outcome IS NULL
+                ORDER BY poked_at DESC
+                LIMIT 1
+            )
+            RETURNING agency_id, outcome
+        )
+        INSERT INTO roadmap.agent_lifecycle_log (agency_id, event_type, details)
+        SELECT
+            agency_id,
+            CASE WHEN outcome = 'poke_late' THEN 'poke_late' ELSE 'pong_received' END,
+            jsonb_build_object('outcome', outcome)
+        FROM resolved`,
+        [agencyId]
+    );
+}
+
+/**
+ * Poll roadmap.liaison_message for unacked liaison_pong messages.
+ * AC-8 graceful degradation fallback (30s poll) when LISTEN not wired.
+ */
+export async function pollForPong(
+    agencyId: string,
+    fromSequence?: bigint
+): Promise<LiaisonMessage[]> {
+    const params: unknown[] = [agencyId];
+    let sequenceClause = '';
+    if (fromSequence !== undefined) {
+        params.push(fromSequence);
+        sequenceClause = `AND sequence >= $${params.length}`;
+    }
+
+    const result = await query<any>(
+        `SELECT message_id, agency_id, sequence, direction, kind, correlation_id,
+                payload, signed_at, signature, acked_at, ack_outcome, ack_error, created_at
+         FROM roadmap.liaison_message
+         WHERE agency_id = $1
+           AND kind = 'liaison_pong'
+           AND direction = 'liaison->orchestrator'
+           AND acked_at IS NULL
+           ${sequenceClause}
+         ORDER BY sequence ASC`,
+        params
+    );
+
+    return result.rows.map(parseMessageRow);
+}
+
 // ─── LISTEN/NOTIFY Integration ──────────────────────────────────────────────
 
 /**

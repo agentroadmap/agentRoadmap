@@ -163,6 +163,24 @@ export const ProtocolPongPayloadSchema = z.object({
 });
 export type ProtocolPongPayload = z.infer<typeof ProtocolPongPayloadSchema>;
 
+// ─── P251: Poke/Pong Liveness ────────────────────────────────────────────────
+
+export const CapacityEnvelopeSchema = z.record(z.any());
+export type CapacityEnvelope = z.infer<typeof CapacityEnvelopeSchema>;
+
+export const LiaisonPokePayloadSchema = z.object({
+    nonce: z.string().uuid(),
+    idle_threshold_min: z.number().int(),
+});
+export type LiaisonPokePayload = z.infer<typeof LiaisonPokePayloadSchema>;
+
+export const LiaisonPongPayloadSchema = z.object({
+    nonce: z.string().uuid(),
+    capacity_envelope: CapacityEnvelopeSchema.optional(),
+    in_flight_count: z.number().int(),
+});
+export type LiaisonPongPayload = z.infer<typeof LiaisonPongPayloadSchema>;
+
 // ─── Protocol Errors & Special Messages ──────────────────────────────────────
 
 export const ProtocolResyncPayloadSchema = z.object({

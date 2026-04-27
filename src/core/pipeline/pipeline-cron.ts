@@ -17,6 +17,7 @@ import {
 	type ScorableProposal,
 } from "../orchestration/pickup-scorer.ts";
 import { RfcStates, isTerminal } from "../workflow/state-names.ts";
+import { sendLiaisonPoke } from "../../infra/agency/liaison-message-service.ts";
 
 const MCP_URL = process.env.MCP_URL || getMcpUrl();
 
@@ -98,6 +99,8 @@ export interface PipelineCronDeps {
 	useOfferDispatch?: boolean;
 	setIntervalFn?: typeof setInterval;
 	clearIntervalFn?: typeof clearInterval;
+	pokeIdleThresholdMin?: number;
+	pokeStormCap?: number;
 }
 
 function mcpResultText(result: unknown): string {
@@ -710,6 +713,8 @@ export class PipelineCron {
 	private readonly useOfferDispatch: boolean;
 	private readonly setIntervalFn: typeof setInterval;
 	private readonly clearIntervalFn: typeof clearInterval;
+	private readonly pokeIdleThresholdMin: number;
+	private readonly pokeStormCap: number;
 	private readonly spawnAgentFn?: (
 		request: SpawnAgentRequest,
 	) => Promise<SpawnAgentResult>;
@@ -718,6 +723,7 @@ export class PipelineCron {
 	private listenerClient: ListenerClient | null = null;
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private offerReapTimer: ReturnType<typeof setInterval> | null = null;
+	private pokeWatchdogTimer: ReturnType<typeof setInterval> | null = null;
 	private offerReapInFlight = false;
 	private drainPromise: Promise<void> | null = null;
 	private rerunRequested = false;
@@ -757,6 +763,11 @@ export class PipelineCron {
 			deps.useOfferDispatch ?? process.env.AGENTHIVE_USE_OFFER_DISPATCH === "1";
 		this.setIntervalFn = deps.setIntervalFn ?? setInterval;
 		this.clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
+		this.pokeIdleThresholdMin =
+			deps.pokeIdleThresholdMin ??
+			Number(process.env.POKE_IDLE_THRESHOLD_MIN ?? "10");
+		this.pokeStormCap =
+			deps.pokeStormCap ?? Number(process.env.POKE_STORM_CAP ?? "10");
 		this.spawnAgentFn = deps.spawnAgentFn;
 		this.mcpClientFactory =
 			deps.mcpClientFactory ??
@@ -785,6 +796,7 @@ export class PipelineCron {
 		}
 
 		this.started = true;
+		await this.runBootCancelPass();
 		await this.startListener();
 
 		this.pollTimer = this.setIntervalFn(() => {
@@ -795,12 +807,17 @@ export class PipelineCron {
 			void this.runOfferReaper();
 		}, this.offerReapIntervalMs);
 
+		this.pokeWatchdogTimer = this.setIntervalFn(() => {
+			void this.runPokeWatchdogTick();
+		}, 60_000);
+
 		this.logger.log(
-			`[PipelineCron] Listening on ${MATURITY_CHANGED_CHANNEL}, ${GATE_READY_CHANNEL}, and ${TRANSITION_QUEUED_CHANNEL}; legacy queue polling every ${this.pollIntervalMs}ms; offer reaper every ${this.offerReapIntervalMs}ms`,
+			`[PipelineCron] Listening on ${MATURITY_CHANGED_CHANNEL}, ${GATE_READY_CHANNEL}, and ${TRANSITION_QUEUED_CHANNEL}; legacy queue polling every ${this.pollIntervalMs}ms; offer reaper every ${this.offerReapIntervalMs}ms; poke watchdog every 60s (idle=${this.pokeIdleThresholdMin}m, cap=${this.pokeStormCap})`,
 		);
 
 		await this.scheduleDrain("startup");
 		void this.runOfferReaper();
+		void this.runPokeWatchdogTick();
 	}
 
 	async stop(): Promise<void> {
@@ -814,6 +831,11 @@ export class PipelineCron {
 		if (this.offerReapTimer) {
 			this.clearIntervalFn(this.offerReapTimer);
 			this.offerReapTimer = null;
+		}
+
+		if (this.pokeWatchdogTimer) {
+			this.clearIntervalFn(this.pokeWatchdogTimer);
+			this.pokeWatchdogTimer = null;
 		}
 
 		if (this.listenerClient) {
@@ -841,6 +863,87 @@ export class PipelineCron {
 
 	async waitForIdle(): Promise<void> {
 		await (this.drainPromise ?? Promise.resolve());
+	}
+
+	private async runBootCancelPass(): Promise<void> {
+		try {
+			const { rowCount } = await this.queryFn(
+				`UPDATE roadmap.liaison_poke_attempt
+				 SET outcome = 'cancelled', resolved_at = now()
+				 WHERE outcome IS NULL`,
+			);
+			if (rowCount && rowCount > 0) {
+				this.logger.log(
+					`[PipelineCron] Boot-cancelled ${rowCount} open poke attempt(s) from prior epoch`,
+				);
+			}
+		} catch (err) {
+			this.logger.warn(
+				`[PipelineCron] Boot-cancel pass failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
+	private async runPokeWatchdogTick(): Promise<void> {
+		// Resolution pass: CAS-close poke attempts older than 60s
+		try {
+			const { rowCount: timedOut } = await this.queryFn(
+				`UPDATE roadmap.liaison_poke_attempt
+				 SET outcome = 'timed_out', resolved_at = now()
+				 WHERE outcome IS NULL
+				   AND poked_at < now() - INTERVAL '60 seconds'`,
+			);
+			if (timedOut && timedOut > 0) {
+				this.logger.log(
+					`[PipelineCron] Poke watchdog: ${timedOut} poke(s) timed out → stale-unresponsive`,
+				);
+			}
+		} catch (err) {
+			this.logger.warn(
+				`[PipelineCron] Poke resolution pass failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			return;
+		}
+
+		// Emission pass: find stale agencies with no open poke and emit (storm-capped)
+		try {
+			const { rows: staleAgencies } = await this.queryFn<{
+				agency_id: string;
+			}>(
+				`SELECT a.agency_id
+				 FROM roadmap.agency a
+				 WHERE a.status IN ('active', 'throttled')
+				   AND a.last_heartbeat_at IS NOT NULL
+				   AND (now() - a.last_heartbeat_at) > ($1 || ' minutes')::interval
+				   AND NOT EXISTS (
+				     SELECT 1 FROM roadmap.liaison_poke_attempt lpa
+				     WHERE lpa.agency_id = a.agency_id AND lpa.outcome IS NULL
+				   )
+				 ORDER BY a.last_heartbeat_at ASC
+				 LIMIT $2`,
+				[String(this.pokeIdleThresholdMin), String(this.pokeStormCap)],
+			);
+
+			for (const { agency_id } of staleAgencies) {
+				try {
+					const { pokeMessageId } = await sendLiaisonPoke(
+						agency_id,
+						this.pokeIdleThresholdMin,
+					);
+					this.logger.log(
+						`[PipelineCron] Sent poke ${pokeMessageId} to stale agency ${agency_id}`,
+					);
+				} catch (err) {
+					this.logger.warn(
+						`[PipelineCron] Failed to poke agency ${agency_id}: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
+		} catch (err) {
+			this.logger.warn(
+				`[PipelineCron] Poke emission pass failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	}
 
 	private async runOfferReaper(): Promise<void> {
