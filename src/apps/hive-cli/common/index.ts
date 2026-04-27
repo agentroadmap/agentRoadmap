@@ -11,3 +11,5 @@ export * from "./envelope";
 export * from "./context";
 export * from "./formatters";
 export * from "./discovery";
+export * from "./control-plane-types";
+export * from "./control-plane-client";
