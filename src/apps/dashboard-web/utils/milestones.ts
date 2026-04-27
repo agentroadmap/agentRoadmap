@@ -1,6 +1,6 @@
 /**
- * Re-export directive utilities from core for backward compatibility
- * All business logic lives in src/core/directives.ts
+ * Re-export directive utilities for backward compatibility.
+ * P301: source moved out of src/core into dashboard-web/utils/directives.
  */
 export {
 	buildDirectiveBuckets,
@@ -12,9 +12,8 @@ export {
 	isReachedStatus,
 	normalizeDirectiveName,
 	validateDirectiveName,
-} from "../../../core/proposal/directives.ts";
+} from "./directives";
 
-// Re-export types from core types
 export type {
 	DirectiveBucket,
 	DirectiveSummary,

@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import type { ProposalStatistics } from "../../../core/infrastructure/statistics.ts";
+import type { ProposalStatistics } from "../types/statistics";
 import type { Proposal } from "../../../shared/types";
 import { apiClient } from "../lib/api";
 import LoadingSpinner from "./LoadingSpinner";

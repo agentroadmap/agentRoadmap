@@ -4,7 +4,7 @@ import {
 	buildDirectiveBuckets,
 	collectDirectiveIds,
 	validateDirectiveName,
-} from "../../../core/proposal/directives";
+} from "./directives";
 import type {
 	Directive,
 	DirectiveBucket,

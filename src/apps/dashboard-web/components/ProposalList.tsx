@@ -5,7 +5,7 @@ import {
 	collectArchivedDirectiveKeys,
 	directiveKey,
 	getDirectiveLabel,
-} from "../../../core/proposal/directives.ts";
+} from "../utils/directives";
 import type {
 	Directive,
 	Proposal,
