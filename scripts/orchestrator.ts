@@ -1456,9 +1456,16 @@ const GATE_ROLES: Record<string, { role: string; framing: string }> = {
 		framing:
 			"You are SKEPTIC ALPHA. Challenge this Draft RFC hard. Demand evidence. Question every assumption. " +
 			"Verify ACs are measurable and complete. Only advance if the RFC is coherent, economically sound, and structurally ready for Review.\n\n" +
+			"REQUIRED CHECKS (each one is a common P592–P607 failure mode — call them out by name when found):\n" +
+			"  1. AC ACCRETION: list_criteria + read the design. If the design says \"AC-N supersedes AC-M\" or \"Addendum X declares Y VOID\" while AC-M is still in proposal_acceptance_criteria, that's a hard hold — DEVELOP cannot follow two contradictory ACs. Cite both item_numbers and require delete_criteria.\n" +
+			"  2. PHANTOM COLUMNS: every column the design names must exist in information_schema.columns OR in the migration this proposal ships. Phantom columns = hold.\n" +
+			"  3. PHANTOM FILES: when the design claims \"Artifacts Committed\" or names a file as authoritative, verify with `git log --all -- <path>`. Untracked = hold.\n" +
+			"  4. INTERNAL CONTRADICTION: scan the design for sync-vs-async, two formulas for the same hash, two different table-name lists. Pick-one-and-delete-the-other is the only valid resolution; annotation prose = hold.\n" +
+			"  5. DEAD VOCABULARY: a CHECK constraint that hardcodes a literal list while a sibling table claims to be the canonical vocabulary = hold (the table doesn't enforce anything).\n" +
+			"  6. MISSING GRANTS: if an AC requires UPDATE on a column but the migration's GRANT block omits UPDATE, that's a hold — runtime permission denied.\n\n" +
 			"OUTPUT CONTRACT: emit a clear final-line decision and structured findings to STDOUT — the orchestrator parses your stdout and persists it into gate_decision_log. " +
-			"For HOLD/REJECT, output a `## Failures` section (one bullet per blocker, severity tag, file:line evidence where possible) and a `## Remediation` section. " +
-			"You may also call `mcp_proposal action=add_discussion` to leave a human-readable thread, but the canonical channel is your stdout — the next enhancing agent reads that.",
+			"For HOLD/REJECT, output a `## Failures` section (one bullet per blocker, severity tag, file:line evidence where possible) AND populate `ac_verification.details` JSONB array (each entry: {item_number, status, evidence}). " +
+			"Also call `mcp_proposal action=add_discussion context_prefix=gate-decision:` with the same body. The enhancing agent reads stdout AND the discussion thread.",
 	},
 	D2: {
 		role: "architecture-reviewer",
@@ -1937,6 +1944,35 @@ async function dispatchEnhancementRevision(
 		: "(empty)";
 	const rationale = target.hold_rationale ?? "(empty)";
 
+	// Pull every unresolved hold since the proposal entered its current state.
+	// The enhancer was looping because it only saw the *latest* rationale —
+	// fixing the freshest blocker while reverting the previous one and
+	// triggering the next gate hold. Inlining the full chain breaks that loop.
+	const { rows: priorHolds } = await query<{
+		id: number;
+		gate_level: string | null;
+		created_at: string;
+		rationale: string | null;
+	}>(
+		`SELECT gdl.id, gdl.gate_level, gdl.created_at, gdl.rationale
+		   FROM roadmap_proposal.gate_decision_log gdl
+		  WHERE gdl.proposal_id = $1
+		    AND gdl.decision = 'hold'
+		    AND gdl.id < $2
+		    AND gdl.created_at >= COALESCE(
+		      (
+		        SELECT MAX(prev.created_at)
+		          FROM roadmap_proposal.gate_decision_log prev
+		         WHERE prev.proposal_id = $1
+		           AND prev.decision = 'advance'
+		      ),
+		      gdl.created_at - interval '7 days'
+		    )
+		  ORDER BY gdl.created_at DESC
+		  LIMIT 4`,
+		[target.id, target.hold_decision_id],
+	);
+
 	// Substitute placeholders the persisted profile uses ({display_id}, {title}, …).
 	const taskBody = profile.task_prompt
 		.replace(/\{display_id\}/g, target.display_id)
@@ -1946,10 +1982,21 @@ async function dispatchEnhancementRevision(
 		.replace(/\{proposal_id\}/g, String(target.id))
 		.replace(/\{provider\}/g, "claude");
 
+	const priorHoldsBlock =
+		priorHolds.length === 0
+			? "(no prior unresolved holds in this state)"
+			: priorHolds
+					.map(
+						(h, i) =>
+							`### Prior hold #${i + 1} — gate_decision_log.id=${h.id} ` +
+							`gate=${h.gate_level ?? "(unknown)"} held_at=${h.created_at}\n${h.rationale ?? "(empty)"}`,
+					)
+					.join("\n\n");
+
 	const taskPrompt = [
 		taskBody,
 		"",
-		"## Cited gaps to close (from latest gate hold)",
+		"## Cited gaps to close — LATEST gate hold",
 		`Gate decision id: ${target.hold_decision_id}`,
 		`Gate level: ${target.gate_level ?? "(unknown)"}`,
 		`Held at: ${target.hold_created_at}`,
@@ -1960,9 +2007,16 @@ async function dispatchEnhancementRevision(
 		"### AC verification details (verbatim JSONB)",
 		acVerification,
 		"",
+		"## Cited gaps to close — PRIOR unresolved holds in this state",
+		"Each one of these was held by a previous gate run and must still be closed.",
+		"Failing to address them means the next gate will hold again on the same blockers.",
+		"",
+		priorHoldsBlock,
+		"",
 		"## Reminder of the contract",
-		"- Read the rationale above. Each cited blocker must be closed.",
-		"- Update design via `mcp_proposal action=update`. Update ACs via `mcp_proposal action=add_criteria` / `verify_criteria`.",
+		"- Read EVERY rationale above (latest + prior). Each cited blocker must be closed.",
+		"- Update design via `mcp_proposal action=update`. Update ACs via `mcp_proposal action=add_criteria` / `verify_criteria` / **`delete_criteria`**.",
+		"- **If a new AC supersedes an old one, DELETE the old one with `delete_criteria item_number=N`. Never leave both live.**",
 		"- Write a `feedback:` discussion explaining what changed and why.",
 		"- Final mandatory call: `mcp_proposal action=set_maturity maturity=mature`.",
 		"- Without `set_maturity=mature`, the gate never re-runs and your work is invisible.",
