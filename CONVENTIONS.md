@@ -421,6 +421,46 @@ A good handoff includes:
 
 If you lack access, **never** say "deployed" or "verified on live DB". Say "prepared", "proposed", "waiting on DB deploy", or "validated on a clone" instead.
 
+### 6.6 `roadmap_proposal.gate_role` — deprecate-then-replace operator pattern
+
+The `gate_role` table uses a **partial unique index** on `(proposal_type, gate) WHERE lifecycle_status = 'active'`. This means at most one row per `(proposal_type, gate)` pair may have `lifecycle_status = 'active'` at a time, but deprecated or retired rows are allowed to coexist.
+
+**Why the index is partial (not table-level UNIQUE):** a table-level UNIQUE would make it impossible to INSERT the replacement row before removing the old one. The partial index allows the safe "deprecate-then-replace" swap described below.
+
+**Operator pattern — swapping an active gate_role row without hitting the constraint:**
+
+```sql
+BEGIN;
+
+-- Step 1: retire the current active row (removes it from the partial unique index).
+UPDATE roadmap_proposal.gate_role
+   SET lifecycle_status = 'deprecated',
+       deprecated_at    = now(),
+       notes            = 'replaced by row <new-id> — <reason>'
+ WHERE proposal_type = '<type>'
+   AND gate          = '<gate>'
+   AND lifecycle_status = 'active';
+
+-- Step 2: insert the replacement row as active.
+INSERT INTO roadmap_proposal.gate_role
+  (proposal_type, gate, role, persona, output_contract,
+   model_preference, tool_allow_list, fallback_role,
+   lifecycle_status, notes)
+VALUES
+  ('<type>', '<gate>', '<role>', '<persona>', '<output_contract>',
+   NULL, NULL, NULL,
+   'active', '<reason for change>');
+
+COMMIT;
+```
+
+**Rules:**
+- Always deprecate before inserting. If you INSERT first and the active row still exists, the partial unique index fires a constraint violation.
+- The `deprecated_at` column records when the old row left service. The `notes` column on the old row should reference the replacement (cross-reference by ID or description).
+- Never `DELETE` active rows directly — old rows carry audit value and are referenced by `gate_role_history`. Use `lifecycle_status = 'retired'` only for rows that were deprecated and have been superseded for a full deployment cycle.
+- The NOTIFY trigger (`fn_gate_role_notify`) fires on both the UPDATE and the INSERT, invalidating the resolver's TTL cache automatically.
+- The audit trigger (`fn_gate_role_audit`) captures the `old_persona`, `old_output_contract`, and `old_lifecycle_status` into `gate_role_history` on every UPDATE. No manual audit insertion is required.
+
 ## 7. Git and Worktree Best Practices
 
 AgentHive is multi-agent. Git discipline is part of system safety.
