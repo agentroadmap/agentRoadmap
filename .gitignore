@@ -79,4 +79,5 @@ tmp/*
 /.git-identity
 /scripts/mcp/
 
+/roadmap/messages/
 session.sh
