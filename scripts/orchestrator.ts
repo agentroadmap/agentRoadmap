@@ -31,6 +31,7 @@ import { getMcpUrl } from "../src/shared/runtime/endpoints.ts";
 import { listDispatchableAgencies } from "../src/infra/agency/liaison-service.ts";
 import { storeMessage, getNextSequence } from "../src/infra/agency/liaison-message-service.ts";
 import { createMessageEnvelope } from "../src/infra/agency/liaison-message-types.ts";
+import { resolveGateRole, getGateRoleRegistry } from "../src/core/orchestration/gate-role-resolver.ts";
 
 const MCP_URL = getMcpUrl();
 const AGENTHIVE_HOST = process.env.AGENTHIVE_HOST ?? "default";
@@ -531,6 +532,7 @@ type GateReadyProposal = {
 	maturity: string;
 	title: string;
 	summary: string | null;
+	type: string | null;
 	leased_by: string | null;
 	active_dispatch_id: number | null;
 };
@@ -754,7 +756,18 @@ function roleTimeoutMs(role: string | undefined | null): number {
 	return 600_000;                                           // 10 min — gates, reviews, default
 }
 
-function deriveAllowedTools(role: string): string[] | undefined {
+function deriveAllowedTools(
+	role: string,
+	toolAllowList: string[] | null = null,
+): string[] | undefined {
+	// P609 Phase 1: when gate_role.tool_allow_list is set, return it as advisory
+	// context. No MCP-level enforcement until P593 ships (AC-27).
+	if (toolAllowList !== null) {
+		logger.warn(
+			"tool_allow_list set but P593 not live — enforcement is advisory only",
+		);
+		return toolAllowList;
+	}
 	// Conservative default: every dispatched role can read proposal data,
 	// add discussion/criteria/dependencies, submit reviews, and emit spawn
 	// summaries. Skeptic/gate roles also need transition + set_maturity.
@@ -1561,6 +1574,7 @@ async function claimImplicitGateReady(
             p.maturity,
             p.title,
             p.summary,
+            p.type,
             lease.agent_identity AS leased_by,
             dispatch.id AS active_dispatch_id
        FROM roadmap_proposal.proposal p
@@ -1649,6 +1663,37 @@ async function dispatchImplicitGate(
 	await ensureAgentIdentity(worktree, "Gate Executor");
 
 	const role = gateRole(gate);
+
+	// P609 Phase 1 — shadow-mode: resolve DB profile alongside GATE_ROLES.
+	// GATE_ROLES is still authoritative; divergences are logged for ≥24h validation
+	// (AC-17). After zero-divergence window, GATE_ROLES lookup will be removed.
+	const pool = getPool();
+	const resolvedProfile = await resolveGateRole(
+		proposal.type ?? "feature",
+		gate.gate as "D1" | "D2" | "D3" | "D4",
+		pool,
+	).catch((err) => {
+		logger.warn(`gate_role resolver error for ${proposal.display_id}/${gate.gate}:`, err);
+		return null;
+	});
+	if (resolvedProfile && resolvedProfile.role !== role) {
+		logger.warn(
+			{
+				resolvedRole: resolvedProfile.role,
+				legacyRole: role,
+				proposalType: proposal.type,
+				gate: gate.gate,
+				gateRoleSource: resolvedProfile.source,
+			},
+			"gate_role divergence in shadow mode",
+		);
+	}
+	// Advisory tool_allow_list from resolver (AC-27 Phase 1).
+	if (resolvedProfile?.toolAllowList != null) {
+		deriveAllowedTools(role, resolvedProfile.toolAllowList);
+	}
+	const gateRoleSource = resolvedProfile?.source ?? "builtin-fallback";
+
 	const { rows: dispatchRows } = await query<{ id: number }>(
 		`INSERT INTO roadmap_workforce.squad_dispatch
        (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
@@ -1660,7 +1705,8 @@ async function dispatchImplicitGate(
          'gate', $5::text,
          'from_stage', $6::text,
          'to_stage', $7::text,
-         'stage', 'gate:' || $7::text
+         'stage', 'gate:' || $7::text,
+         'gateRoleSource', $9::text
        ))
      RETURNING id`,
 		[
@@ -1672,6 +1718,7 @@ async function dispatchImplicitGate(
 			proposal.status,
 			gate.toStage,
 			role,
+			gateRoleSource,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;

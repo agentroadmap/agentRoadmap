@@ -14,7 +14,11 @@ VALUES
   ('component', 'Standard RFC', 'Major subsystem or architectural pillar within a product'),
   ('feature',   'Standard RFC', 'A specific capability or behaviour within a component'),
   ('issue',     'Standard RFC', 'Bug, defect, or problem report against a product, component, or feature'),
-  ('hotfix',    'Hotfix',       'Localized operational fix to a running instance')
+  ('hotfix',    'Hotfix',       'Localized operational fix to a running instance'),
+  -- P609 Step 0: specialist buckets required as FK targets before gate_role seed can reference them
+  ('schema',    'Standard RFC', 'Database schema change — DDL migrations, index additions, constraint modifications'),
+  ('dr-design', 'Standard RFC', 'Disaster-recovery design — runbook, RTO/RPO targets, failover procedures'),
+  ('ai-feature','Standard RFC', 'AI/ML feature — prompt engineering, model selection, eval coverage, safety review')
 ON CONFLICT (type) DO UPDATE SET
   workflow_name = EXCLUDED.workflow_name,
   description = EXCLUDED.description;
