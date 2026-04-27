@@ -1838,6 +1838,176 @@ async function drainImplicitGateReady(
 	}
 }
 
+// ─── Autonomous enhancer-revise loop (closes the gate-loop on holds) ──────────
+//
+// When a gate writes decision='hold' the proposal drops to maturity='new'.
+// Without this loop, that proposal sits at DRAFT/new forever — no autonomous
+// agent reads the rationale, applies fixes, and re-matures. The persisted
+// enhancer role profile (`roadmap.agent_role_profile.role_label='enhancer'`)
+// describes the contract; this is the dispatcher that fires it.
+
+type EnhancementRevisionTarget = {
+	id: number;
+	display_id: string;
+	status: string;
+	maturity: string;
+	title: string;
+	summary: string | null;
+	hold_decision_id: number;
+	hold_rationale: string | null;
+	hold_ac_verification: unknown;
+	hold_created_at: string;
+	gate_level: string | null;
+};
+
+async function claimEnhancementRevisionReady(
+	limit = 4,
+): Promise<EnhancementRevisionTarget[]> {
+	const { rows } = await query<EnhancementRevisionTarget>(
+		`SELECT p.id,
+            p.display_id,
+            p.status,
+            p.maturity,
+            p.title,
+            p.summary,
+            gdl.id              AS hold_decision_id,
+            gdl.rationale       AS hold_rationale,
+            gdl.ac_verification AS hold_ac_verification,
+            gdl.created_at      AS hold_created_at,
+            gdl.gate_level
+       FROM roadmap_proposal.proposal p
+       JOIN LATERAL (
+         SELECT id, rationale, ac_verification, created_at, gate_level, decision
+           FROM roadmap_proposal.gate_decision_log
+          WHERE proposal_id = p.id
+          ORDER BY created_at DESC
+          LIMIT 1
+       ) gdl ON true
+       LEFT JOIN LATERAL (
+         SELECT 1
+           FROM roadmap_workforce.squad_dispatch sd
+          WHERE sd.proposal_id = p.id
+            AND sd.dispatch_role = 'enhancer'
+            AND sd.dispatch_status IN ('open', 'active')
+          LIMIT 1
+       ) active_enhancer ON true
+      WHERE p.maturity = 'new'
+        AND LOWER(p.status) IN ('draft', 'review', 'develop')
+        AND gdl.decision = 'hold'
+        AND gdl.created_at > now() - interval '24 hours'
+        AND active_enhancer IS NULL
+      ORDER BY gdl.created_at ASC
+      LIMIT $1`,
+		[limit],
+	);
+	return rows;
+}
+
+async function dispatchEnhancementRevision(
+	target: EnhancementRevisionTarget,
+	reason: string,
+): Promise<void> {
+	// Pull the persisted enhancer role profile so the prompt reflects the
+	// canonical contract (must_call_complete=set_maturity('mature'), allowlist,
+	// author_identity convention).
+	const { rows: profileRows } = await query<{
+		task_prompt: string;
+		required_capabilities: string[];
+		mcp_action_allowlist: string[];
+		author_identity_template: string;
+	}>(
+		`SELECT task_prompt, required_capabilities, mcp_action_allowlist,
+                author_identity_template
+           FROM roadmap.agent_role_profile
+          WHERE role_label = 'enhancer'
+          LIMIT 1`,
+	);
+	const profile = profileRows[0];
+	if (!profile) {
+		logger.warn(
+			`[Enhancer] No 'enhancer' row in agent_role_profile — skipping ${target.display_id}`,
+		);
+		return;
+	}
+
+	const acVerification = target.hold_ac_verification
+		? JSON.stringify(target.hold_ac_verification, null, 2)
+		: "(empty)";
+	const rationale = target.hold_rationale ?? "(empty)";
+
+	// Substitute placeholders the persisted profile uses ({display_id}, {title}, …).
+	const taskBody = profile.task_prompt
+		.replace(/\{display_id\}/g, target.display_id)
+		.replace(/\{title\}/g, target.title)
+		.replace(/\{status\}/g, target.status)
+		.replace(/\{maturity\}/g, target.maturity)
+		.replace(/\{proposal_id\}/g, String(target.id))
+		.replace(/\{provider\}/g, "claude");
+
+	const taskPrompt = [
+		taskBody,
+		"",
+		"## Cited gaps to close (from latest gate hold)",
+		`Gate decision id: ${target.hold_decision_id}`,
+		`Gate level: ${target.gate_level ?? "(unknown)"}`,
+		`Held at: ${target.hold_created_at}`,
+		"",
+		"### Rationale (verbatim from gate cubic)",
+		rationale,
+		"",
+		"### AC verification details (verbatim JSONB)",
+		acVerification,
+		"",
+		"## Reminder of the contract",
+		"- Read the rationale above. Each cited blocker must be closed.",
+		"- Update design via `mcp_proposal action=update`. Update ACs via `mcp_proposal action=add_criteria` / `verify_criteria`.",
+		"- Write a `feedback:` discussion explaining what changed and why.",
+		"- Final mandatory call: `mcp_proposal action=set_maturity maturity=mature`.",
+		"- Without `set_maturity=mature`, the gate never re-runs and your work is invisible.",
+	].join("\n");
+
+	const requiredCapabilities = profile.required_capabilities ?? [];
+	const selectedWorktree = await selectExecutorWorktree(undefined);
+	// No briefingId — the enhancer's task prompt already carries the full hold
+	// rationale + ac_verification.details inline. briefing_load is unnecessary
+	// here; the contract is self-contained.
+
+	try {
+		const { dispatchId } = await postWorkOffer({
+			proposalId: target.id,
+			squadName: `P${target.id}-enhance`,
+			role: "enhancer",
+			task: taskPrompt,
+			stage: target.status,
+			phase: "enhance",
+			timeoutMs: roleTimeoutMs("enhancer"),
+			worktreeHint: selectedWorktree,
+			requiredCapabilities:
+				requiredCapabilities.length > 0 ? requiredCapabilities : ["enhancer"],
+		});
+		logger.log(
+			`📬 Enhancer offer ${dispatchId} posted for ${target.display_id} (revising hold #${target.hold_decision_id}; reason=${reason})`,
+		);
+	} catch (err) {
+		const errMsg = err instanceof Error ? err.message : String(err);
+		logger.warn(
+			`[Enhancer] postWorkOffer failed for ${target.display_id}: ${errMsg}`,
+		);
+	}
+}
+
+async function drainEnhancementRevisions(
+	reason: string,
+	limit = 4,
+): Promise<void> {
+	if (stopping) return;
+	const targets = await claimEnhancementRevisionReady(limit);
+	for (const target of targets) {
+		if (stopping) return;
+		await trackInFlight(dispatchEnhancementRevision(target, reason));
+	}
+}
+
 async function _dispatchTransitionQueue(queueId: number): Promise<void> {
 	const { rows } = await query<TransitionQueueRow>(
 		`SELECT tq.id, tq.proposal_id, p.display_id, tq.from_stage, tq.to_stage, tq.gate,
@@ -2107,6 +2277,7 @@ async function releaseStaleCubics(proposalId: string) {
 // P266: poller handles owned by main() so shutdown() can clear them.
 let pollTimer: NodeJS.Timeout | null = null;
 let implicitGateTimer: NodeJS.Timeout | null = null;
+let enhancerReviseTimer: NodeJS.Timeout | null = null;
 
 // Main orchestrator
 async function main() {
@@ -2236,6 +2407,20 @@ async function main() {
 		);
 	}
 
+	// Autonomous enhancer-revise loop: every 90s, find proposals that were held
+	// in the last 24h and have no in-flight enhancer dispatch — fire one. Closes
+	// the gate-loop on holds without operator intervention. Profile lives in
+	// roadmap.agent_role_profile (role_label='enhancer').
+	enhancerReviseTimer = setInterval(async () => {
+		if (stopping) return;
+		try {
+			await drainEnhancementRevisions("enhancer-revise-poll", 4);
+		} catch (e) {
+			logger.error("Enhancer-revise poll error:", e);
+		}
+	}, 90_000);
+	logger.log("Enhancer-revise loop polling every 90s.");
+
 	logger.log("Orchestrator running with dynamic agent deployment...");
 
 	// P266: graceful shutdown — drain in-flight dispatches before exit.
@@ -2248,6 +2433,7 @@ async function main() {
 
 		if (pollTimer) clearInterval(pollTimer);
 		if (implicitGateTimer) clearInterval(implicitGateTimer);
+		if (enhancerReviseTimer) clearInterval(enhancerReviseTimer);
 
 		const drainStart = Date.now();
 		const drainPromise = Promise.allSettled(Array.from(inFlight));

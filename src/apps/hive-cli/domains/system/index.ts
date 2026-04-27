@@ -461,7 +461,7 @@ async function handleDbQuery(sql: string, options: Record<string, unknown>) {
   ) {
     throw Errors.usage(
       "Only read-only queries allowed (SELECT, WITH, EXPLAIN, SHOW)",
-      { provided: sql.substring(0, 50) }
+      `provided=${sql.substring(0, 50)}`,
     );
   }
 

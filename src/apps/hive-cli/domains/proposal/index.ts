@@ -36,12 +36,12 @@ const proposalRecipe = {
   when_to_use: "Agent has capacity",
   steps: [
     {
-      cmd: "hive proposal next --format json",
+      command: "hive proposal next --format json",
       reads: ["proposal_id"],
       description: "Find highest-priority claimable proposal",
     },
     {
-      cmd: 'hive proposal claim ${proposal_id} --duration 4h --format json',
+      command: 'hive proposal claim ${proposal_id} --duration 4h --format json',
       reads: ["lease_id"],
       description: "Acquire lease",
     },

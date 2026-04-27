@@ -136,17 +136,17 @@ const projectRecipe: Recipe = {
   when_to_use: "When setting up a new project workspace",
   steps: [
     {
-      cmd: "hive project register --name my-project --repo git@gitlab.local:team/my-repo",
+      command: "hive project register --name my-project --repo git@gitlab.local:team/my-repo",
       reads: ["project_id"],
       description: "Register a new project",
     },
     {
-      cmd: "hive project list --format json",
+      command: "hive project list --format json",
       reads: ["projects"],
       description: "List all projects",
     },
     {
-      cmd: "hive project info <project_id> --format json",
+      command: "hive project info <project_id> --format json",
       reads: ["project_details"],
       description: "Get project details",
     },

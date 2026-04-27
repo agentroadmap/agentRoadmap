@@ -22,17 +22,22 @@ export async function handleDispatchList(
   const limit = Math.min(parseInt(options.limit || "20"), 100);
 
   try {
+    // Real schema: roadmap_workforce.squad_dispatch keyed on `id` (bigint).
+    // No agency FK — agency association lives on `agent_registry`. Join
+    // through agent_identity for the agent display name; squad_dispatch
+    // also stores `agent_identity` directly so the join is optional.
     let query = `
       SELECT
-        d.dispatch_id,
-        p.proposal_id,
-        a.identity as agency_identity,
-        d.dispatch_status as status,
-        d.created_at,
-        d.updated_at as last_activity_at
-      FROM roadmap_dispatch.squad_dispatch d
-      JOIN roadmap_proposal.proposal p ON d.proposal_id = p.proposal_id
-      JOIN control_workforce.agency a ON d.agency_id = a.agency_id
+        d.id::text AS dispatch_id,
+        d.proposal_id::text AS proposal_id,
+        d.agent_identity,
+        d.squad_name,
+        d.dispatch_role,
+        d.dispatch_status AS status,
+        d.offer_status,
+        d.assigned_at AS created_at,
+        COALESCE(d.last_renewed_at, d.assigned_at) AS last_activity_at
+      FROM roadmap_workforce.squad_dispatch d
       WHERE 1=1
     `;
 
@@ -46,12 +51,12 @@ export async function handleDispatchList(
     }
 
     if (options.proposal) {
-      query += ` AND p.proposal_id = $${paramIndex}`;
+      query += ` AND d.proposal_id = $${paramIndex}::bigint`;
       params.push(options.proposal);
       paramIndex++;
     }
 
-    query += ` ORDER BY d.created_at DESC LIMIT $${paramIndex}`;
+    query += ` ORDER BY d.assigned_at DESC LIMIT $${paramIndex}`;
     params.push(limit + 1); // +1 to detect if there are more pages
 
     const result = await pool.query(query, params);

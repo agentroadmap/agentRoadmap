@@ -126,19 +126,19 @@ const exampleRecipe: Recipe = {
   id: "example-workflow",
   title: "Example multi-step workflow",
   when_to_use: "When you need to do X, Y, then Z",
+  terminal_state: "Item details retrieved",
   steps: [
     {
-      cmd: `hive ${DOMAIN_NAME} list --format json`,
+      command: `hive ${DOMAIN_NAME} list --format json`,
       reads: ["items"],
       description: "List available items",
     },
     {
-      cmd: `hive ${DOMAIN_NAME} get <item-id>`,
+      command: `hive ${DOMAIN_NAME} get <item-id>`,
       reads: ["item-id"],
       description: "Fetch details",
     },
   ],
-  terminal_state: "Item details retrieved",
 };
 
 /**

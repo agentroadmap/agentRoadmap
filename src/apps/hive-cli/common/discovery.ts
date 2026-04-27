@@ -7,7 +7,8 @@
 
 export interface CommandParameter {
   name: string;
-  type: "string" | "number" | "boolean" | "string[]";
+  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  enum?: string[];
   required?: boolean;
   repeatable?: boolean;
   description?: string;
@@ -19,6 +20,7 @@ export interface CommandFlag {
   type: "string" | "number" | "boolean" | "string[]" | "enum";
   enum?: string[];
   repeatable?: boolean;
+  required?: boolean;
   description?: string;
   example?: string;
   default?: unknown;
@@ -33,14 +35,24 @@ export interface CommandSchema {
   flags?: CommandFlag[];
   output?: {
     type: "object" | "array" | "string";
-    schema?: Record<string, unknown>;
+    /**
+     * Either a JSON-schema-ish field map or a free-form description string.
+     * Lane F's meta domain uses the string form for output types like
+     * "Shell completion script"; lane E uses the field map for proposal
+     * output. Both shapes are accepted.
+     */
+    schema?: Record<string, unknown> | string;
   };
   idempotency?: "idempotent" | "non-idempotent";
   formats_supported?: string[];
 }
 
 export interface SubcommandSchema extends CommandSchema {
-  // Additional fields for subcommands if needed
+  /**
+   * Nested subcommands (e.g. `hive service status`, `hive mcp tools`).
+   * Optional — most domains are flat.
+   */
+  subcommands?: SubcommandSchema[];
 }
 
 export interface DomainSchema {
@@ -57,20 +69,14 @@ export interface CliSchema {
   commands: DomainSchema[];
 }
 
-export interface Recipe {
-  id: string;
-  title: string;
-  when_to_use: string;
-  steps: RecipeStep[];
-  terminal_state: string;
-}
-
-export interface RecipeStep {
-  cmd: string;
-  reads?: string[];
-  writes?: string[];
-  description?: string;
-}
+// P455 R3 integration: the canonical Recipe/RecipeStep shapes live in
+// `./recipes` (lane D). The local placeholder types kept this module
+// compilable during R2; it now defers to the canonical types so domain
+// modules that build recipes via the recipes.ts factory don't break the
+// discovery registry.
+import type { Recipe as CanonicalRecipe, RecipeStep as CanonicalRecipeStep } from "./recipes";
+export type Recipe = CanonicalRecipe;
+export type RecipeStep = CanonicalRecipeStep;
 
 /**
  * Global schema registry.

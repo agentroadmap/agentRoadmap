@@ -91,7 +91,7 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  const ctx = resolveContext(options);
+  const ctx = await resolveContext(options);
 
   if (!ctx.projectId) {
     throw Errors.notFound(
@@ -106,7 +106,7 @@ async function handleList(options: Record<string, unknown>) {
 
 async function handleInfo(workerId: string, options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  const ctx = resolveContext(options);
+  const ctx = await resolveContext(options);
 
   if (!ctx.projectId) {
     throw Errors.notFound(

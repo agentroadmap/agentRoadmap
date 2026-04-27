@@ -4,12 +4,13 @@
  * Describes all workflow commands and their signatures per cli-hive-contract.md §8 (Discovery).
  */
 
-import type { DomainSchema } from "../../common/schema-types";
+import type { DomainSchema } from "../../common";
 
 export const workflowSchema: DomainSchema = {
-  domain: "workflow",
+  name: "workflow",
+  aliases: [],
   description: "Workflow state machine, transition rules, and gate operations",
-  commands: [
+  subcommands: [
     {
       name: "list",
       signature: "hive workflow list",

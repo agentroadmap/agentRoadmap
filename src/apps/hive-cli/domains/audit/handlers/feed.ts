@@ -49,6 +49,9 @@ export async function handleAuditFeed(
   const limit = Math.min(parseInt(options.limit || "50"), 100);
 
   try {
+    // Real schema is roadmap.operator_audit_log (DDL 022). Timestamp column
+    // is `occurred_at`, not `created_at`; `request_summary` carries the
+    // free-form reason/context from `requireOperator`.
     let query = `
       SELECT
         operator_name,
@@ -56,9 +59,9 @@ export async function handleAuditFeed(
         decision,
         target_kind,
         target_identity,
-        failure_reason,
-        created_at
-      FROM control_plane.operator_audit_log
+        request_summary,
+        occurred_at
+      FROM roadmap.operator_audit_log
       WHERE 1=1
     `;
 
@@ -67,12 +70,12 @@ export async function handleAuditFeed(
 
     if (options.since) {
       const sinceTime = parseRelativeTime(options.since);
-      query += ` AND created_at >= $${paramIndex}`;
+      query += ` AND occurred_at >= $${paramIndex}`;
       params.push(sinceTime);
       paramIndex++;
     }
 
-    query += ` ORDER BY created_at DESC LIMIT $${paramIndex}`;
+    query += ` ORDER BY occurred_at DESC LIMIT $${paramIndex}`;
     params.push(limit + 1); // +1 to detect if there are more pages
 
     const result = await pool.query(query, params);
@@ -82,7 +85,7 @@ export async function handleAuditFeed(
     const nextCursor = hasMore
       ? Buffer.from(
           JSON.stringify({
-            lastTimestamp: rows[rows.length - 1]?.created_at,
+            lastTimestamp: rows[rows.length - 1]?.occurred_at,
             lastOperator: rows[rows.length - 1]?.operator_name,
           })
         ).toString("base64")

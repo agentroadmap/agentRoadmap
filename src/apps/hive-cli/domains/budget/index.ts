@@ -91,7 +91,7 @@ const domainSchema: DomainSchema = {
 
 async function handleShow(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  const ctx = resolveContext(options);
+  const ctx = await resolveContext(options);
   const scope = options.scope ?? "project";
 
   // TODO: Implement getBudgetCap on ControlPlaneClient
@@ -115,7 +115,7 @@ async function handleShow(options: Record<string, unknown>) {
 
 async function handleConsumed(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  const ctx = resolveContext(options);
+  const ctx = await resolveContext(options);
   const period = options.period ?? new Date().toISOString().substring(0, 7);
 
   // TODO: Implement getSpendBreakdown on ControlPlaneClient

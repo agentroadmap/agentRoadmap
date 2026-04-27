@@ -65,9 +65,18 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 					EXTRACT(EPOCH FROM pmt.created_at) * 1000 AS timestamp_ms,
 					p.display_id AS proposal_id,
 					pmt.transitioned_by AS agent_id,
-					p.display_id || ' maturity ' || COALESCE(pmt.from_maturity, '?') || ' -> ' || pmt.to_maturity AS message
+					p.display_id || ' [' || upper(COALESCE(state_at.to_state, p.status, '?')) || '] maturity ' ||
+						COALESCE(pmt.from_maturity, '?') || ' -> ' || pmt.to_maturity AS message
 				FROM roadmap_proposal.proposal_maturity_transitions pmt
 				LEFT JOIN roadmap_proposal.proposal p ON p.id = pmt.proposal_id
+				LEFT JOIN LATERAL (
+					SELECT pst2.to_state
+					FROM roadmap_proposal.proposal_state_transitions pst2
+					WHERE pst2.proposal_id = pmt.proposal_id
+					  AND pst2.transitioned_at <= pmt.created_at
+					ORDER BY pst2.transitioned_at DESC
+					LIMIT 1
+				) state_at ON true
 
 				UNION ALL
 
@@ -102,6 +111,22 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 						WHEN pe.event_type = 'maturity_changed' THEN
 							COALESCE(p.display_id || ' ', '') || 'maturity ' ||
 								COALESCE(pe.payload->>'from', '?') || ' -> ' || COALESCE(pe.payload->>'to', '?')
+						WHEN pe.event_type = 'decision_made' THEN
+							COALESCE(p.display_id || ' ', '') || 'decision ' ||
+								CASE WHEN pe.payload->>'gate' IS NOT NULL
+									THEN '(' || (pe.payload->>'gate') || ') '
+									ELSE '' END ||
+								COALESCE(
+									pe.payload->>'gate_decision',
+									pe.payload->>'verdict',
+									left(pe.payload->>'decision', 80),
+									'?'
+								) ||
+								CASE WHEN pe.payload->>'to_state' IS NOT NULL
+									THEN ' -> ' || (pe.payload->>'to_state')
+									WHEN pe.payload->>'target_state' IS NOT NULL
+									THEN ' -> ' || (pe.payload->>'target_state')
+									ELSE '' END
 						ELSE
 							COALESCE(p.display_id || ' ', '') || pe.event_type
 					END AS message

@@ -36,12 +36,12 @@ const stopRecipe: Recipe = {
   when_to_use: "When you need to halt work immediately",
   steps: [
     {
-      cmd: "hive stop all --scope global --reason 'emergency: XYZ' --yes --really-yes",
+      command: "hive stop all --scope global --reason 'emergency: XYZ' --yes --really-yes",
       reads: [],
       description: "Global panic stop (requires double confirmation)",
     },
     {
-      cmd: "hive audit feed --since 5m --format jsonl",
+      command: "hive audit feed --since 5m --format jsonl",
       reads: [],
       description: "View recent operator actions",
     },

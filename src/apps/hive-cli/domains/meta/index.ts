@@ -168,11 +168,10 @@ async function handleVersion(options: Record<string, unknown>) {
 }
 
 async function handleContext(options: Record<string, unknown>) {
-  const ctx = resolveContext(options);
-  const client = getControlPlaneClient();
+  const ctx = await resolveContext(options as { project?: string; agency?: string; host?: string });
 
   return {
-    project: ctx.projectSlug || ctx.projectId || "(unresolved)",
+    project: ctx.projectSlug || (ctx.projectId != null ? String(ctx.projectId) : "(unresolved)"),
     agency: ctx.agency || "(unresolved)",
     host: ctx.host || "(unresolved)",
     resolved_at: new Date().toISOString(),
@@ -237,7 +236,8 @@ compdef _hive hive
 
 async function handleDoctor(options: Record<string, unknown>) {
   const result = await runDoctor({
-    remediate: options.remediate ?? false,
+    remediate:
+      typeof options.remediate === "string" ? options.remediate : undefined,
   });
   return result;
 }

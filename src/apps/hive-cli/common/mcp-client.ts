@@ -158,6 +158,29 @@ export class HiveMcpClient {
   }
 
   /**
+   * Returns the configured MCP URL. Used by `hive service status` and other
+   * diagnostic commands that surface the MCP endpoint to the operator.
+   */
+  getUrl(): string {
+    return this.mcpUrl;
+  }
+
+  /**
+   * Health probe: lightweight call to verify the MCP server is reachable.
+   * Calls `mcp_ops` action `health` and measures round-trip latency.
+   */
+  async ping(timeoutMs = 3000): Promise<{ ok: boolean; latency_ms: number; error?: string }> {
+    const start = Date.now();
+    try {
+      await this.callTool("mcp_ops", { action: "health" }, { timeoutMs });
+      return { ok: true, latency_ms: Date.now() - start };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, latency_ms: Date.now() - start, error: message };
+    }
+  }
+
+  /**
    * Call a tool on the MCP server.
    *
    * Implements contract §6 (MCP-vs-Control-DB Routing): this method is used for
