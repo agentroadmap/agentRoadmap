@@ -735,6 +735,23 @@ function composeBriefingMission(
 	].join("\n");
 }
 
+function roleTimeoutMs(role: string | undefined | null): number {
+	// Wall-clock budget per role. The historical 600s default is fine for gate
+	// adjudication (read + write decision) but kills developers mid-flight —
+	// P463 and P472 were both `Killed after timeout` at exactly 600s on
+	// 2026-04-26 because real implementation work needs 30-60 min.
+	const r = (role ?? "").toLowerCase();
+	if (r.includes("developer")) return 3_600_000;            // 60 min
+	if (r.includes("e2e")) return 1_800_000;                  // 30 min
+	if (
+		r.includes("architect") ||
+		r.includes("researcher") ||
+		r.includes("enhancer")
+	)
+		return 1_500_000;                                     // 25 min
+	return 600_000;                                           // 10 min — gates, reviews, default
+}
+
 function deriveAllowedTools(role: string): string[] | undefined {
 	// Conservative default: every dispatched role can read proposal data,
 	// add discussion/criteria/dependencies, submit reviews, and emit spawn
@@ -1008,7 +1025,7 @@ async function dispatchAgent(
 				task: taskPrompt,
 				stage,
 				phase,
-				timeoutMs: 600_000,
+				timeoutMs: roleTimeoutMs(agentLabel ?? agent),
 				// IMPORTANT: pass the *selected worktree directory name* — not the
 				// agent identity. The agency's offer-provider uses worktree_hint as
 				// the cwd basename under WORKTREE_ROOT (`/data/code/worktree/`). If
@@ -1117,7 +1134,7 @@ async function dispatchAgent(
 			task: taskPrompt,
 			proposalId: Number(proposalId),
 			stage,
-			timeoutMs: 600_000,
+			timeoutMs: roleTimeoutMs(agentLabel ?? agent),
 			provider: activeProvider ?? undefined,
 			agentLabel: agentLabel ?? agent,
 			activity,

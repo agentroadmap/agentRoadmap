@@ -23,7 +23,7 @@ import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const packageJsonPath = resolve(__dirname, "../../package.json");
+const packageJsonPath = resolve(__dirname, "../../../package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 const version = packageJson.version;
 import {
@@ -40,6 +40,25 @@ import {
   formatRecipesAsJsonl,
 } from "./common/index";
 import type { OutputFormat } from "./common/formatters";
+import { register as registerProposal } from "./domains/proposal/index";
+import { register as registerWorkflow } from "./domains/workflow/index";
+import { register as registerProject } from "./domains/project/index";
+import { register as registerAgency } from "./domains/agency/index";
+import { register as registerWorker } from "./domains/worker/index";
+import { register as registerLease } from "./domains/lease/index";
+import { register as registerProvider } from "./domains/provider/index";
+import { register as registerModel } from "./domains/model/index";
+import { register as registerRoute } from "./domains/route/index";
+import { register as registerBudget } from "./domains/budget/index";
+import { register as registerContextPolicy } from "./domains/context-policy/index";
+import { register as registerSystem } from "./domains/system/index";
+import { register as registerAudit } from "./domains/audit/index";
+import { register as registerStop } from "./domains/stop/index";
+import { register as registerDispatch } from "./domains/dispatch/index";
+import { register as registerScan } from "./domains/scan/index";
+import { register as registerLint } from "./domains/lint/index";
+import { register as registerKnowledge } from "./domains/knowledge/index";
+import { register as registerMeta } from "./domains/meta/index";
 
 /**
  * Main entry point.
@@ -144,8 +163,28 @@ async function main() {
       process.exit(0);
     });
 
-    // Domain registration will happen here in Round 3.
-    // For now, parse and exit to allow test structure validation.
+    // Register domains
+    registerProposal(program);
+    registerWorkflow(program);
+    registerProject(program);
+    registerAgency(program);
+    registerWorker(program);
+    registerLease(program);
+    registerProvider(program);
+    registerModel(program);
+    registerRoute(program);
+    registerBudget(program);
+    registerContextPolicy(program);
+    registerSystem(program);
+    registerAudit(program);
+    registerStop(program);
+    registerDispatch(program);
+    registerScan(program);
+    registerLint(program);
+    registerKnowledge(program);
+    registerMeta(program);
+
+    // Parse and execute
     await program.parseAsync(process.argv);
   } catch (err) {
     const elapsed = Date.now() - startTime;

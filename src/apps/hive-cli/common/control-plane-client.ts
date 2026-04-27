@@ -646,6 +646,108 @@ export class ControlPlaneClient {
       );
     }
   }
+
+  /**
+   * Ping the control-plane database to verify connectivity.
+   *
+   * @returns latency_ms - Round-trip time in milliseconds
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async ping(): Promise<number> {
+    const pool = getPool();
+    try {
+      const start = Date.now();
+      await pool.query("SELECT 1");
+      const latency = Date.now() - start;
+      return latency;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to ping database: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
+
+  /**
+   * Execute a read-only SQL query.
+   *
+   * Security: Only SELECT, WITH, EXPLAIN, and SHOW queries are allowed.
+   * The caller is responsible for validating the query before calling this method.
+   *
+   * @param sql - SQL query string (must be SELECT, WITH, EXPLAIN, or SHOW)
+   * @returns Query result rows
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable or query fails
+   */
+  async query(sql: string): Promise<any[]> {
+    const pool = getPool();
+    try {
+      const result = await pool.query(sql);
+      return result.rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Query failed: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
+
+  /**
+   * Get a lease by ID.
+   *
+   * @param leaseId - Lease ID
+   * @returns LeaseRow if found, null if not
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async getLease(leaseId: number): Promise<LeaseRow | null> {
+    const pool = getPool();
+    try {
+      const query = `
+        SELECT id, proposal_id, agent_identity, claimed_at, expires_at,
+               released_at, release_reason, is_active
+          FROM roadmap.proposal_lease
+         WHERE id = $1
+      `;
+
+      const result = await pool.query<LeaseRow>(query, [leaseId]);
+      return result.rows[0] ?? null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to get lease: ${msg}`,
+        { error: msg, leaseId }
+      );
+    }
+  }
+
+  /**
+   * List expired leases.
+   *
+   * @returns Array of LeaseRow objects where expires_at <= now
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async listExpiredLeases(): Promise<LeaseRow[]> {
+    const pool = getPool();
+    try {
+      const query = `
+        SELECT id, proposal_id, agent_identity, claimed_at, expires_at,
+               released_at, release_reason, is_active
+          FROM roadmap.proposal_lease
+         WHERE expires_at IS NOT NULL AND expires_at <= NOW()
+         ORDER BY expires_at DESC
+      `;
+
+      const result = await pool.query<LeaseRow>(query);
+      return result.rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to list expired leases: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
 }
 
 /**
