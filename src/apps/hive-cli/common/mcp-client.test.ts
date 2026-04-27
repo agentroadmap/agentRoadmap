@@ -36,16 +36,36 @@ global.fetch = async (
   _url: string,
   _opts: RequestInit
 ): Promise<Response> => {
+  // Check for abort signal
+  const signal = _opts?.signal as AbortSignal | undefined;
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted", "AbortError");
+  }
+
   // Simulate network error if configured
   if (mockFetchError) {
     throw mockFetchError;
   }
 
-  // Simulate timeout delay
+  // Simulate timeout delay with signal check
   if (mockFetchResponse?.delay) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, mockFetchResponse!.delay)
-    );
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        if (signal?.aborted) {
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        } else {
+          resolve();
+        }
+      }, mockFetchResponse!.delay);
+
+      // If signal is aborted while waiting, clear timeout and reject
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          clearTimeout(timeoutId);
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        });
+      }
+    });
   }
 
   // Simulate HTTP error status
@@ -271,10 +291,9 @@ test("HiveMcpClient: unreachable MCP", async (t) => {
 
 test("HiveMcpClient: retry logic", async (t) => {
   const originalFetchForRetry = global.fetch;
-  let attemptCount = 0;
 
   await t.test("retries on transient errors", async () => {
-    attemptCount = 0;
+    let attemptCount = 0;
     // Custom fetch that fails twice, then succeeds
     // @ts-expect-error - patching for testing
     global.fetch = async (): Promise<Response> => {
@@ -297,14 +316,19 @@ test("HiveMcpClient: retry logic", async (t) => {
       } as Response;
     };
 
-    const client = new HiveMcpClient("http://localhost:6421/mcp");
+    try {
+      const client = new HiveMcpClient("http://localhost:6421/mcp");
+      const result = await client.callTool("mcp_proposal", { action: "get" }, {
+        retry: { attempts: 2, backoffMs: 10 },
+      });
 
-    const result = await client.callTool("mcp_proposal", { action: "get" }, {
-      retry: { attempts: 2, backoffMs: 10 },
-    });
-
-    assert.equal(attemptCount, 3);
-    assert.deepEqual(result, { success: true });
+      assert.equal(attemptCount, 3);
+      assert.deepEqual(result, { success: true });
+    } finally {
+      // Restore original fetch
+      // @ts-expect-error - restoring global
+      global.fetch = originalFetchForRetry;
+    }
   });
 
   await t.test("fails after max retries exhausted", async () => {
@@ -318,21 +342,27 @@ test("HiveMcpClient: retry logic", async (t) => {
       } as Response;
     };
 
-    const client = new HiveMcpClient("http://localhost:6421/mcp");
-
     try {
-      await client.callTool("mcp_proposal", { action: "get" }, {
-        retry: { attempts: 1, backoffMs: 10 },
-      });
-      assert.fail("should have thrown after retries exhausted");
-    } catch (err) {
-      assert(err instanceof HiveError);
-      assert.equal(err.code, "REMOTE_FAILURE");
+      const client = new HiveMcpClient("http://localhost:6421/mcp");
+
+      try {
+        await client.callTool("mcp_proposal", { action: "get" }, {
+          retry: { attempts: 1, backoffMs: 10 },
+        });
+        assert.fail("should have thrown after retries exhausted");
+      } catch (err) {
+        assert(err instanceof HiveError);
+        assert.equal(err.code, "REMOTE_FAILURE");
+      }
+    } finally {
+      // Restore original fetch
+      // @ts-expect-error - restoring global
+      global.fetch = originalFetchForRetry;
     }
   });
 
   await t.test("does not retry non-retriable errors", async () => {
-    attemptCount = 0;
+    let attemptCount = 0;
     // Non-retriable 404 error
     // @ts-expect-error - patching for testing
     global.fetch = async (): Promise<Response> => {
@@ -346,23 +376,25 @@ test("HiveMcpClient: retry logic", async (t) => {
       } as Response;
     };
 
-    const client = new HiveMcpClient("http://localhost:6421/mcp");
-
     try {
-      await client.callTool("mcp_proposal", { action: "get" }, {
-        retry: { attempts: 3, backoffMs: 10 },
-      });
-      assert.fail("should have thrown NOT_FOUND (non-retriable)");
-    } catch (err) {
-      assert(err instanceof HiveError);
-      assert.equal(err.code, "NOT_FOUND");
-      assert.equal(attemptCount, 1); // Only one attempt, no retries
+      const client = new HiveMcpClient("http://localhost:6421/mcp");
+
+      try {
+        await client.callTool("mcp_proposal", { action: "get" }, {
+          retry: { attempts: 3, backoffMs: 10 },
+        });
+        assert.fail("should have thrown NOT_FOUND (non-retriable)");
+      } catch (err) {
+        assert(err instanceof HiveError);
+        assert.equal(err.code, "NOT_FOUND");
+        assert.equal(attemptCount, 1); // Only one attempt, no retries
+      }
+    } finally {
+      // Restore original fetch
+      // @ts-expect-error - restoring global
+      global.fetch = originalFetchForRetry;
     }
   });
-
-  // Restore original fetch for remaining tests
-  // @ts-expect-error - restoring global
-  global.fetch = originalFetchForRetry;
 });
 
 test("getMcpClient: singleton pattern", async (t) => {
