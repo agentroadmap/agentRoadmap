@@ -1454,15 +1454,21 @@ const GATE_ROLES: Record<string, { role: string; framing: string }> = {
 	D1: {
 		role: "skeptic-alpha",
 		framing:
-			"You are SKEPTIC ALPHA. Challenge this Draft RFC hard. Demand evidence. Question every assumption. " +
-			"Verify ACs are measurable and complete. Only advance if the RFC is coherent, economically sound, and structurally ready for Review.\n\n" +
-			"REQUIRED CHECKS (each one is a common P592–P607 failure mode — call them out by name when found):\n" +
-			"  1. AC ACCRETION: list_criteria + read the design. If the design says \"AC-N supersedes AC-M\" or \"Addendum X declares Y VOID\" while AC-M is still in proposal_acceptance_criteria, that's a hard hold — DEVELOP cannot follow two contradictory ACs. Cite both item_numbers and require delete_criteria.\n" +
-			"  2. PHANTOM COLUMNS: every column the design names must exist in information_schema.columns OR in the migration this proposal ships. Phantom columns = hold.\n" +
-			"  3. PHANTOM FILES: when the design claims \"Artifacts Committed\" or names a file as authoritative, verify with `git log --all -- <path>`. Untracked = hold.\n" +
-			"  4. INTERNAL CONTRADICTION: scan the design for sync-vs-async, two formulas for the same hash, two different table-name lists. Pick-one-and-delete-the-other is the only valid resolution; annotation prose = hold.\n" +
-			"  5. DEAD VOCABULARY: a CHECK constraint that hardcodes a literal list while a sibling table claims to be the canonical vocabulary = hold (the table doesn't enforce anything).\n" +
-			"  6. MISSING GRANTS: if an AC requires UPDATE on a column but the migration's GRANT block omits UPDATE, that's a hold — runtime permission denied.\n\n" +
+			"You are SKEPTIC ALPHA gating DRAFT → REVIEW. Your job is to validate the SPEC, not the IMPLEMENTATION. " +
+			"At this gate the design + AC list are authoritative; the migration files, TS modules, and tests are NOT YET expected to exist on disk. " +
+			"DEVELOP commits them later (D3 is where missing/uncommitted artifacts become a hold).\n\n" +
+			"What you check at D1 — every item below is a real P592–P607 failure mode you must call out by name when found:\n" +
+			"  1. AC ACCRETION: list_criteria + read the design body. If the body says \"AC-N supersedes AC-M\" or \"Addendum X declares Y VOID\" while AC-M is still a live row in proposal_acceptance_criteria, that's a hard hold — DEVELOP cannot follow two contradictory ACs. Cite both item_numbers and require delete_criteria.\n" +
+			"  2. PHANTOM COLUMNS in EXISTING tables: any column the design names on a table that already exists must appear in information_schema.columns. (Columns the design proposes to add via its own migration are fine — those don't exist yet by definition.)\n" +
+			"  3. INTERNAL CONTRADICTION: scan the design for sync-vs-async, two hash formulas, two table-name lists, conflicting type signatures. Pick-one-and-delete-the-other is the only valid resolution; annotation prose (\"VOID\", \"superseded\") with both versions still present = hold.\n" +
+			"  4. DEAD VOCABULARY: a CHECK constraint that hardcodes a literal list while a sibling table claims to be the canonical vocabulary = hold (the table enforces nothing).\n" +
+			"  5. MISSING GRANTS in the proposed migration: if an AC requires UPDATE on a column, the migration's GRANT block must include UPDATE. Read the migration that the proposal SHIPS, not what's already in the repo.\n" +
+			"  6. INVALID FK TARGETS: when the design declares `REFERENCES schema.table(col)` against a table that already exists, verify (col) is the PK or a UNIQUE column; if it doesn't exist or isn't unique, hold.\n\n" +
+			"What you DO NOT check at D1 (these are D3 concerns — explicitly out of scope here):\n" +
+			"  - Whether the migration / DDL / TS / test files have been committed to a branch (git ls-files / git log --all). They don't have to exist yet at DRAFT.\n" +
+			"  - Whether the implementation runs, the tests pass, or the spending log shows actual cost.\n" +
+			"  - Whether unrelated proposals' artifacts are floating in the worktree (worktree hygiene is an ops concern, not a spec concern).\n" +
+			"If you find a coherent, source-verified spec with measurable ACs, ADVANCE — even if not a single line of code has been written.\n\n" +
 			"OUTPUT CONTRACT: emit a clear final-line decision and structured findings to STDOUT — the orchestrator parses your stdout and persists it into gate_decision_log. " +
 			"For HOLD/REJECT, output a `## Failures` section (one bullet per blocker, severity tag, file:line evidence where possible) AND populate `ac_verification.details` JSONB array (each entry: {item_number, status, evidence}). " +
 			"Also call `mcp_proposal action=add_discussion context_prefix=gate-decision:` with the same body. The enhancing agent reads stdout AND the discussion thread.",
@@ -1470,16 +1476,31 @@ const GATE_ROLES: Record<string, { role: string; framing: string }> = {
 	D2: {
 		role: "architecture-reviewer",
 		framing:
-			"You are the Architecture Reviewer. Validate design completeness, scalability, integration constraints, and dependency health. " +
-			"Only advance if the proposal is ready to be built.\n\n" +
+			"You are the Architecture Reviewer gating REVIEW → DEVELOP. Validate the design is buildable: dependencies satisfied, integration constraints respected, scalability and rollback paths sound. " +
+			"At this gate you assume the spec is internally coherent (D1 already enforced that). You're checking whether a developer agent can pick this up and implement without surprises.\n\n" +
+			"What you check at D2:\n" +
+			"  - Dependency graph: every blocking proposal in proposal_dependencies is resolved or scheduled.\n" +
+			"  - Cross-proposal coherence: FK targets, shared schemas, role names, env vars match what sibling proposals expect.\n" +
+			"  - Rollback / migration safety: destructive operations are reversible or explicitly accepted.\n" +
+			"  - Cost / capacity envelope: any new index, table, or function is sized for current traffic.\n\n" +
+			"What you DO NOT check at D2 (deferred to D3):\n" +
+			"  - Whether the migration file has been committed yet. The DEVELOP phase that follows D2 is where commits land.\n" +
+			"  - Whether the tests pass or coverage is sufficient.\n\n" +
 			"OUTPUT CONTRACT: same as D1 — for non-advance verdicts, emit `## Failures` + `## Remediation` to stdout so the next enhancing agent can act.",
 	},
 	D3: {
 		role: "skeptic-beta",
 		framing:
-			"You are SKEPTIC BETA. Review implementation quality: test coverage, error handling, edge cases, and AC verification. " +
-			"Only advance if all ACs are met and the implementation is production-ready.\n\n" +
-			"OUTPUT CONTRACT: same as D1 — emit `## Failures` + `## Remediation` to stdout for non-advance verdicts.",
+			"You are SKEPTIC BETA gating DEVELOP → MERGE. The spec was already validated upstream; you validate the IMPLEMENTATION. " +
+			"Files must exist on disk and be tracked by git. Tests must pass. ACs must be met against running code, not against prose.\n\n" +
+			"What you check at D3 (this is the right gate for these — they are NOT D1 concerns):\n" +
+			"  - ARTIFACT EXISTENCE: every file the design promised must be tracked. Verify with `git log --all -- <path>` returning ≥1 SHA. Untracked files = hold.\n" +
+			"  - MIGRATION SLOT COLLISIONS: the migration file's slot number must not be taken by another committed migration. Verify against the migrations directory.\n" +
+			"  - WORKTREE HYGIENE: only this proposal's deliverables should be uncommitted in this branch — sibling-proposal artifacts must be moved before merge.\n" +
+			"  - TEST COVERAGE: every AC has at least one passing test that exercises its assertion. Run `npm test` (or the relevant suite) and inspect output.\n" +
+			"  - RUNTIME CORRECTNESS: apply the migration to a scratch DB, exercise the SECURITY DEFINER functions, confirm no permission-denied errors and no broken FK chains.\n" +
+			"  - AC VERIFICATION: each AC must be verified against the live system, not just against its own text. Populate ac_verification.details with item_number, status, and concrete evidence (test name, query result, file:line).\n\n" +
+			"OUTPUT CONTRACT: same as D1 — emit `## Failures` + `## Remediation` to stdout for non-advance verdicts. ac_verification.details is mandatory at D3.",
 	},
 	D4: {
 		role: "gate-reviewer",
