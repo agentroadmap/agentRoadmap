@@ -53,7 +53,7 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 					EXTRACT(EPOCH FROM pst.transitioned_at) * 1000 AS timestamp_ms,
 					p.display_id AS proposal_id,
 					pst.transitioned_by AS agent_id,
-					p.display_id || ' state ' || pst.from_state || ' -> ' || pst.to_state AS message
+					p.display_id || ' state ' || upper(COALESCE(pst.from_state, '?')) || ' -> ' || upper(pst.to_state) AS message
 				FROM roadmap_proposal.proposal_state_transitions pst
 				LEFT JOIN roadmap_proposal.proposal p ON p.id = pst.proposal_id
 
@@ -85,7 +85,7 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 					'custom' AS type,
 					EXTRACT(EPOCH FROM pe.created_at) * 1000 AS timestamp_ms,
 					p.display_id AS proposal_id,
-					COALESCE(pe.payload->>'agent', pe.payload->>'agent_identity', pe.payload->>'source') AS agent_id,
+					COALESCE(pe.payload->>'agent', pe.payload->>'agent_identity', pe.payload->>'reviewer', pe.payload->>'source') AS agent_id,
 					CASE
 						WHEN pe.event_type = 'proposal_created' THEN
 							COALESCE(p.display_id || ' ', '') || 'created ' || COALESCE(p.title, '(untitled)')
@@ -112,7 +112,8 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 							COALESCE(p.display_id || ' ', '') || 'maturity ' ||
 								COALESCE(pe.payload->>'from', '?') || ' -> ' || COALESCE(pe.payload->>'to', '?')
 						WHEN pe.event_type = 'decision_made' THEN
-							COALESCE(p.display_id || ' ', '') || 'decision ' ||
+							COALESCE(p.display_id || ' ', '') ||
+								'[' || upper(COALESCE(pe.payload->>'proposal_status', p.status, '?')) || '] decision ' ||
 								CASE WHEN pe.payload->>'gate' IS NOT NULL
 									THEN '(' || (pe.payload->>'gate') || ') '
 									ELSE '' END ||
@@ -127,8 +128,14 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 									WHEN pe.payload->>'target_state' IS NOT NULL
 									THEN ' -> ' || (pe.payload->>'target_state')
 									ELSE '' END
+						WHEN pe.event_type = 'review_submitted' THEN
+							COALESCE(p.display_id || ' ', '') ||
+								'[' || upper(COALESCE(p.status, '?')) || '] review by ' ||
+								COALESCE(pe.payload->>'reviewer', pe.payload->>'agent', 'agent') ||
+								': ' || COALESCE(pe.payload->>'verdict', '?')
 						ELSE
-							COALESCE(p.display_id || ' ', '') || pe.event_type
+							COALESCE(p.display_id || ' ', '') ||
+								'[' || upper(COALESCE(p.status, '?')) || '] ' || pe.event_type
 					END AS message
 				FROM roadmap_proposal.proposal_event pe
 				LEFT JOIN roadmap_proposal.proposal p ON p.id = pe.proposal_id
@@ -163,15 +170,13 @@ export async function getBoardLiveFeed(limit = 100): Promise<StreamEvent[]> {
 						ar.agent_identity || ' ' ||
 						COALESCE(ar.activity, ar.status) ||
 						' stage=' || ar.stage ||
-						' model=' || ar.model_used ||
 						CASE
 							WHEN mr.route_provider IS NOT NULL THEN
-								' provider=' || mr.route_provider || '/' || mr.agent_provider ||
-								' cli=' || COALESCE(mr.agent_cli, '-')
-							ELSE ''
+								' provider=' || mr.route_provider || '/' || mr.agent_provider
+							ELSE ' model=' || ar.model_used
 						END ||
 						CASE
-							WHEN ar.duration_ms IS NOT NULL THEN ' duration=' || ar.duration_ms::text || 'ms'
+							WHEN ar.duration_ms IS NOT NULL THEN ' (' || (ar.duration_ms / 1000)::text || 's)'
 							ELSE ''
 						END AS message
 				FROM roadmap_workforce.agent_runs ar

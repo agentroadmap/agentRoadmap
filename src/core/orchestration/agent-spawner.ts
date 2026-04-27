@@ -1030,20 +1030,38 @@ function runProcess(
 			child.stdin?.end(stdin);
 		}
 
+		// SIGTERM at deadline; SIGKILL escalation 10s later if the child ignores it.
+		// Without the escalation, claude --print mid-API-call traps SIGTERM and
+		// blows past the declared budget by 10–15 minutes.
+		let killTimer: NodeJS.Timeout | null = null;
 		const timer = setTimeout(() => {
 			child.kill("SIGTERM");
-			stderr += "\n[agent-spawner] Killed after timeout";
+			stderr += "\n[agent-spawner] SIGTERM after timeout";
+			killTimer = setTimeout(() => {
+				if (!child.killed && child.exitCode === null) {
+					try {
+						child.kill("SIGKILL");
+						stderr += "\n[agent-spawner] SIGKILL after grace";
+					} catch {
+						/* already exited */
+					}
+				}
+			}, 10_000);
 		}, timeoutMs);
 
-		child.on("close", (code) => {
+		const cleanup = () => {
 			clearTimeout(timer);
+			if (killTimer) clearTimeout(killTimer);
 			liveChildren.delete(child);
+		};
+
+		child.on("close", (code) => {
+			cleanup();
 			resolve({ stdout, stderr, exitCode: code });
 		});
 
 		child.on("error", (err) => {
-			clearTimeout(timer);
-			liveChildren.delete(child);
+			cleanup();
 			resolve({
 				stdout,
 				stderr: `${stderr}\n[agent-spawner] spawn error: ${err.message}`,
