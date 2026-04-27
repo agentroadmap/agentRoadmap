@@ -29,6 +29,80 @@ import { RfcStates, HotfixStates } from "../workflow/state-names.ts";
 const WORKTREE_ROOT = "/data/code/worktree";
 const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 
+// ─── Live child registry (shutdown plumbing) ─────────────────────────────────
+//
+// `runProcess` spawns long-lived `claude --print` (and similar) children that
+// can run for many minutes. systemd units configure TimeoutStopSec, and the
+// orchestrator/gate-pipeline `shutdown()` paths used to wait on the in-flight
+// promise set — but those promises only resolve when the children themselves
+// exit. If the children never receive a signal they keep running until
+// systemd escalates to SIGKILL on the parent.
+//
+// We track every live child here so the service-level shutdown handler can
+// signal them all in one shot. Exported helpers:
+//   - liveChildCount()           : count of still-running spawns
+//   - terminateLiveChildren(opt) : SIGTERM all, optionally SIGKILL after grace
+//
+// The set is keyed by `ChildProcess` so callers don't need to know about PIDs;
+// stale entries are removed on `close`/`error`.
+const liveChildren: Set<ChildProcess> = new Set();
+
+export function liveChildCount(): number {
+	return liveChildren.size;
+}
+
+export interface TerminateOptions {
+	/** Milliseconds to wait between SIGTERM and SIGKILL. Default 8000. */
+	graceMs?: number;
+	/** Optional logger; defaults to console.error so journalctl picks it up. */
+	log?: (msg: string) => void;
+}
+
+export async function terminateLiveChildren(
+	opts: TerminateOptions = {},
+): Promise<{ signalled: number; killed: number }> {
+	const log = opts.log ?? ((m: string) => console.error(m));
+	const graceMs = Math.max(0, opts.graceMs ?? 8000);
+	const snapshot = Array.from(liveChildren);
+	if (snapshot.length === 0) return { signalled: 0, killed: 0 };
+
+	log(`[AgentSpawner] terminating ${snapshot.length} live child(ren) with SIGTERM`);
+	let signalled = 0;
+	for (const child of snapshot) {
+		try {
+			if (!child.killed && child.exitCode === null) {
+				child.kill("SIGTERM");
+				signalled++;
+			}
+		} catch (err) {
+			log(`[AgentSpawner] SIGTERM failed for pid ${child.pid}: ${(err as Error).message}`);
+		}
+	}
+
+	if (graceMs === 0) return { signalled, killed: 0 };
+
+	const deadline = Date.now() + graceMs;
+	while (Date.now() < deadline && liveChildren.size > 0) {
+		await new Promise((r) => setTimeout(r, 250));
+	}
+
+	let killed = 0;
+	for (const child of Array.from(liveChildren)) {
+		try {
+			if (!child.killed && child.exitCode === null) {
+				child.kill("SIGKILL");
+				killed++;
+			}
+		} catch (err) {
+			log(`[AgentSpawner] SIGKILL failed for pid ${child.pid}: ${(err as Error).message}`);
+		}
+	}
+	if (killed > 0) {
+		log(`[AgentSpawner] SIGKILL'd ${killed} child(ren) that ignored SIGTERM`);
+	}
+	return { signalled, killed };
+}
+
 // P245: host identity used for host-level spawn policy lookup.
 // Resolved once at module load; systemd units set AGENTHIVE_HOST explicitly
 // (e.g. agenthive-orchestrator on hermes → AGENTHIVE_HOST=hermes).
@@ -940,6 +1014,7 @@ function runProcess(
 			env,
 			stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
+		liveChildren.add(child);
 
 		let stdout = "";
 		let stderr = "";
@@ -962,11 +1037,13 @@ function runProcess(
 
 		child.on("close", (code) => {
 			clearTimeout(timer);
+			liveChildren.delete(child);
 			resolve({ stdout, stderr, exitCode: code });
 		});
 
 		child.on("error", (err) => {
 			clearTimeout(timer);
+			liveChildren.delete(child);
 			resolve({
 				stdout,
 				stderr: `${stderr}\n[agent-spawner] spawn error: ${err.message}`,

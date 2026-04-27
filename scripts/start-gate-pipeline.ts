@@ -11,7 +11,12 @@
  * deployment.
  */
 import { hostname } from "node:os";
-import { spawnAgent, resolveActiveRouteProvider } from "../src/core/orchestration/agent-spawner.ts";
+import {
+	spawnAgent,
+	resolveActiveRouteProvider,
+	terminateLiveChildren,
+	liveChildCount,
+} from "../src/core/orchestration/agent-spawner.ts";
 import { OfferProvider } from "../src/core/pipeline/offer-provider.ts";
 import { PipelineCron } from "../src/core/pipeline/pipeline-cron.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
@@ -118,7 +123,19 @@ async function main() {
 }
 
 async function shutdown(signal: string) {
-	console.log(`[GatePipeline] ${signal} received, shutting down gracefully...`);
+	console.log(
+		`[GatePipeline] ${signal} received, shutting down gracefully (${liveChildCount()} live child(ren))...`,
+	);
+	// Hotfix: send SIGTERM to spawned children up-front so PipelineCron /
+	// OfferProvider waitForIdle() can settle quickly. Without this, in-flight
+	// `claude --print` evaluations would block waitForIdle until systemd's
+	// TimeoutStopSec elapses and the unit is SIGKILL'd as a whole.
+	void terminateLiveChildren({
+		graceMs: 8000,
+		log: (m) => console.log(m),
+	}).catch((err) => {
+		console.error("[GatePipeline] terminateLiveChildren failed:", err);
+	});
 	try {
 		await cron.stop();
 		console.log("[GatePipeline] PipelineCron stopped");
@@ -128,8 +145,11 @@ async function shutdown(signal: string) {
 	if (offerProvider) {
 		try {
 			await offerProvider.stop();
-			// Wait for in-flight claims to finish before closing the pool
-			await offerProvider.waitForIdle(90_000);
+			// Wait for in-flight claims to finish before closing the pool.
+			// Bounded at 30s now (was 90s) — children are already SIGKILL'd
+			// by terminateLiveChildren if they ignored SIGTERM, so anything
+			// still in-flight is a DB-side stall worth a shorter wait.
+			await offerProvider.waitForIdle(30_000);
 			console.log("[GatePipeline] OfferProvider stopped and drained");
 		} catch (err) {
 			console.error("[GatePipeline] Error stopping OfferProvider:", err);

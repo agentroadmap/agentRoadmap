@@ -4,7 +4,20 @@ import { describe, it } from "node:test";
 import {
 	assertResolvedRouteMetadata,
 	buildSpawnProcessEnv,
+	liveChildCount,
+	terminateLiveChildren,
 } from "../../src/core/orchestration/agent-spawner.ts";
+
+describe("live-child registry", () => {
+	it("starts empty when no children have been spawned", () => {
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("terminateLiveChildren is a no-op on empty registry", async () => {
+		const result = await terminateLiveChildren({ graceMs: 0 });
+		assert.deepEqual(result, { signalled: 0, killed: 0 });
+	});
+});
 
 describe("Hermes route compatibility", () => {
 	it("accepts DB-shaped Hermes route metadata", () => {

@@ -18,6 +18,8 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import {
 	spawnAgent,
 	resolveActiveRouteProvider,
+	terminateLiveChildren,
+	liveChildCount,
 } from "../src/core/orchestration/agent-spawner.ts";
 import { postWorkOffer } from "../src/core/pipeline/post-work-offer.ts";
 import { reapStaleRows } from "../src/core/pipeline/reap-stale-rows.ts";
@@ -2490,18 +2492,39 @@ async function main() {
 
 	logger.log("Orchestrator running with dynamic agent deployment...");
 
-	// P266: graceful shutdown — drain in-flight dispatches before exit.
+	// P266 + hotfix: graceful shutdown — drain in-flight dispatches before
+	// exit. Previously the drain awaited promises that only resolve when
+	// spawned `claude --print` children exit, but those children were never
+	// signalled, so the drain always lost to its timer and systemd had to
+	// SIGKILL the unit at TimeoutStopSec. Now we propagate SIGTERM to live
+	// children up-front so the in-flight promises resolve quickly, and
+	// SIGKILL stragglers before pool.end().
 	const shutdown = async (signal: string) => {
 		if (stopping) return;
 		stopping = true;
 		logger.log(
-			`Received ${signal}, draining ${inFlight.size} in-flight dispatch(es) (timeout ${SHUTDOWN_DRAIN_MS}ms)...`,
+			`Received ${signal}, draining ${inFlight.size} in-flight dispatch(es), ${liveChildCount()} live child(ren) (timeout ${SHUTDOWN_DRAIN_MS}ms)...`,
 		);
 
 		if (pollTimer) clearInterval(pollTimer);
 		if (implicitGateTimer) clearInterval(implicitGateTimer);
 		if (enhancerReviseTimer) clearInterval(enhancerReviseTimer);
 		if (reconcilerTimer) clearInterval(reconcilerTimer);
+
+		// Propagate the signal to spawned children; their stdout/close events
+		// then let the in-flight dispatch promises settle naturally. Use a
+		// shorter grace than the overall drain budget so the SIGKILL fallback
+		// still happens inside SHUTDOWN_DRAIN_MS.
+		const childGraceMs = Math.max(
+			2000,
+			Math.min(60_000, Math.floor(SHUTDOWN_DRAIN_MS / 4)),
+		);
+		void terminateLiveChildren({
+			graceMs: childGraceMs,
+			log: (m) => logger.log(m),
+		}).catch((e) => {
+			logger.warn(`terminateLiveChildren: ${e instanceof Error ? e.message : e}`);
+		});
 
 		const drainStart = Date.now();
 		const drainPromise = Promise.allSettled(Array.from(inFlight));
@@ -2513,7 +2536,7 @@ async function main() {
 			timeoutPromise,
 		]);
 		logger.log(
-			`Drain ${winner} after ${Date.now() - drainStart}ms; ${inFlight.size} still in-flight`,
+			`Drain ${winner} after ${Date.now() - drainStart}ms; ${inFlight.size} still in-flight, ${liveChildCount()} live child(ren) remaining`,
 		);
 
 		// If anything is still hanging, mark the corresponding squad_dispatch
