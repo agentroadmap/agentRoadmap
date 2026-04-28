@@ -545,7 +545,7 @@ async function loadDispatchCandidates(
 		  sc.daily_limit_usd,
 		  ds.total_usd AS daily_spend_usd,
 		  COALESCE(sc.is_frozen, false) AS is_frozen,
-		  mm.cost_per_1k_input,
+		  (mm.cost_per_million_input / 1000.0) AS cost_per_1k_input,
 		  v.capability
 		FROM roadmap.v_capable_agents v
 		JOIN roadmap_workforce.agent_registry ar ON ar.id = v.id

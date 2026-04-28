@@ -3430,8 +3430,8 @@ export class RoadmapServer {
 				        priority,
 				        api_spec,
 				        base_url,
-				        cost_per_1k_input * 1000 AS cost_per_million_input,
-				        cost_per_1k_output * 1000 AS cost_per_million_output,
+				        cost_per_million_input,
+				        cost_per_million_output,
 				        plan_type,
 				        notes,
 				        created_at
