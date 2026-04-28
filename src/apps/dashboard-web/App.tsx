@@ -7,7 +7,7 @@ import type {
 } from "../../shared/types";
 import AchievementsView from "./components/AchievementsView";
 import AgentsPage from "./components/AgentsPage";
-import ProjectChip from "./components/ProjectChip";
+import AppNav from "./components/AppNav";
 import BoardPage from "./components/BoardPage";
 import ChannelsPage from "./components/ChannelsPage";
 import DashboardPage from "./components/DashboardPage";
@@ -37,14 +37,7 @@ import {
 	type Proposal as WebSocketProposal,
 } from "./hooks/useWebSocket";
 
-const STATUSES = [
-	"DRAFT",
-	"REVIEW",
-	"DEVELOP",
-	"MERGE",
-	"COMPLETE",
-	"DEPLOYED",
-];
+const STATUSES = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
 
 function toSharedProposal(proposal: WebSocketProposal): Proposal {
 	const labels = proposal.tags
@@ -159,12 +152,7 @@ export default function App() {
 	return (
 		<div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
-				{/* P477 AC-2: global project switcher. Pinned above every
-				    route so the operator can flip scope from anywhere — every
-				    fetch and WS subscribe re-keys via project-scope-storage. */}
-				<header className="flex items-center justify-end gap-3 px-4 h-9 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
-					<ProjectChip />
-				</header>
+				<AppNav />
 				<main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
 					<Switch>
 						<Route path="/">
@@ -185,7 +173,10 @@ export default function App() {
 							/>
 						</Route>
 						<Route path="/proposals">
-							<ProposalsPage proposals={sharedProposals} />
+							<ProposalsPage
+								proposals={sharedProposals}
+								onProposalClick={(p) => handleProposalClick(p as Proposal)}
+							/>
 						</Route>
 						<Route path="/directives">
 							<DirectivesPage proposals={sharedProposals} />

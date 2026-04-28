@@ -8,6 +8,7 @@ import {
 
 interface ProposalsPageProps {
 	proposals?: Proposal[];
+	onProposalClick?: (proposal: Proposal) => void;
 }
 
 type SortColumn =
@@ -55,8 +56,12 @@ const PRIORITY_ORDER: Record<string, number> = {
 	low: 1,
 };
 
+const STATUS_ORDER = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
+const HIDDEN_STATUSES = new Set(["DISCARDED"]);
+
 const ProposalsPage: React.FC<ProposalsPageProps> = ({
 	proposals: propProposals,
+	onProposalClick,
 }) => {
 	const [proposals, setProposals] = useState<Proposal[]>(propProposals || []);
 	const [filter, setFilter] = useState("");
@@ -72,10 +77,19 @@ const ProposalsPage: React.FC<ProposalsPageProps> = ({
 		}
 	}, [propProposals]);
 
-	const statuses = useMemo(
-		() => [...new Set(proposals.map((p) => p.status))].filter(Boolean).sort(),
-		[proposals],
-	);
+	const statuses = useMemo(() => {
+		const seen = [...new Set(proposals.map((p) => p.status))]
+			.filter(Boolean)
+			.filter((s) => !HIDDEN_STATUSES.has(s));
+		return seen.sort((a, b) => {
+			const ai = STATUS_ORDER.indexOf(a);
+			const bi = STATUS_ORDER.indexOf(b);
+			if (ai === -1 && bi === -1) return a.localeCompare(b);
+			if (ai === -1) return 1;
+			if (bi === -1) return -1;
+			return ai - bi;
+		});
+	}, [proposals]);
 
 	const types = useMemo(
 		() =>
@@ -235,8 +249,50 @@ const ProposalsPage: React.FC<ProposalsPageProps> = ({
 				)}
 			</div>
 
-			{/* Table */}
-			<div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+			{/* Mobile card list */}
+			<div className="md:hidden space-y-2">
+				{filteredProposals.map((proposal) => (
+					<button
+						type="button"
+						key={proposal.id}
+						onClick={() => onProposalClick?.(proposal)}
+						className="w-full text-left bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 hover:border-blue-400 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+					>
+						<div className="flex items-baseline justify-between gap-2">
+							<span className="font-mono text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+								{proposal.id}
+							</span>
+							<span
+								className={`flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium ${statusColor(proposal.status)}`}
+							>
+								{proposal.status}
+							</span>
+						</div>
+						<div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
+							{proposal.title}
+						</div>
+						<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+							<span className={`font-medium ${priorityColor(proposal.priority)}`}>
+								{proposal.priority || "—"}
+							</span>
+							<span className="text-gray-500 dark:text-gray-400">
+								{proposal.maturity || "—"}
+							</span>
+							{proposal.proposalType && (
+								<span className="text-gray-500 dark:text-gray-400">
+									{proposal.proposalType}
+								</span>
+							)}
+							<span className="ml-auto text-gray-400 dark:text-gray-500">
+								{formatStoredUtcDateForCompactDisplay(proposal.createdDate)}
+							</span>
+						</div>
+					</button>
+				))}
+			</div>
+
+			{/* Desktop table */}
+			<div className="hidden md:block bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
 				<div className="overflow-x-auto">
 					<table className="w-full text-sm">
 						<thead className="bg-gray-50 dark:bg-gray-900 text-left">
@@ -286,7 +342,8 @@ const ProposalsPage: React.FC<ProposalsPageProps> = ({
 							{filteredProposals.map((proposal) => (
 								<tr
 									key={proposal.id}
-									className="hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors"
+									onClick={() => onProposalClick?.(proposal)}
+									className={`transition-colors ${onProposalClick ? "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-700/20"}`}
 								>
 									<td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">
 										{proposal.id}
