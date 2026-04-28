@@ -45,9 +45,15 @@ const Modal: React.FC<ModalProps> = ({
 	if (!isOpen) return null;
 
 	return (
-		<div className="fixed inset-0 bg-black/40 dark:bg-black/60 flex items-center justify-center z-50 p-4">
+		<div
+			className="fixed inset-0 bg-black/40 dark:bg-black/60 flex items-start sm:items-center justify-center z-50 p-4"
+			style={{
+				paddingTop: "max(1rem, env(safe-area-inset-top))",
+				paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+			}}
+		>
 			<div
-				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-[94vh] overflow-y-auto transition-colors duration-200`}
+				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-[100dvh] sm:max-h-[94vh] overflow-y-auto transition-colors duration-200`}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="modal-title"
