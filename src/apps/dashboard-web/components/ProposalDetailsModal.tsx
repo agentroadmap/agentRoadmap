@@ -897,10 +897,26 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 							<button
 								type="button"
 								onClick={handleComplete}
-								className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								aria-label="Mark as completed"
+								className="inline-flex items-center px-2 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 								title="Move to completed folder (removes from board)"
 							>
-								Mark as completed
+								<svg
+									className="w-4 h-4 sm:mr-2"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									aria-hidden="true"
+									focusable="false"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M5 13l4 4L19 7"
+									/>
+								</svg>
+								<span className="hidden sm:inline">Mark as completed</span>
 							</button>
 						)}
 					{mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
@@ -908,11 +924,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 							<button
 								type="button"
 								onClick={handleExportMarkdown}
-								className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								aria-label="Export Markdown"
+								className="inline-flex items-center px-2 py-2 sm:px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 								title="Export this proposal as a Markdown file (saved to your computer)"
 							>
 								<svg
-									className="w-4 h-4 mr-2"
+									className="w-4 h-4 sm:mr-2"
 									fill="none"
 									stroke="currentColor"
 									viewBox="0 0 24 24"
@@ -926,16 +943,17 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 										d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
 									/>
 								</svg>
-								Export MD
+								<span className="hidden sm:inline">Export MD</span>
 							</button>
 							<button
 								type="button"
 								onClick={() => setMode("edit")}
-								className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								aria-label="Edit"
+								className="inline-flex items-center px-2 py-2 sm:px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 								title="Edit"
 							>
 								<svg
-									className="w-4 h-4 mr-2"
+									className="w-4 h-4 sm:mr-2"
 									fill="none"
 									stroke="currentColor"
 									viewBox="0 0 24 24"
@@ -949,7 +967,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 										d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
 									/>
 								</svg>
-								Edit
+								<span className="hidden sm:inline">Edit</span>
 							</button>
 						</>
 					) : mode === "edit" || mode === "create" ? (
