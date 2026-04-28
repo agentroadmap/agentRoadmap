@@ -4,11 +4,49 @@
  * Used by both PipelineCron (gate transitions) and the Orchestrator (agent
  * dispatch). Posting an offer decouples the caller from knowing which CLI
  * or binary path to use — the agency that claims the offer handles that.
+ *
+ * P437: every INSERT computes a deterministic idempotency_key over
+ * (project_id, proposal_id, workflow_state, maturity, role, dispatch_version).
+ * The partial UNIQUE INDEX over alive (open|assigned|active) rows means
+ * concurrent callers collide on the same key — the loser's INSERT becomes a
+ * DO UPDATE that bumps attempt_count and surfaces reason='replay' so the
+ * feed shows the de-duplication.
  */
 
+import { createHash } from "node:crypto";
 import { query as defaultQuery } from "../../infra/postgres/pool.ts";
 
 export type QueryFn = typeof defaultQuery;
+
+/**
+ * P689 hotfix: cap repeat (proposal, role) work-offer postings.
+ *
+ * The existing idempotency_key + partial unique index on squad_dispatch only
+ * deduplicates against *currently alive* dispatches. Once a previous
+ * dispatch completes, the next post is a clean INSERT — so a worker loop
+ * that completes-but-doesn't-progress (P687: 60 triage runs in 2h15m)
+ * generates an unbounded billable stream.
+ *
+ * The breaker counts agent_runs (truth-of-execution; outlives squad_dispatch
+ * reaping) for the same (proposal_id, role-or-stage) over the last hour.
+ * Above the threshold, refuse the post and pause the proposal.
+ */
+const DISPATCH_LOOP_THRESHOLD_PER_HOUR = Number(
+	process.env.AGENTHIVE_DISPATCH_LOOP_THRESHOLD ?? "6",
+);
+
+export class DispatchLoopError extends Error {
+	constructor(
+		readonly proposalId: number,
+		readonly role: string,
+		readonly recentRuns: number,
+	) {
+		super(
+			`postWorkOffer: circuit breaker tripped for proposal ${proposalId} role=${role} (${recentRuns} runs in last hour > threshold ${DISPATCH_LOOP_THRESHOLD_PER_HOUR}). gate_scanner_paused=true.`,
+		);
+		this.name = "DispatchLoopError";
+	}
+}
 
 export interface WorkOfferInput {
 	proposalId: number;
@@ -30,15 +68,49 @@ export interface WorkOfferInput {
 	 * allowed tools, MCP quirks, and escalation channels.
 	 */
 	briefingId?: string;
+	/**
+	 * P437 idempotency: when set, callers can advance the dispatch_version to
+	 * force a fresh dispatch row even if a prior one for the same logical
+	 * (proposal, status, maturity, role) already exists. Defaults to 1.
+	 */
+	dispatchVersion?: number;
 }
 
 export interface WorkOfferResult {
 	dispatchId: number;
+	/** True when the INSERT collided with an existing alive dispatch row. */
+	replay: boolean;
+	/** Total number of times this idempotency_key has been posted. */
+	attemptCount: number;
+}
+
+function computeIdempotencyKey(parts: {
+	projectId: number | null;
+	proposalId: number;
+	status: string;
+	maturity: string;
+	role: string;
+	version: number;
+}): string {
+	const raw = [
+		parts.projectId ?? 0,
+		parts.proposalId,
+		parts.status,
+		parts.maturity,
+		parts.role,
+		parts.version,
+	].join(":");
+	return createHash("sha256").update(raw).digest("hex");
 }
 
 /**
  * Insert a work offer into squad_dispatch and notify the work_offers channel.
  * Any registered OfferProvider listening on that channel will race to claim it.
+ *
+ * Idempotent: concurrent callers with the same (project, proposal, status,
+ * maturity, role, version) tuple either INSERT one row (the winner) or hit
+ * ON CONFLICT and increment attempt_count. The returned dispatchId is the
+ * canonical row in either case; `replay=true` flags the de-dup.
  */
 export async function postWorkOffer(
 	input: WorkOfferInput,
@@ -56,49 +128,148 @@ export async function postWorkOffer(
 		? JSON.stringify({ all: input.requiredCapabilities })
 		: "{}";
 
-	const existing = await queryFn<{ id: number }>(
-		`SELECT id
-		 FROM roadmap_workforce.squad_dispatch
-		 WHERE proposal_id = $1
-		   AND dispatch_role = $2
-		   AND (
-		     completed_at IS NULL
-		     OR dispatch_status IN ('assigned', 'active', 'blocked')
-		     OR offer_status IN ('open', 'claimed', 'activated')
-		   )
-		 ORDER BY assigned_at DESC
-		 LIMIT 1`,
+	const dispatchVersion = input.dispatchVersion ?? 1;
+
+	// Read current proposal state + project to compute the idempotency key.
+	// Source from the base table (roadmap_proposal.proposal) because the
+	// roadmap.proposal view doesn't expose project_id.
+	const { rows: ctxRows } = await queryFn<{
+		project_id: number | null;
+		status: string | null;
+		maturity: string | null;
+	}>(
+		`SELECT project_id, status, maturity
+		 FROM roadmap_proposal.proposal
+		 WHERE id = $1`,
+		[input.proposalId],
+	);
+	const ctx = ctxRows[0];
+	if (!ctx) {
+		throw new Error(
+			`postWorkOffer: proposal ${input.proposalId} not found`,
+		);
+	}
+
+	// P689 circuit breaker: bail before posting if (proposal, role) is in a
+	// completed-run loop. agent_runs.stage carries the role under several
+	// historical aliases (uppercase stage name, role string, "gate:STAGE"),
+	// so accept any match.
+	const { rows: loopRows } = await queryFn<{ recent_runs: number }>(
+		`SELECT count(*)::int AS recent_runs
+		   FROM roadmap_workforce.agent_runs
+		  WHERE proposal_id = $1
+		    AND status IN ('completed', 'failed')
+		    AND COALESCE(completed_at, started_at) > now() - interval '1 hour'
+		    AND (
+		      stage = $2
+		      OR stage = upper($2)
+		      OR stage = 'gate:' || $2
+		      OR agent_identity LIKE '%' || $2 || '%'
+		    )`,
 		[input.proposalId, input.role],
 	);
-	const existingId = existing.rows[0]?.id;
-	if (existingId) return { dispatchId: existingId };
+	const recentRuns = loopRows[0]?.recent_runs ?? 0;
+	if (recentRuns > DISPATCH_LOOP_THRESHOLD_PER_HOUR) {
+		await queryFn(
+			`UPDATE roadmap_proposal.proposal
+			    SET gate_scanner_paused = true,
+			        gate_paused_by = 'circuit_breaker',
+			        gate_paused_at = now()
+			  WHERE id = $1 AND gate_scanner_paused = false`,
+			[input.proposalId],
+		);
+		await queryFn(
+			`INSERT INTO roadmap.notification_queue
+			   (proposal_id, severity, kind, title, body, metadata)
+			 VALUES ($1, 'CRITICAL', 'dispatch_loop_detected', $2, $3, $4::jsonb)`,
+			[
+				input.proposalId,
+				`Dispatch loop detected for proposal ${input.proposalId} (${input.role})`,
+				`postWorkOffer refused: ${recentRuns} completed/failed runs for role "${input.role}" in last 1h (threshold ${DISPATCH_LOOP_THRESHOLD_PER_HOUR}). gate_scanner_paused=true. Investigate why the runs are not advancing state/maturity.`,
+				JSON.stringify({
+					proposal_id: input.proposalId,
+					role: input.role,
+					recent_runs: recentRuns,
+					threshold: DISPATCH_LOOP_THRESHOLD_PER_HOUR,
+					proposal_status: ctx.status,
+					proposal_maturity: ctx.maturity,
+				}),
+			],
+		);
+		throw new DispatchLoopError(input.proposalId, input.role, recentRuns);
+	}
 
-	const { rows } = await queryFn<{ id: number }>(
+	const idempotencyKey = computeIdempotencyKey({
+		projectId: ctx.project_id,
+		proposalId: input.proposalId,
+		status: ctx.status ?? "unknown",
+		maturity: ctx.maturity ?? "unknown",
+		role: input.role,
+		version: dispatchVersion,
+	});
+
+	const { rows } = await queryFn<{
+		id: number;
+		attempt_count: number;
+		was_replay: boolean;
+	}>(
 		`INSERT INTO roadmap_workforce.squad_dispatch
 		   (proposal_id, squad_name, dispatch_role, dispatch_status,
-		    offer_status, agent_identity, required_capabilities, metadata)
-		 VALUES ($1, $2, $3, 'open', 'open', NULL, $4::jsonb, $5::jsonb)
-		 RETURNING id`,
+		    offer_status, agent_identity, required_capabilities, metadata,
+		    idempotency_key, dispatch_version, attempt_count)
+		 VALUES ($1, $2, $3, 'open', 'open', NULL, $4::jsonb, $5::jsonb,
+		         $6, $7, 1)
+		 ON CONFLICT (idempotency_key)
+		   WHERE dispatch_status IN ('open', 'assigned', 'active')
+		 DO UPDATE SET
+		   attempt_count = squad_dispatch.attempt_count + 1,
+		   metadata = squad_dispatch.metadata
+		            || jsonb_build_object(
+		                 'last_replay_at', to_jsonb(now()),
+		                 'replay_reason', 'idempotency_collision'
+		               )
+		 RETURNING id,
+		           attempt_count,
+		           (xmax::text::int <> 0) AS was_replay`,
 		[
 			input.proposalId,
 			input.squadName,
 			input.role,
 			caps,
 			JSON.stringify(metadata),
+			idempotencyKey,
+			dispatchVersion,
 		],
 	);
 
-	const dispatchId = rows[0]?.id;
-	if (!dispatchId) throw new Error("postWorkOffer: INSERT returned no id");
+	const row = rows[0];
+	if (!row?.id) throw new Error("postWorkOffer: INSERT returned no id");
+	const dispatchId = row.id;
 
-	await queryFn(`SELECT pg_notify('work_offers', $1)`, [
-		JSON.stringify({
-			event: "emitted",
-			dispatch_id: dispatchId,
-			proposal_id: input.proposalId,
-			role: input.role,
-		}),
-	]);
+	if (!row.was_replay) {
+		await queryFn(`SELECT pg_notify('work_offers', $1)`, [
+			JSON.stringify({
+				event: "emitted",
+				dispatch_id: dispatchId,
+				proposal_id: input.proposalId,
+				role: input.role,
+			}),
+		]);
+	} else {
+		await queryFn(`SELECT pg_notify('work_offers', $1)`, [
+			JSON.stringify({
+				event: "replay",
+				dispatch_id: dispatchId,
+				proposal_id: input.proposalId,
+				role: input.role,
+				attempt_count: row.attempt_count,
+			}),
+		]);
+	}
 
-	return { dispatchId };
+	return {
+		dispatchId,
+		replay: row.was_replay,
+		attemptCount: row.attempt_count,
+	};
 }

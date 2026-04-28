@@ -6,6 +6,11 @@ import type {
 	Proposal,
 } from "../../../shared/types";
 import { apiClient } from "../lib/api";
+import {
+	buildProposalMarkdown,
+	proposalExportFilename,
+	type ProposalExportBundle,
+} from "../../../shared/proposal-markdown-export";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import ChipInput from "./ChipInput";
@@ -713,6 +718,56 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		}
 	}, [onClose, onSaved, proposal]);
 
+	const handleExportMarkdown = useCallback(() => {
+		if (!proposal) return;
+		try {
+			// Merge any in-flight edits over the saved proposal so what the user
+			// sees is what they get. Server-side export (TUI) has the same merge.
+			const merged: typeof proposal = {
+				...proposal,
+				title: title ?? proposal.title,
+				summary: summary ?? proposal.summary,
+				motivation: motivation ?? proposal.motivation,
+				design: design ?? proposal.design,
+				drawbacks: drawbacks ?? proposal.drawbacks,
+				alternatives: alternatives ?? proposal.alternatives,
+				dependencyNote: dependencyNote ?? proposal.dependencyNote,
+				description: description ?? proposal.description,
+				implementationPlan: plan ?? proposal.implementationPlan,
+			};
+			const bundle: ProposalExportBundle = {
+				proposal: merged as never,
+				criteria: criteria ?? [],
+			};
+			const markdown = buildProposalMarkdown(bundle);
+			const filename = proposalExportFilename(merged as never);
+			const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			// Defer revoke so the download can start before the URL goes away.
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	}, [
+		alternatives,
+		criteria,
+		dependencyNote,
+		description,
+		design,
+		drawbacks,
+		motivation,
+		plan,
+		proposal,
+		summary,
+		title,
+	]);
+
 	const handleArchive = async () => {
 		if (!proposal || !onArchive) return;
 		if (
@@ -849,29 +904,54 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 							</button>
 						)}
 					{mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
-						<button
-							type="button"
-							onClick={() => setMode("edit")}
-							className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-							title="Edit"
-						>
-							<svg
-								className="w-4 h-4 mr-2"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-								aria-hidden="true"
-								focusable="false"
+						<>
+							<button
+								type="button"
+								onClick={handleExportMarkdown}
+								className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								title="Export this proposal as a Markdown file (saved to your computer)"
 							>
-								<path
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth={2}
-									d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-								/>
-							</svg>
-							Edit
-						</button>
+								<svg
+									className="w-4 h-4 mr-2"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									aria-hidden="true"
+									focusable="false"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
+									/>
+								</svg>
+								Export MD
+							</button>
+							<button
+								type="button"
+								onClick={() => setMode("edit")}
+								className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+								title="Edit"
+							>
+								<svg
+									className="w-4 h-4 mr-2"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									aria-hidden="true"
+									focusable="false"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+									/>
+								</svg>
+								Edit
+							</button>
+						</>
 					) : mode === "edit" || mode === "create" ? (
 						<div className="flex items-center gap-2">
 							<button
