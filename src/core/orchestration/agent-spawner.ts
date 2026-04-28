@@ -1105,14 +1105,21 @@ export async function escalateOrNotify(
 	const ladder = ladderRows.map((r) => r.model_name);
 
 	if (ladder.length === 0) {
-		// No models in registry for this provider — skip escalation, notify
+		// No models in registry for this provider — skip escalation, notify.
+		// P674: emit kind+payload; transport resolved by notification_route.
 		await query(
-			`INSERT INTO notification_queue (proposal_id, severity, channel, title, body)
-       VALUES ($1, 'CRITICAL', 'discord', $2, $3)`,
+			`INSERT INTO notification_queue (proposal_id, severity, kind, title, body, metadata)
+       VALUES ($1, 'CRITICAL', 'spawn_no_ladder', $2, $3, $4::jsonb)`,
 			[
 				proposalId ?? null,
 				`Agent task failed — no escalation ladder for provider "${provider}"`,
 				`Worktree: ${result.worktree}\nExit: ${result.exitCode}\nStderr: ${result.stderr.slice(0, 400)}`,
+				JSON.stringify({
+					provider,
+					worktree: result.worktree,
+					exit_code: result.exitCode,
+					stderr_tail: result.stderr.slice(-400),
+				}),
 			],
 		);
 		return null;
@@ -1131,14 +1138,22 @@ export async function escalateOrNotify(
 		return spawnAgent({ ...req, model: nextModel });
 	}
 
-	// All escalations exhausted — notify USER
+	// All escalations exhausted — notify USER.
+	// P674: emit kind+payload; transport resolved by notification_route.
 	await query(
-		`INSERT INTO notification_queue (proposal_id, severity, channel, title, body)
-     VALUES ($1, 'CRITICAL', 'discord', $2, $3)`,
+		`INSERT INTO notification_queue (proposal_id, severity, kind, title, body, metadata)
+     VALUES ($1, 'CRITICAL', 'spawn_ladder_exhausted', $2, $3, $4::jsonb)`,
 		[
 			proposalId ?? null,
 			`Agent task failed after full escalation ladder`,
 			`Worktree: ${result.worktree}\nExit: ${result.exitCode}\nStderr: ${result.stderr.slice(0, 400)}`,
+			JSON.stringify({
+				provider,
+				worktree: result.worktree,
+				exit_code: result.exitCode,
+				ladder,
+				stderr_tail: result.stderr.slice(-400),
+			}),
 		],
 	);
 
