@@ -1646,7 +1646,7 @@ async function claimImplicitGateReady(
           LIMIT 1
        ) dispatch ON true
       WHERE p.maturity = 'mature'
-        AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge')
+        AND LOWER(p.status) IN ('draft', 'review', 'develop', 'merge', 'triage', 'fix')
         AND dispatch.id IS NULL
         AND ($1::bigint IS NULL OR p.id = $1)
       ORDER BY p.modified_at ASC, p.id ASC
