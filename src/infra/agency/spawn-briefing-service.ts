@@ -5,11 +5,16 @@
  * - briefing_assemble(task_context): fetch memory, MCP quirks, fallback playbook, fill budget, record briefing
  * - briefing_load(briefing_id): retrieve full briefing for child boot check
  * - spawn_summary_emit(briefing_id, outcome, findings): child completion notification
+ *
+ * P194: Project memory is loaded during briefing assembly and stored in
+ * project_context + cache_control columns so dispatchers can inject a
+ * stable, cacheable system-prompt prefix before every API call.
  */
 
 import { v4 as uuidv4 } from "uuid";
 import { query } from "../postgres/pool.js";
 import type { Pool } from "pg";
+import { MemoryService } from "../../memory/memory_service.ts";
 
 export interface TaskContext {
   task_id: string;
@@ -68,6 +73,10 @@ export interface SpawnBriefing {
   // Provenance
   briefed_by: string;
   briefed_at: string;
+
+  // P194: project memory context injected at dispatch time
+  project_context?: Record<string, Record<string, unknown>>;
+  cache_control?: { type: "ephemeral" };
 }
 
 export interface SpawnSummaryPayload {
@@ -120,7 +129,39 @@ export async function briefingAssemble(
     max_tool_calls: null,
   };
 
-  // Step 5: Record briefing
+  // Step 5: P194 — Load project memory and agent semantic context before dispatch.
+  // Injecting these into the briefing lets the dispatcher prepend a stable,
+  // cacheable system-prompt prefix, reducing repeated token spend across the fleet.
+  const memoryService = new MemoryService();
+  let project_context: Record<string, Record<string, unknown>> | undefined;
+  const cache_control: { type: "ephemeral" } = { type: "ephemeral" };
+
+  try {
+    const [architecture, workflow, conventions] = await Promise.all([
+      memoryService.getProjectMemory("architecture"),
+      memoryService.getProjectMemory("workflow_states"),
+      memoryService.getProjectMemory("conventions"),
+    ]);
+
+    project_context = {};
+    if (architecture) project_context["architecture"] = architecture;
+    if (workflow) project_context["workflow_states"] = workflow;
+    if (conventions) project_context["conventions"] = conventions;
+
+    // Surface project memory entries into inherited_memory so the
+    // briefing_load consumer can include them in the system-prompt prefix.
+    for (const [pmKey, pmContent] of Object.entries(project_context)) {
+      inherited_memory.push({
+        key: `project_memory:${pmKey}`,
+        body: JSON.stringify(pmContent),
+      });
+    }
+  } catch {
+    // Non-fatal: project_memory table may not exist yet (pre-migration).
+    // Proceed without injecting project context.
+  }
+
+  // Step 6: Record briefing
   const briefing: SpawnBriefing = {
     briefing_id,
     task_id: task.task_id,
@@ -145,6 +186,9 @@ export async function briefingAssemble(
 
     briefed_by,
     briefed_at: new Date().toISOString(),
+
+    project_context,
+    cache_control,
   };
 
   // Record in DB
@@ -168,8 +212,10 @@ export async function briefingAssemble(
       liaison_agent,
       rescue_team_channel,
       request_assistance_threshold,
-      briefed_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      briefed_by,
+      project_context,
+      cache_control
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     `,
     [
       briefing_id,
@@ -190,6 +236,8 @@ export async function briefingAssemble(
       task.rescue_team_channel || null,
       task.request_assistance_threshold || 3,
       briefed_by,
+      project_context ? JSON.stringify(project_context) : null,
+      JSON.stringify(cache_control),
     ]
   );
 
@@ -221,7 +269,9 @@ export async function briefingLoad(briefing_id: string): Promise<SpawnBriefing> 
       rescue_team_channel,
       request_assistance_threshold,
       briefed_by,
-      briefed_at
+      briefed_at,
+      project_context,
+      cache_control
     FROM roadmap.spawn_briefing
     WHERE briefing_id = $1
     `,
@@ -257,6 +307,9 @@ export async function briefingLoad(briefing_id: string): Promise<SpawnBriefing> 
 
     briefed_by: row.briefed_by,
     briefed_at: row.briefed_at,
+
+    project_context: row.project_context ?? undefined,
+    cache_control: row.cache_control ?? undefined,
   };
 }
 
