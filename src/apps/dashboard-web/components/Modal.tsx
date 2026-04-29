@@ -53,7 +53,7 @@ const Modal: React.FC<ModalProps> = ({
 			}}
 		>
 			<div
-				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-[100dvh] sm:max-h-[94vh] overflow-y-auto transition-colors duration-200`}
+				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-full sm:max-h-[94vh] overflow-y-auto transition-colors duration-200`}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="modal-title"
