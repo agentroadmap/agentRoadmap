@@ -36,7 +36,34 @@ const agentIdentity =
  * Resolve provider from environment or identity prefix.
  * Explicit AGENTHIVE_AGENT_PROVIDER takes precedence.
  * Falls back to DB route if identity prefix is not a recognized provider.
+ *
+ * P743: known-provider list is sourced from roadmap.model_routes (DISTINCT
+ * agent_provider) rather than a hardcoded literal array. Adding a new
+ * provider is a DB row change.
  */
+let knownProvidersPromise: Promise<Set<string>> | undefined;
+async function loadKnownProviders(): Promise<Set<string>> {
+	if (!knownProvidersPromise) {
+		knownProvidersPromise = (async () => {
+			try {
+				const { rows } = await getPool().query<{ agent_provider: string }>(
+					`SELECT DISTINCT agent_provider
+					   FROM roadmap.model_routes
+					  WHERE is_enabled = true AND agent_provider IS NOT NULL`,
+				);
+				return new Set(rows.map((r) => r.agent_provider));
+			} catch (err) {
+				console.warn(
+					"[Agency] Failed to load known providers from DB; identity-prefix detection disabled:",
+					err,
+				);
+				return new Set<string>();
+			}
+		})();
+	}
+	return knownProvidersPromise;
+}
+
 async function resolveProvider(): Promise<string> {
 	// Explicit provider from env takes precedence
 	if (process.env.AGENTHIVE_AGENT_PROVIDER) {
@@ -45,10 +72,8 @@ async function resolveProvider(): Promise<string> {
 
 	// Try to extract provider from identity prefix (e.g. "claude/agency-bot" → "claude")
 	const identityPrefix = agentIdentity.split("/")[0];
-
-	// Known providers: copilot, claude, codex, hermes
-	const knownProviders = ["copilot", "claude", "codex", "hermes"];
-	if (knownProviders.includes(identityPrefix)) {
+	const known = await loadKnownProviders();
+	if (known.has(identityPrefix)) {
 		return identityPrefix;
 	}
 
@@ -58,8 +83,11 @@ async function resolveProvider(): Promise<string> {
 		return dbProvider;
 	}
 
-	// Last resort: default to "copilot"
-	return "copilot";
+	throw new Error(
+		`[Agency] Unable to resolve provider for identity "${agentIdentity}". ` +
+			`Set AGENTHIVE_AGENT_PROVIDER, register the prefix in roadmap.model_routes, ` +
+			`or seed at least one enabled route.`,
+	);
 }
 
 const offerProvider = new OfferProvider({

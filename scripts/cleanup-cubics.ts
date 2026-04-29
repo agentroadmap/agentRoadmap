@@ -15,8 +15,14 @@ type CubicList = {
 	cubics: Cubic[];
 };
 
+// P743: MCP client identity comes from env, not a hardcoded provider literal.
+// 'cleanup-cubics' is the script's own identity (it's not Hermes).
+const clientName =
+	process.env.AGENTHIVE_AGENT_IDENTITY ??
+	process.env.AGENTHIVE_MCP_CLIENT_NAME ??
+	"cleanup-cubics";
 const transport = new SSEClientTransport(new URL(getMcpUrl()));
-const client = new Client({ name: "hermes", version: "1.0.0" });
+const client = new Client({ name: clientName, version: "1.0.0" });
 await client.connect(transport);
 
 // List all cubics

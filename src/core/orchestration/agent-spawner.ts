@@ -471,6 +471,23 @@ export class SpawnPolicyViolation extends Error {
 }
 
 /**
+ * P743: thrown when detectProvider() exhausts all configured sources
+ * (.env.agent, AGENTHIVE_DEFAULT_PROVIDER, roadmap.model_routes) without
+ * finding a usable provider. Loud failure preferred over a hardcoded
+ * source literal that may route to an unconfigured provider.
+ */
+export class NoProviderConfigured extends Error {
+	constructor(readonly worktreeName: string) {
+		super(
+			`[P743] No provider configured for worktree "${worktreeName}". ` +
+				`Set AGENT_PROVIDER in .env.agent, AGENTHIVE_DEFAULT_PROVIDER in ` +
+				`environment, or seed at least one enabled route in roadmap.model_routes.`,
+		);
+		this.name = "NoProviderConfigured";
+	}
+}
+
+/**
  * P742: thrown when host_model_policy excludes every available route at
  * the picker layer. Distinct from SpawnPolicyViolation, which fires
  * post-resolution when an already-picked route is rejected. NoPolicyAllowedRoute
@@ -675,9 +692,14 @@ export async function detectProvider(worktreeName: string, worktreeRoot: string 
 	// No .env.agent — resolve from DB so switching providers requires only a DB change
 	const active = await resolveActiveRouteProvider();
 	if (active) return active;
-	// Last resort: use the env var if set
+	// Last resort: use the env var if set.
+	// P743: removed the silent `?? "hermes"` fallback. Provider identity must
+	// originate from .env.agent, AGENTHIVE_DEFAULT_PROVIDER, or roadmap.model_routes
+	// — never a hardcoded source literal. Loud failure is preferred over routing
+	// to a provider the operator may not have configured.
 	const envProvider = process.env.AGENTHIVE_DEFAULT_PROVIDER as AgentProvider | undefined;
-	return envProvider ?? "hermes";
+	if (envProvider) return envProvider;
+	throw new NoProviderConfigured(worktreeName);
 }
 
 // ─── P235: Platform-Aware Model Constraints ──────────────────────────────────

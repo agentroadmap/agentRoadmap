@@ -141,7 +141,7 @@ export const stopSchema: DomainSchema = {
           type: "string",
           required: true,
           description: "Host name",
-          example: "hermes",
+          example: "<host-name>",
         },
       ],
       flags: [

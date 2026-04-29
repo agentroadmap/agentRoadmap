@@ -59,10 +59,11 @@ function isAuthority(identity: string): boolean {
 
 /**
  * Extract the team/agency prefix from an agent identity.
- * Examples:
- *   "hermes/agency-xiaomi/worker-1234" -> "hermes/agency-xiaomi"
- *   "codex-one"                       -> "codex"
- *   "hermes"                          -> "hermes"
+ * Examples (provider names below are illustrative; real values come from
+ * agent_registry — never hardcode provider identity in source):
+ *   "<provider>/<agency>/<worker>" -> "<provider>/<agency>"
+ *   "<provider>-<n>"               -> "<provider>"
+ *   "<provider>"                   -> "<provider>"
  */
 function teamPrefix(identity: string): string {
 	const slashIdx = identity.lastIndexOf("/");

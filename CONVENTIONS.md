@@ -257,6 +257,20 @@ Notes:
 
 ## 6. Database Conventions
 
+### 6.0a Provider/agency identity is DB-sourced (P743)
+
+Provider, agency, and route-provider identity strings (`route_provider`, `agent_provider`, `agency_identity`) **must originate from DB tables**, not source-code literals. Adding, renaming, or removing a provider must be a row change in:
+
+- `roadmap.model_routes` — `agent_provider`, `route_provider`, `agent_cli`
+- `roadmap_workforce.provider_registry` — `agency_identity`
+- `roadmap.host_model_policy` — `allowed_providers`, `forbidden_providers`
+
+**Hardcoded literals like `"hermes"`, `"claude"`, `"codex"`, `"copilot"` as provider identity in `src/` or `scripts/` are forbidden.** Code that needs a provider list reads it from `model_routes` (cached per process). Code that needs a default reads it from env (`AGENTHIVE_DEFAULT_PROVIDER`) or `model_routes`; if neither yields a value, throw rather than default to a literal.
+
+**Exempt: CLI binary names.** When a string is the on-disk name of an executable (argv[0], shebang, or build-time type union over the small set of installed binaries — `claude`, `codex`, `hermes`, `gemini`, `copilot`), that's a deployment fact, not a provider concept. The `CliName` union in `src/core/runtime/cli-builders.ts`, the `case "hermes":` arms in `agent-spawner.ts`, and `route.cliPath ?? "<binary>"` defaults are allowed.
+
+**Why:** today's loop debugging surfaced multiple drifts where DB and code disagreed on the canonical identity (workflow_name='RFC 5-Stage' vs template name 'Standard RFC'; provider fallback to "hermes" silently routing to an unconfigured provider). DB-as-source-of-truth makes provider changes a one-row edit.
+
 ### 6.0 Database Topology (target architecture)
 
 AgentHive runs on a **two-tier Postgres topology**:
