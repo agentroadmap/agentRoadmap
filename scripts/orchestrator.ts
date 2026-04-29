@@ -2677,18 +2677,38 @@ async function main() {
 			async () => {
 				if (stopping) return;
 				try {
-					// Find workflows in NEW states that haven't had agents dispatched yet
-					// (workflows with no recent agent activity, ordered by recency)
+					// Find workflows that need an agent. Three exclusions matter — without
+					// all three, the LIMIT budget gets eaten by proposals that the
+					// downstream handleStateChange will just no-op:
+					//   1. transition_queue already has a pending/processing row
+					//   2. proposal already has running agent_runs
+					//   3. proposal already has alive squad_dispatch (open/assigned/active)
+					// Order by oldest-first (ASC) so backlog drains; otherwise newer
+					// proposals can monopolize every cycle and starve idle ones for days
+					// (observed: P455 stuck DEVELOP+new for 3 days behind 10+ newer rows).
 					const result = await query(
 						`SELECT w.id, w.proposal_id, w.current_stage
            FROM roadmap.workflows w
+           JOIN roadmap_proposal.proposal p ON p.id = w.proposal_id
            WHERE w.completed_at IS NULL
+             AND p.maturity IN ('new', 'active')
+             AND p.gate_scanner_paused = false
              AND NOT EXISTS (
                SELECT 1 FROM roadmap.transition_queue tq
                WHERE tq.proposal_id = w.proposal_id
                  AND tq.status IN ('pending', 'processing')
              )
-           ORDER BY w.started_at DESC
+             AND NOT EXISTS (
+               SELECT 1 FROM roadmap_workforce.agent_runs ar
+               WHERE ar.proposal_id = w.proposal_id
+                 AND ar.status = 'running'
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM roadmap_workforce.squad_dispatch sd
+               WHERE sd.proposal_id = w.proposal_id
+                 AND sd.dispatch_status IN ('open','assigned','active','blocked')
+             )
+           ORDER BY w.started_at ASC
            LIMIT 5`,
 					);
 
