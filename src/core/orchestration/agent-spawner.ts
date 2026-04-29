@@ -471,6 +471,51 @@ export class SpawnPolicyViolation extends Error {
 }
 
 /**
+ * P742: thrown when host_model_policy excludes every available route at
+ * the picker layer. Distinct from SpawnPolicyViolation, which fires
+ * post-resolution when an already-picked route is rejected. NoPolicyAllowedRoute
+ * means the picker never found a candidate — fail-closed at resolution time.
+ */
+export class NoPolicyAllowedRoute extends Error {
+	constructor(
+		readonly host: string,
+		readonly provider: string,
+		readonly hint: string | null,
+	) {
+		super(
+			`[P742] No host_model_policy-allowed route for host="${host}" provider="${provider}" hint=${hint ? `"${hint}"` : "null"}. Check roadmap.host_model_policy.`,
+		);
+		this.name = "NoPolicyAllowedRoute";
+	}
+}
+
+/**
+ * P742: SQL fragment that filters model_routes by host_model_policy. The
+ * host name is bound at $${hostParamIdx}.
+ *
+ *   - host has no policy row → allow any (legacy fallback)
+ *   - allowed_providers non-empty → route_provider must be in the array
+ *   - forbidden_providers contains route_provider → exclude
+ */
+function hostPolicyFilterSql(hostParamIdx: number, alias = "mr"): string {
+	return `(
+		EXISTS (
+			SELECT 1 FROM roadmap.host_model_policy hp
+			 WHERE hp.host_name = $${hostParamIdx}::text
+			   AND (
+			     coalesce(array_length(hp.allowed_providers, 1), 0) = 0
+			     OR ${alias}.route_provider = ANY(hp.allowed_providers)
+			   )
+			   AND NOT (${alias}.route_provider = ANY(hp.forbidden_providers))
+		)
+		OR NOT EXISTS (
+			SELECT 1 FROM roadmap.host_model_policy hp
+			 WHERE hp.host_name = $${hostParamIdx}::text
+		)
+	)`;
+}
+
+/**
  * Enforce host-level spawn policy. Called after resolveModelRoute but before
  * the CLI subprocess is launched. Violations are recorded to
  * roadmap.escalation_log with severity=high and the spawn is aborted.
@@ -678,37 +723,44 @@ async function resolveModelRoute(
 	const perMillionPricing = await supportsPerMillionRoutePricing();
 
 	const fetchRoute = (modelName: string) => {
+		// P742: $3 binds AGENTHIVE_HOST so the policy filter (no-host-row
+		// allows any; non-empty allowed_providers narrows; forbidden_providers
+		// excludes) runs alongside the model+provider match. Routes that
+		// would have been rejected post-hoc by assertSpawnAllowed never get
+		// returned here.
 		if (perMillionPricing) {
 		return query<RouteRow>(
-			`SELECT model_name, route_provider, agent_provider,
-               agent_cli, cli_path, api_spec, base_url, plan_type,
-               cost_per_million_input, cost_per_million_output,
-               api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-               api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-        FROM roadmap.model_routes
-        WHERE model_name = $1
-          AND agent_provider = $2
-          AND is_enabled = true
-        ORDER BY priority ASC, COALESCE(cost_per_million_input, 0) ASC
+			`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+               mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
+               mr.cost_per_million_input, mr.cost_per_million_output,
+               mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+               mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+        FROM roadmap.model_routes mr
+        WHERE mr.model_name = $1
+          AND mr.agent_provider = $2
+          AND mr.is_enabled = true
+          AND ${hostPolicyFilterSql(3, "mr")}
+        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC
         LIMIT 1`,
-				[modelName, provider],
+				[modelName, provider, AGENTHIVE_HOST],
 			);
 		}
 
 		return query<RouteRow>(
-			`SELECT model_name, route_provider, agent_provider,
-              agent_cli, cli_path, api_spec, base_url, plan_type,
+			`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+              mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
               NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output,
-              api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-              api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-       FROM roadmap.model_routes
-       WHERE model_name = $1
-         AND agent_provider = $2
-         AND is_enabled = true
-        ORDER BY priority ASC
+              mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+              mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+       FROM roadmap.model_routes mr
+       WHERE mr.model_name = $1
+         AND mr.agent_provider = $2
+         AND mr.is_enabled = true
+         AND ${hostPolicyFilterSql(3, "mr")}
+        ORDER BY mr.priority ASC
         LIMIT 1`,
-			[modelName, provider],
+			[modelName, provider, AGENTHIVE_HOST],
 		);
 	};
 
@@ -750,38 +802,41 @@ async function resolveModelRoute(
 	}
 
 	// Default: use DB is_default flag first, then cheapest enabled as fallback.
+	// P742: also policy-filter so a forbidden-on-this-host default is never returned.
 	const { rows } = perMillionPricing
 		? await query<RouteRow>(
-				`SELECT model_name, route_provider, agent_provider,
-               agent_cli, cli_path, api_spec, base_url, plan_type,
-               cost_per_million_input, cost_per_million_output,
-               api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-               api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-        FROM roadmap.model_routes
-        WHERE agent_provider = $1
-          AND is_enabled = true
+				`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+               mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
+               mr.cost_per_million_input, mr.cost_per_million_output,
+               mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+               mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+        FROM roadmap.model_routes mr
+        WHERE mr.agent_provider = $1
+          AND mr.is_enabled = true
+          AND ${hostPolicyFilterSql(2, "mr")}
         ORDER BY
-          CASE WHEN is_default = true THEN 0 ELSE 1 END,
-          priority ASC,
-          COALESCE(cost_per_million_input, 0) ASC
+          CASE WHEN mr.is_default = true THEN 0 ELSE 1 END,
+          mr.priority ASC,
+          COALESCE(mr.cost_per_million_input, 0) ASC
         LIMIT 1`,
-				[provider],
+				[provider, AGENTHIVE_HOST],
 			)
 		: await query<RouteRow>(
-				`SELECT model_name, route_provider, agent_provider,
-              agent_cli, cli_path, api_spec, base_url, plan_type,
+				`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+              mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
               NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output,
-              api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-              api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-       FROM roadmap.model_routes
-       WHERE agent_provider = $1
-         AND is_enabled = true
+              mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+              mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+       FROM roadmap.model_routes mr
+       WHERE mr.agent_provider = $1
+         AND mr.is_enabled = true
+         AND ${hostPolicyFilterSql(2, "mr")}
         ORDER BY
-          CASE WHEN is_default = true THEN 0 ELSE 1 END,
-          priority ASC
+          CASE WHEN mr.is_default = true THEN 0 ELSE 1 END,
+          mr.priority ASC
         LIMIT 1`,
-				[provider],
+				[provider, AGENTHIVE_HOST],
 			);
 
 	if (rows.length > 0) {
@@ -790,44 +845,61 @@ async function resolveModelRoute(
 		return route;
 	}
 
-	// Host-level fallback (legacy, kept for transition)
+	// Host-level fallback (legacy, kept for transition).
+	// P742: policy-filter here too — a host-default model that maps to a
+	// forbidden route_provider must NOT be returned.
 	const fallbackModel = await getHostDefaultModel();
 	if (fallbackModel) {
 		const { rows: defaultRows } = perMillionPricing
 			? await query<RouteRow>(
-					`SELECT model_name, route_provider, agent_provider,
-               agent_cli, cli_path, api_spec, base_url, plan_type,
-               cost_per_million_input, cost_per_million_output,
-               api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-               api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-        FROM roadmap.model_routes
-        WHERE model_name = $1
-          AND agent_provider = $2
-          AND is_enabled = true
-        ORDER BY priority ASC, COALESCE(cost_per_million_input, 0) ASC
+					`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+               mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
+               mr.cost_per_million_input, mr.cost_per_million_output,
+               mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+               mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+        FROM roadmap.model_routes mr
+        WHERE mr.model_name = $1
+          AND mr.agent_provider = $2
+          AND mr.is_enabled = true
+          AND ${hostPolicyFilterSql(3, "mr")}
+        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC
         LIMIT 1`,
-					[fallbackModel, provider],
+					[fallbackModel, provider, AGENTHIVE_HOST],
 				)
 			: await query<RouteRow>(
-					`SELECT model_name, route_provider, agent_provider,
-              agent_cli, cli_path, api_spec, base_url, plan_type,
+					`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+              mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
               NULL::numeric AS cost_per_million_input,
               NULL::numeric AS cost_per_million_output,
-              api_key_env, api_key_fallback_env, base_url_env, cli_api_key_env,
-              api_key_primary, api_key_secondary, spawn_toolsets, spawn_delegate
-       FROM roadmap.model_routes
-       WHERE model_name = $1
-         AND agent_provider = $2
-         AND is_enabled = true
-        ORDER BY priority ASC
+              mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
+              mr.api_key_primary, mr.api_key_secondary, mr.spawn_toolsets, mr.spawn_delegate
+       FROM roadmap.model_routes mr
+       WHERE mr.model_name = $1
+         AND mr.agent_provider = $2
+         AND mr.is_enabled = true
+         AND ${hostPolicyFilterSql(3, "mr")}
+        ORDER BY mr.priority ASC
         LIMIT 1`,
-					[fallbackModel, provider],
+					[fallbackModel, provider, AGENTHIVE_HOST],
 				);
 		if (defaultRows.length > 0) {
 			const route = toModelRoute(defaultRows[0]);
 			assertResolvedRouteMetadata(provider, route);
 			return route;
 		}
+	}
+
+	// P742: distinguish "no route at all for this provider" from
+	// "host_model_policy excluded everything." The former is a misconfiguration;
+	// the latter is the precise scenario HF-E was filed to catch.
+	const { rows: anyRowsForProvider } = await query<{ count: number }>(
+		`SELECT COUNT(*)::int AS count
+		   FROM roadmap.model_routes
+		  WHERE agent_provider = $1 AND is_enabled = true`,
+		[provider],
+	);
+	if ((anyRowsForProvider[0]?.count ?? 0) > 0) {
+		throw new NoPolicyAllowedRoute(AGENTHIVE_HOST, provider, hint ?? null);
 	}
 
 	throw new Error(
