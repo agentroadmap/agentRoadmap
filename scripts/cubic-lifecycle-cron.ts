@@ -1,20 +1,18 @@
 #!/usr/bin/env -S bun run
-/**
- * Cubic Lifecycle Cron Job (P196)
- *
- * Periodic maintenance for cubic lifecycle management:
- * 1. Sync cubic_state from cubics table (fix drift)
- * 2. Mark idle cubics (ACTIVE → IDLE after 5 min inactivity)
- * 3. Sync completed cubics (COMPLETED status)
- * 4. Expire stale cubics (IDLE/COMPLETED for 30+ min → ARCHIVED)
- * 5. Expire very old cubics (any status, 60+ min old → expired)
- *
- * Run via crontab or systemd timer:
- *   */15 * * * * cd /data/code/AgentHive && bun run scripts/cubic-lifecycle-cron.ts
- *
- * Or as a one-shot:
- *   bun run scripts/cubic-lifecycle-cron.ts [--dry-run] [--no-worktree-cleanup]
- */
+// Cubic Lifecycle Cron Job (P196)
+//
+// Periodic maintenance for cubic lifecycle management:
+//   1. Sync cubic_state from cubics table (fix drift)
+//   2. Mark idle cubics (ACTIVE → IDLE after 5 min inactivity)
+//   3. Sync completed cubics (COMPLETED status)
+//   4. Expire stale cubics (IDLE/COMPLETED for 30+ min → ARCHIVED)
+//   5. Expire very old cubics (any status, 60+ min old → expired)
+//
+// Run via crontab or systemd timer (every 15 minutes):
+//   */15 * * * * cd /data/code/AgentHive && bun run scripts/cubic-lifecycle-cron.ts
+//
+// Or as a one-shot:
+//   bun run scripts/cubic-lifecycle-cron.ts [--dry-run] [--no-worktree-cleanup]
 
 import { CubicIdleDetector } from "../src/core/orchestration/cubic-idle-detector.ts";
 import { CubicCleanupService } from "../src/core/orchestration/cubic-cleanup.ts";

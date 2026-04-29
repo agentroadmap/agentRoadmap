@@ -95,10 +95,10 @@ export class CubicCleanupService {
 			[cubicId],
 		);
 
-		// Audit log
+		// Audit log — 'delete' is the closest valid action for expiry
 		await query(
 			`INSERT INTO roadmap.audit_log (entity_type, entity_id, action, changed_by)
-			 VALUES ('cubic', $1, 'cleanup_expired', 'cubic-cleanup-service')`,
+			 VALUES ('cubic', $1, 'delete', 'cubic-cleanup-service')`,
 			[cubicId],
 		);
 	}
