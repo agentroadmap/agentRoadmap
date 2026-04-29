@@ -93,6 +93,36 @@ class MockQueryStore {
 
 		// Mock proposal transition
 		if (sql.includes("UPDATE roadmap_proposal.proposal")) {
+			// P740 (HF-C): UPDATE statements that bump maturity should also
+			// record the new value so subsequent SELECT maturity sees it.
+			//   UPDATE ... SET maturity = $2, modified_at = NOW() ... WHERE id = $3
+			if (sql.includes("SET maturity")) {
+				const newMaturity = params[1];
+				const id = params[2];
+				const proposal = this.proposals.get(id);
+				if (proposal) proposal.maturity = newMaturity;
+			}
+			return { rows: [] as T[] };
+		}
+
+		// P740 (HF-C): assertStatusAdvanced re-reads after transition.
+		if (sql.includes("SELECT status FROM roadmap_proposal.proposal")) {
+			const id = params[0];
+			const transitioned = this.transitioned.get(id);
+			const proposal = this.proposals.get(id);
+			const status = transitioned ?? proposal?.status ?? null;
+			return { rows: status ? [{ status }] as T[] : [] };
+		}
+
+		// P740 (HF-C): assertMaturityDemoted re-reads after setMaturity.
+		if (sql.includes("SELECT maturity FROM roadmap_proposal.proposal")) {
+			const id = params[0];
+			const proposal = this.proposals.get(id);
+			return { rows: proposal ? [{ maturity: proposal.maturity }] as T[] : [] };
+		}
+
+		// P740 (HF-C): discussion insert from setMaturity is best-effort.
+		if (sql.includes("INSERT INTO roadmap_proposal.proposal_discussions")) {
 			return { rows: [] as T[] };
 		}
 

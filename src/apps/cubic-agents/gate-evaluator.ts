@@ -30,6 +30,41 @@ export interface GateTaskRequest {
 	to_state: string;
 }
 
+/**
+ * P740 (HF-C): thrown when a gate decision was recorded but the resulting
+ * proposal state mutation didn't actually persist. Caller should let it
+ * bubble — surrounding job machinery marks the run as failed; circuit
+ * breaker (P689) will pause gate scanning after N repeats.
+ */
+export class GatePersistenceFailure extends Error {
+	readonly proposalId: number;
+	readonly displayId: string;
+	readonly kind: "status" | "maturity";
+	readonly expected: string;
+	readonly actual: string | null;
+	readonly gateName: string;
+	constructor(input: {
+		proposalId: number;
+		displayId: string;
+		kind: "status" | "maturity";
+		expected: string;
+		actual: string | null;
+		gateName: string;
+	}) {
+		super(
+			`gate_persistence_failure: ${input.displayId} gate=${input.gateName} ` +
+				`${input.kind} expected=${input.expected} actual=${input.actual ?? "<missing>"}`,
+		);
+		this.name = "GatePersistenceFailure";
+		this.proposalId = input.proposalId;
+		this.displayId = input.displayId;
+		this.kind = input.kind;
+		this.expected = input.expected;
+		this.actual = input.actual;
+		this.gateName = input.gateName;
+	}
+}
+
 // ─── Gate Evaluator Agent ────────────────────────────────────────────────────
 
 export class GateEvaluatorAgent {
@@ -118,29 +153,187 @@ export class GateEvaluatorAgent {
 		// Step 6: Record decision
 		await this.recordGateDecision(proposal, gate, decision, acStatus);
 
-		// Step 7: Auto-transition if approved
-		if (decision.verdict === "approve") {
-			try {
-				const transitionFn = this.transitionProposalFn || (await this.getDefaultTransitionFn());
-				await transitionFn(
+		// Step 7: Apply verdict (transition + persistence verification +
+		// maturity demotion). P740 (HF-C): previously this only handled
+		// `approve`; `hold`/`reject` left maturity='mature' and re-fired
+		// fn_notify_gate_ready forever.
+		await this.applyVerdict(proposal, gate, decision);
+
+		return decision;
+	}
+
+	/**
+	 * P740 (HF-C): apply the verdict and verify the side-effects actually
+	 * persisted. Without this, a hold/reject decision was logged to
+	 * gate_decision_log but the proposal stayed maturity='mature', so the
+	 * gate-ready notification kept firing on every tick — the silent loop
+	 * we observed with P435 (60+ reclaims) and others.
+	 */
+	private async applyVerdict(
+		proposal: ProposalBrief,
+		gate: GateBrief,
+		decision: GateDecision,
+	): Promise<void> {
+		switch (decision.verdict) {
+			case "approve": {
+				try {
+					const transitionFn =
+						this.transitionProposalFn || (await this.getDefaultTransitionFn());
+					await transitionFn(
+						proposal.id,
+						gate.to_state,
+						"gate-evaluator",
+						`Auto-advanced via gate ${gate.name}`,
+					);
+				} catch (err) {
+					console.error(
+						`[GateEvaluator] ✗ Failed to transition proposal:`,
+						err,
+					);
+					throw err;
+				}
+				await this.assertStatusAdvanced(
 					proposal.id,
+					proposal.display_id ?? `#${proposal.id}`,
 					gate.to_state,
-					"gate-evaluator",
-					`Auto-advanced via gate ${gate.name}`,
+					gate.name,
 				);
 				console.log(
 					`[GateEvaluator] ✓ Transitioned ${proposal.display_id} to ${gate.to_state}`,
 				);
-			} catch (err) {
-				console.error(
-					`[GateEvaluator] ✗ Failed to transition proposal:`,
-					err,
-				);
-				throw err;
+				return;
 			}
+			case "hold":
+			case "reject": {
+				const targetMaturity =
+					decision.verdict === "reject" ? "obsolete" : "active";
+				try {
+					await this.setMaturity(
+						proposal.id,
+						targetMaturity,
+						`Gate ${gate.name} ${decision.verdict}: ${decision.reason ?? "no reason given"}`,
+					);
+				} catch (err) {
+					console.error(
+						`[GateEvaluator] ✗ Failed to set maturity for ${decision.verdict}:`,
+						err,
+					);
+					throw err;
+				}
+				await this.assertMaturityDemoted(
+					proposal.id,
+					proposal.display_id ?? `#${proposal.id}`,
+					targetMaturity,
+					gate.name,
+				);
+				console.log(
+					`[GateEvaluator] ✓ Demoted ${proposal.display_id} maturity to ${targetMaturity} after ${decision.verdict}`,
+				);
+				return;
+			}
+			default:
+				// 'pending' or future verdicts: do not mutate state.
+				return;
 		}
+	}
 
-		return decision;
+	/**
+	 * Re-read proposal.status and throw if it didn't advance to the gate's
+	 * to_state. This catches silent failures: workflow_name lookup miss,
+	 * lease conflicts, FK rejects — anywhere the SQL update returns success
+	 * but the row state doesn't reflect the intended change.
+	 */
+	private async assertStatusAdvanced(
+		proposalId: number,
+		displayId: string,
+		expectedState: string,
+		gateName: string,
+	): Promise<void> {
+		const result = await this.queryFn(
+			`SELECT status FROM roadmap_proposal.proposal WHERE id = $1`,
+			[proposalId],
+		);
+		const actual = (result.rows[0] as { status?: string } | undefined)?.status;
+		if (
+			!actual ||
+			actual.toUpperCase() !== expectedState.toUpperCase()
+		) {
+			const msg = `[GateEvaluator] gate_persistence_failure: ${displayId} gate=${gateName} expected status=${expectedState} actual=${actual ?? "<missing>"}`;
+			console.error(msg);
+			throw new GatePersistenceFailure({
+				proposalId,
+				displayId,
+				kind: "status",
+				expected: expectedState,
+				actual: actual ?? null,
+				gateName,
+			});
+		}
+	}
+
+	/**
+	 * Re-read proposal.maturity and throw if it's still 'mature' after a
+	 * non-approve verdict was supposed to demote it. Stops the gate-ready
+	 * loop in the case where the setMaturity SQL silently failed.
+	 */
+	private async assertMaturityDemoted(
+		proposalId: number,
+		displayId: string,
+		expectedMaturity: string,
+		gateName: string,
+	): Promise<void> {
+		const result = await this.queryFn(
+			`SELECT maturity FROM roadmap_proposal.proposal WHERE id = $1`,
+			[proposalId],
+		);
+		const actual = (result.rows[0] as { maturity?: string } | undefined)
+			?.maturity;
+		if (!actual || actual === "mature") {
+			const msg = `[GateEvaluator] gate_persistence_failure: ${displayId} gate=${gateName} expected maturity=${expectedMaturity} actual=${actual ?? "<missing>"} (still mature → loop risk)`;
+			console.error(msg);
+			throw new GatePersistenceFailure({
+				proposalId,
+				displayId,
+				kind: "maturity",
+				expected: expectedMaturity,
+				actual: actual ?? null,
+				gateName,
+			});
+		}
+	}
+
+	/**
+	 * Update proposal.maturity directly. The full prop_set_maturity tool
+	 * goes through the MCP layer; here we hit the table directly because
+	 * we're already inside the gate-evaluator's authoritative pipeline.
+	 */
+	private async setMaturity(
+		proposalId: number,
+		maturity: string,
+		note: string,
+	): Promise<void> {
+		await this.queryFn(
+			`WITH _actor AS (
+				 SELECT set_config('app.agent_identity', $1, true) AS agent_identity
+			 )
+			 UPDATE roadmap_proposal.proposal
+			    SET maturity = $2, modified_at = NOW()
+			   FROM _actor
+			  WHERE id = $3`,
+			["gate-evaluator", maturity, proposalId],
+		);
+		// Best-effort discussion entry; do not throw if discussion table
+		// is unavailable (e.g. test fixture).
+		try {
+			await this.queryFn(
+				`INSERT INTO roadmap_proposal.proposal_discussions
+				   (proposal_id, author, context_prefix, content)
+				 VALUES ($1, 'gate-evaluator', 'general:', $2)`,
+				[proposalId, `Maturity demoted to ${maturity}: ${note}`],
+			);
+		} catch {
+			// non-fatal
+		}
 	}
 
 	/**
