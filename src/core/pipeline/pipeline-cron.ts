@@ -210,22 +210,33 @@ type DispatchPlan = {
 	requiredCapabilities: string[];
 };
 
+// P739 (HF-A): gate role lists must contain ONLY review-style roles
+// (skeptic, reviewer-*, architect, qa, maintainer, gate-agent). Developer
+// and engineer roles must NEVER appear in a `gate` list — that was the
+// classification bug that caused gate-ready DEVELOP proposals to be
+// re-dispatched as developer claims, re-firing the gate-ready loop.
+//
+// invariant enforced by tests/unit/pipeline-cron-roles.test.ts:
+//   for every stage, gate.length === 0 OR gate has no 'developer'/'engineer'
 const STAGE_DISPATCH_ROLES: Record<string, DispatchRoleSet> = {
 	DRAFT: {
 		prep: ["researcher", "architect"],
-		gate: ["architect", "reviewer"],
+		gate: ["architect", "reviewer-d1", "reviewer"],
 	},
 	REVIEW: {
 		prep: ["architect", "skeptic"],
-		gate: ["skeptic", "reviewer", "architect"],
+		gate: ["skeptic-alpha", "reviewer-d2", "architect"],
 	},
 	DEVELOP: {
 		prep: ["developer", "engineer"],
-		gate: ["developer", "qa", "integration"],
+		// HF-A: was ["developer","qa","integration"] — first entry was the
+		// fallback when no agent capability matched, so DEVELOP/mature gates
+		// dispatched developer workers instead of gate reviewers.
+		gate: ["skeptic-beta", "reviewer-d3", "qa"],
 	},
 	MERGE: {
 		prep: ["qa", "integration"],
-		gate: ["qa", "maintainer", "gate-agent"],
+		gate: ["reviewer-d4", "qa", "maintainer", "gate-agent"],
 	},
 	COMPLETE: {
 		prep: [],
