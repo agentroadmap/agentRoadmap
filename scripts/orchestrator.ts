@@ -1244,6 +1244,24 @@ async function handleStateChange(proposalId: string, newState: string) {
 
 	const phase = STATE_TO_PHASE[normalizedState] || "design";
 
+	// Skip if the proposal is already 'mature' — that means an investigator/
+	// developer has finished work and the implicit-gate scanner owns the
+	// next move (advance / hold / reject). Without this guard, the NOTIFY
+	// path keeps firing investigator agents (triage-agent, architect, etc.)
+	// at a mature proposal, claiming a lease that flips maturity to 'active'
+	// and starves the gate scanner — producing the dispatch loop seen on
+	// P689/P704 (8h of triage-agent runs with no advancement).
+	const { rows: maturityRows } = await query<{ maturity: string | null; status: string | null }>(
+		`SELECT maturity, status FROM roadmap_proposal.proposal WHERE id = $1`,
+		[proposalId],
+	);
+	if (maturityRows[0]?.maturity === "mature") {
+		logger.log(
+			`⏭ P${proposalId} → ${newState}: maturity=mature — leaving for implicit-gate scanner`,
+		);
+		return;
+	}
+
 	// Skip if this proposal already has a running agent (prevents re-dispatch every poll cycle)
 	const { rows: runningRows } = await query<{ cnt: number }>(
 		`SELECT count(*)::int AS cnt FROM agent_runs
