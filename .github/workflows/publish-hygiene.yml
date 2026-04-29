@@ -19,3 +19,22 @@ jobs:
 
       - name: Check publish hygiene
         run: npm run check:publish -- --base origin/main
+
+      # P677: Pre-merge migration linkage check. Greps the codebase for any
+      # column reference that a staged migration's DROP/RENAME would break.
+      # False positives go into scripts/ci/sql-audit-allowlist.txt.
+      - name: SQL migration linkage check
+        run: npm run audit:migrations
+
+      # P677: Pre-merge SQL column audit. Validates qualified column refs in
+      # SQL string literals against information_schema.columns. v1 is
+      # regex-based + conservative (skips alias-qualified refs); v2 will plug
+      # in pg-query-emscripten. Currently runs informational — enable gating
+      # by removing `continue-on-error` once existing flagged drift sites are
+      # remediated or allowlisted.
+      - name: SQL column audit (informational)
+        if: ${{ secrets.AUDIT_DATABASE_URL != '' }}
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
+        run: npm run audit:sql

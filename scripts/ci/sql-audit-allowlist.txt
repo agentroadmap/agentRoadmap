@@ -1,0 +1,22 @@
+# P677 — SQL audit allowlist.
+#
+# Use this file to suppress known false positives from:
+#   - scripts/ci/audit-sql-columns.ts  (column not found in information_schema)
+#   - scripts/ci/check-migration-drops.sh  (DROP/RENAME COLUMN cross-ref grep)
+#
+# The migration linkage check cannot distinguish which table a column reference
+# targets. If the same column name exists on multiple tables and only ONE drops
+# it, every TS reference to the surviving table is flagged.
+#
+# Format (one entry per line):
+#   - "file:column"   — allow this column reference in a specific migration
+#   - "column"        — allow globally (use sparingly)
+#
+# Comment with `#` BEFORE each entry explaining why the false positive is safe.
+# Blank lines are ignored.
+#
+# Example:
+#   # cost_per_1k_input was dropped from model_routes in migration 038, but
+#   # model_metadata still has it; the 7 TS files querying model_metadata are
+#   # the surviving callers.
+#   scripts/migrations/038-rename-cost-cols.sql:cost_per_1k_input
