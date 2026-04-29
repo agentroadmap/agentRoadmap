@@ -59,6 +59,10 @@ import { register as registerScan } from "./domains/scan/index";
 import { register as registerLint } from "./domains/lint/index";
 import { register as registerKnowledge } from "./domains/knowledge/index";
 import { register as registerMeta } from "./domains/meta/index";
+import { register as registerDb } from "./domains/db/index";
+import { register as registerCubic } from "./domains/cubic/index";
+import { register as registerMcp } from "./domains/mcp/index";
+import { register as registerTrust } from "./domains/trust/index";
 
 /**
  * Main entry point.
@@ -183,6 +187,10 @@ async function main() {
     registerLint(program);
     registerKnowledge(program);
     registerMeta(program);
+    registerDb(program);
+    registerCubic(program);
+    registerMcp(program);
+    registerTrust(program);
 
     // Parse and execute
     await program.parseAsync(process.argv);
