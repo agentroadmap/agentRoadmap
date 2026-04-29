@@ -1511,14 +1511,24 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 						<SectionHeader
 							title="Status"
 							right={
-								proposal?.maturity ? (
-									<span
-										className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${maturityBadgeClass(proposal.maturity)}`}
-										title="Proposal maturity"
-									>
-										{proposal.maturity}
-									</span>
-								) : null
+								<div className="flex items-center gap-1.5">
+									{proposal?.proposalType ? (
+										<span
+											className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
+											title="Proposal type"
+										>
+											{proposal.proposalType}
+										</span>
+									) : null}
+									{proposal?.maturity ? (
+										<span
+											className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${maturityBadgeClass(proposal.maturity)}`}
+											title="Proposal maturity"
+										>
+											{proposal.maturity}
+										</span>
+									) : null}
+								</div>
 							}
 						/>
 						<StatusSelect

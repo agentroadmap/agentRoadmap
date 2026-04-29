@@ -37,7 +37,7 @@ import {
 	type Proposal as WebSocketProposal,
 } from "./hooks/useWebSocket";
 
-const STATUSES = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
+const STATUSES = ["TRIAGE", "DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
 
 function toSharedProposal(proposal: WebSocketProposal): Proposal {
 	const labels = proposal.tags
