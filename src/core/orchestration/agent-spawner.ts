@@ -576,12 +576,31 @@ async function loadEnvAgent(
  * Used as a dynamic fallback when no worktree-level provider is configured.
  */
 export async function resolveActiveRouteProvider(): Promise<AgentProvider | null> {
+	// P245 host policy: filter out routes whose route_provider is forbidden
+	// (or not on the allowlist) for the current host. Without this, the
+	// picker can return the global priority-1 route only to have the spawner
+	// reject it at launch time — every gate dispatch dies in 'blocked'
+	// status, the proposal stays mature, fn_notify_gate_ready re-fires, and
+	// the Discord state-feed gets spammed with the same gate-ready event.
 	const { rows } = await query<{ agent_provider: string }>(
-		`SELECT agent_provider
-		 FROM roadmap.model_routes
-		 WHERE is_enabled = true
-		 ORDER BY priority ASC, COALESCE(cost_per_million_input, 0) ASC
-		 LIMIT 1`,
+		`SELECT mr.agent_provider
+		   FROM roadmap.model_routes mr
+		   LEFT JOIN roadmap.host_model_policy hp
+		     ON hp.host_name = $1::text
+		  WHERE mr.is_enabled = true
+		    AND (
+		      hp.host_name IS NULL  -- no policy row → allow any (legacy)
+		      OR (
+		        (
+		          coalesce(array_length(hp.allowed_providers, 1), 0) = 0
+		          OR mr.route_provider = ANY(hp.allowed_providers)
+		        )
+		        AND NOT (mr.route_provider = ANY(hp.forbidden_providers))
+		      )
+		    )
+		  ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC
+		  LIMIT 1`,
+		[AGENTHIVE_HOST],
 	);
 	return (rows[0]?.agent_provider ?? null) as AgentProvider | null;
 }
