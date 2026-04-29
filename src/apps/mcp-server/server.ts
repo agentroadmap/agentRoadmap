@@ -925,6 +925,10 @@ export async function createMcpServer(
 		const { registerEscalationTools } = await import("./tools/escalation/index.ts");
 		registerEscalationTools(server);
 
+		// P187: Reference Catalog tools
+		const { registerReferenceTools } = await import("./tools/reference/index.ts");
+		registerReferenceTools(server);
+
 		// Proposal CRUD tools via backend-switch (prop_list, prop_get, prop_create, prop_update, prop_transition, prop_delete)
 		// Already registered at line 352 via registerProposalTools
 

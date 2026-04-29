@@ -288,6 +288,11 @@ const opsRoutes: RouteMap = {
 	project_route_list: "project_route_list",
 	project_capability_list: "project_capability_list",
 	project_cap_list: "project_cap_list",
+	// P187: Reference Catalog
+	ref_list_domains: "ref_list_domains",
+	ref_list_terms: "ref_list_terms",
+	ref_add_term: "ref_add_term",
+	ref_get_term: "ref_get_term",
 };
 
 const projectRoutes: RouteMap = {
