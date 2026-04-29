@@ -56,7 +56,7 @@ async function queryProposal(client: Client, proposalId: number) {
   const res = await client.query(
     `SELECT display_id, title, status, maturity, type,
             (SELECT COUNT(*) FROM roadmap_proposal.proposal_dependencies pd
-             WHERE pd.proposal_id = p.id AND pd.status = 'active') as blocked_deps
+             WHERE pd.from_proposal_id = p.id AND pd.resolved = false) as blocked_deps
      FROM roadmap_proposal.proposal p WHERE p.id = $1`,
     [proposalId]
   );
@@ -149,7 +149,7 @@ async function main() {
   const client = new Client({
     host: process.env.PGHOST ?? process.env.PG_HOST ?? "127.0.0.1",
     port: Number(process.env.PGPORT ?? process.env.PG_PORT ?? "5432"),
-    user: process.env.PGUSER ?? process.env.PG_USER ?? "xiaomi",
+    user: process.env.PGUSER ?? process.env.PG_USER,
     password: pgPassword,
     database: process.env.PGDATABASE ?? process.env.PG_DATABASE ?? "agenthive",
   });
