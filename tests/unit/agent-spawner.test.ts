@@ -5,6 +5,7 @@ import {
 	assertResolvedRouteMetadata,
 	buildSpawnProcessEnv,
 	liveChildCount,
+	renderClosingHint,
 	terminateLiveChildren,
 } from "../../src/core/orchestration/agent-spawner.ts";
 
@@ -122,5 +123,61 @@ describe("Hermes route compatibility", () => {
 				process.env.OPENAI_API_KEY = originalOpenAI;
 			}
 		}
+	});
+});
+
+describe("P738 HF-B: closing hint forbids worker-side set_maturity", () => {
+	const baseInput = {
+		contextPackage: "## Proposal Context\n- Proposal: P999",
+		task: "Implement AC-1 through AC-3.",
+		proposalId: 999,
+	};
+
+	for (const stage of [
+		"DRAFT",
+		"REVIEW",
+		"DEVELOP",
+		"MERGE",
+		"TRIAGE",
+		"FIX",
+	]) {
+		it(`emits no 'set_maturity' instruction for stage=${stage}`, () => {
+			const out = renderClosingHint({ ...baseInput, stage });
+			assert.ok(
+				!/\bset_maturity\b\s*\(?(action)?[^)]*?\)?\s*to\s+advance/i.test(out),
+				`stage=${stage} briefing must not instruct worker to call set_maturity → mature`,
+			);
+			assert.ok(
+				!out.includes(`maturity "mature"`),
+				`stage=${stage} briefing must not contain literal 'maturity "mature"' instruction`,
+			);
+			assert.ok(
+				out.includes("spawn_summary_emit"),
+				`stage=${stage} briefing must point worker at spawn_summary_emit`,
+			);
+			assert.ok(
+				/DO NOT call .?set_maturity.?/i.test(out),
+				`stage=${stage} briefing must explicitly forbid set_maturity`,
+			);
+		});
+	}
+
+	it("emits no closing hint at all for terminal COMPLETE stage", () => {
+		const out = renderClosingHint({ ...baseInput, stage: "COMPLETE" });
+		assert.ok(!out.includes("## Completion"));
+		assert.ok(!out.includes("set_maturity"));
+		assert.ok(!out.includes("spawn_summary_emit"));
+	});
+
+	it("emits no closing hint at all for terminal DEPLOYED stage", () => {
+		const out = renderClosingHint({ ...baseInput, stage: "DEPLOYED" });
+		assert.ok(!out.includes("## Completion"));
+		assert.ok(!out.includes("set_maturity"));
+	});
+
+	it("preserves contextPackage and task content verbatim", () => {
+		const out = renderClosingHint({ ...baseInput, stage: "DEVELOP" });
+		assert.ok(out.startsWith("## Proposal Context\n- Proposal: P999"));
+		assert.ok(out.includes("## Task\nImplement AC-1 through AC-3."));
 	});
 });

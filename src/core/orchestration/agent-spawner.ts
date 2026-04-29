@@ -898,6 +898,34 @@ async function buildProposalContextPackage(input: {
 		: context;
 }
 
+/**
+ * P738 (HF-B): assemble the spawn task with a closing hint that explicitly
+ * forbids worker-side set_maturity calls. Gate evaluators advance maturity
+ * server-side after parsing stdout verdicts; non-gate workers emit
+ * spawn_summary_emit and let the gate-pipeline reconciler decide.
+ *
+ * Pure function — exported for unit testing. The previous inline emitter
+ * appended a "Maturity Advancement: call set_maturity → mature on completion"
+ * block which became the loop accelerator (dev finishes, maturity flips,
+ * fn_notify_gate_ready re-fires, dispatcher re-claims, repeat).
+ */
+export function renderClosingHint(input: {
+	contextPackage: string;
+	task: string;
+	stage: string;
+	proposalId: number | string;
+}): string {
+	// Literal terminal check (not RfcStates.COMPLETE) so this helper stays
+	// pure and unit-testable without the state-names registry being loaded.
+	// The set is small and stable; if a new terminal stage is added it can
+	// be appended here without re-routing through the registry.
+	const terminal = input.stage === "COMPLETE" || input.stage === "DEPLOYED";
+	const hint = terminal
+		? ""
+		: `\n\n## Completion\nWhen you finish, emit \`mcp_agent action="spawn_summary_emit"\` with outcome=success|partial|failure|timeout|escalated and a one-paragraph summary. DO NOT call \`set_maturity\` — only the gate-evaluator advances maturity, after parsing your stdout verdict (gate roles) or after the gate-pipeline reconciler reads your spawn_summary (non-gate roles). Proposal id: ${input.proposalId}.`;
+	return `${input.contextPackage}\n\n## Task\n${input.task}${hint}`;
+}
+
 // ─── Core spawn logic ─────────────────────────────────────────────────────────
 
 /**
@@ -932,10 +960,12 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 			agentIdentity: req.agentLabel ?? worktree,
 			maxTokens: 2000,
 		});
-		const maturityHint = stage === RfcStates.COMPLETE || stage === "DEPLOYED"
-			? ""
-			: `\n\n## Maturity Advancement\nWhen you complete your task, call the MCP tool \`set_maturity\` (action: "set_maturity") to advance this proposal to maturity "mature". This triggers the implicit gate to transition the proposal to the next workflow state. Use the proposal ID ${proposalId}.`;
-		assembledTask = `${contextPackage}\n\n## Task\n${task}${maturityHint}`;
+		assembledTask = renderClosingHint({
+			contextPackage,
+			task,
+			stage,
+			proposalId,
+		});
 	}
 
 	const spawnReq = { ...req, task: assembledTask };
