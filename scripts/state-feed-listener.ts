@@ -408,21 +408,30 @@ async function handleNotification(
 	channel: string,
 	payload: string,
 ): Promise<void> {
+	console.log(`[state-feed] NOTIFY ${channel}: ${payload.slice(0, 120)}`);
 	let msg = "";
 	if (channel === "roadmap_events") {
 		let env: Record<string, unknown> = {};
 		try {
 			env = JSON.parse(payload);
 		} catch {
+			console.log(`[state-feed] bad JSON on ${channel}`);
 			return;
 		}
 		const eventId = Number(env.event_id);
-		if (!Number.isFinite(eventId)) return;
+		if (!Number.isFinite(eventId)) {
+			console.log(`[state-feed] no event_id in ${channel} payload`);
+			return;
+		}
 		msg = await handleProposalEvent(client, eventId);
+		if (!msg) console.log(`[state-feed] event ${eventId} suppressed/empty`);
 	} else if (channel === "proposal_gate_ready") {
 		msg = await renderGateReady(client, payload);
 	}
-	if (msg) await sendToDiscord(msg);
+	if (msg) {
+		console.log(`[state-feed] → Discord: ${msg.slice(0, 80)}`);
+		await sendToDiscord(msg);
+	}
 }
 
 async function main() {
