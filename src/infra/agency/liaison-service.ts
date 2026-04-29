@@ -227,7 +227,7 @@ export async function liaisonHeartbeat(
        )
        INSERT INTO roadmap.agent_lifecycle_log (agency_id, event_type, details)
        SELECT agency_id, 'auto_reactivated',
-              jsonb_build_object('reason', 'heartbeat_received', 'session_id', $2)
+              jsonb_build_object('reason', 'heartbeat_received', 'session_id', $2::text)
        FROM reactivated`,
       [agencyId, session_id]
     );
