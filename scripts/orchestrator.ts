@@ -10,6 +10,7 @@
  * Research & Architecture agents run on-demand when proposals need them.
  */
 
+import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -527,6 +528,7 @@ type GateDefinition = {
 
 type GateReadyProposal = {
 	id: number;
+	project_id: number | null;
 	display_id: string;
 	status: string;
 	maturity: string;
@@ -536,6 +538,30 @@ type GateReadyProposal = {
 	leased_by: string | null;
 	active_dispatch_id: number | null;
 };
+
+// P437: deterministic idempotency key for squad_dispatch INSERTs. Mirrors the
+// computeIdempotencyKey helper in src/core/pipeline/post-work-offer.ts so
+// orchestrator-side gate dispatches and pipeline work-offer dispatches share
+// the same hash domain. Both paths feed the partial UNIQUE INDEX
+// uniq_squad_dispatch_idempotency_alive on roadmap_workforce.squad_dispatch.
+function computeDispatchIdempotencyKey(parts: {
+	projectId: number | null;
+	proposalId: number;
+	status: string;
+	maturity: string;
+	role: string;
+	version?: number;
+}): string {
+	const raw = [
+		parts.projectId ?? 0,
+		parts.proposalId,
+		parts.status,
+		parts.maturity,
+		parts.role,
+		parts.version ?? 1,
+	].join(":");
+	return createHash("sha256").update(raw).digest("hex");
+}
 
 type ExecutorCandidate = {
 	worktree: string;
@@ -547,8 +573,30 @@ function normalizeState(state: string): string {
 	return state.trim().toUpperCase();
 }
 
-function inferGateForState(state: string): GateDefinition | null {
-	switch (normalizeState(state)) {
+function inferGateForState(
+	state: string,
+	type?: string | null,
+): GateDefinition | null {
+	const s = normalizeState(state);
+	const t = (type ?? "").toLowerCase();
+
+	// Hotfix is a 3-stage workflow: TRIAGE → FIX → DEPLOYED.
+	// REVIEW and MERGE are skipped — the design is "fix it fast, prove it works."
+	// D1 reviews the mature TRIAGE (defect reproduced, fix scope agreed).
+	// D3 reviews the mature FIX (patch lands, regression test passes).
+	if (t === "hotfix") {
+		switch (s) {
+			case "TRIAGE":
+				return { gate: "D1", toStage: "FIX" };
+			case "FIX":
+				return { gate: "D3", toStage: "DEPLOYED" };
+			default:
+				return null;
+		}
+	}
+
+	// Standard RFC workflow: DRAFT → REVIEW → DEVELOP → MERGE → COMPLETE.
+	switch (s) {
 		case "DRAFT":
 			return { gate: "D1", toStage: "Review" };
 		case "REVIEW":
@@ -1569,6 +1617,7 @@ async function claimImplicitGateReady(
 ): Promise<GateReadyProposal[]> {
 	const { rows } = await query<GateReadyProposal>(
 		`SELECT p.id,
+            p.project_id,
             p.display_id,
             p.status,
             p.maturity,
@@ -1625,7 +1674,7 @@ async function dispatchImplicitGate(
 		return;
 	}
 
-	const gate = inferGateForState(proposal.status);
+	const gate = inferGateForState(proposal.status, proposal.type);
 	if (!gate) {
 		return;
 	}
@@ -1694,10 +1743,26 @@ async function dispatchImplicitGate(
 	}
 	const gateRoleSource = resolvedProfile?.source ?? "builtin-fallback";
 
-	const { rows: dispatchRows } = await query<{ id: number }>(
+	// P437: deterministic idempotency key over the gate-dispatch tuple. Two
+	// concurrent claimImplicitGateReady poll cycles racing on the same
+	// proposal hit the partial UNIQUE INDEX and DO UPDATE the existing row
+	// instead of double-spawning the gate agent.
+	const gateIdempotencyKey = computeDispatchIdempotencyKey({
+		projectId: proposal.project_id ?? null,
+		proposalId: proposal.id,
+		status: proposal.status,
+		maturity: proposal.maturity ?? "mature",
+		role,
+	});
+
+	const { rows: dispatchRows } = await query<{
+		id: number;
+		attempt_count: number;
+		was_replay: boolean;
+	}>(
 		`INSERT INTO roadmap_workforce.squad_dispatch
        (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
-        assigned_by, metadata)
+        assigned_by, metadata, idempotency_key, attempt_count)
      VALUES ($1, $2, $3, $8, 'active', 'orchestrator',
        jsonb_build_object(
          'source', 'implicit_maturity_gating',
@@ -1707,8 +1772,17 @@ async function dispatchImplicitGate(
          'to_stage', $7::text,
          'stage', 'gate:' || $7::text,
          'gateRoleSource', $9::text
-       ))
-     RETURNING id`,
+       ), $10, 1)
+     ON CONFLICT (idempotency_key)
+       WHERE dispatch_status IN ('open', 'assigned', 'active')
+     DO UPDATE SET
+       attempt_count = squad_dispatch.attempt_count + 1,
+       metadata = squad_dispatch.metadata
+                || jsonb_build_object(
+                     'last_replay_at', to_jsonb(now()),
+                     'replay_reason', 'idempotency_collision'
+                   )
+     RETURNING id, attempt_count, (xmax::text::int <> 0) AS was_replay`,
 		[
 			proposal.id,
 			worktree,
@@ -1719,9 +1793,16 @@ async function dispatchImplicitGate(
 			gate.toStage,
 			role,
 			gateRoleSource,
+			gateIdempotencyKey,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;
+	if (dispatchRows[0]?.was_replay) {
+		logger.log(
+			`Implicit gate dispatch idempotency replay for ${proposal.display_id} (dispatch ${dispatchId}, attempt ${dispatchRows[0].attempt_count}) — skipping spawn`,
+		);
+		return;
+	}
 	logger.log(
 		`Implicit gate dispatch ${dispatchId} -> ${worktree} for ${proposal.display_id} (${proposal.status} -> ${gate.toStage}, ${gate.gate})`,
 	);
@@ -2174,18 +2255,49 @@ async function _dispatchTransitionQueue(queueId: number): Promise<void> {
 
 	await ensureAgentIdentity("orchestrator", "State Machine Orchestrator");
 	await ensureAgentIdentity(worktree, "Gate Executor");
-	const { rows: dispatchRows } = await query<{ id: number }>(
+
+	// P437: pull project_id + maturity so the idempotency key is stable
+	// across concurrent transition_queue processors.
+	const { rows: ctxRows } = await query<{
+		project_id: number | null;
+		maturity: string | null;
+	}>(
+		`SELECT project_id, maturity FROM roadmap_proposal.proposal WHERE id = $1`,
+		[transition.proposal_id],
+	);
+	const transitionIdempotencyKey = computeDispatchIdempotencyKey({
+		projectId: ctxRows[0]?.project_id ?? null,
+		proposalId: transition.proposal_id,
+		status: transition.from_stage,
+		maturity: ctxRows[0]?.maturity ?? "mature",
+		role: "gate-reviewer",
+	});
+
+	const { rows: dispatchRows } = await query<{
+		id: number;
+		attempt_count: number;
+		was_replay: boolean;
+	}>(
 		`INSERT INTO roadmap_workforce.squad_dispatch
        (proposal_id, agent_identity, squad_name, dispatch_role, dispatch_status,
-        assigned_by, metadata)
+        assigned_by, metadata, idempotency_key, attempt_count)
      VALUES ($1, $2, $3, 'gate-reviewer', 'active', 'orchestrator',
        jsonb_build_object(
          'transition_queue_id', $4::text,
          'from_stage', $5::text,
          'to_stage', $6::text,
          'stage', 'gate:' || $6::text
-       ))
-     RETURNING id`,
+       ), $7, 1)
+     ON CONFLICT (idempotency_key)
+       WHERE dispatch_status IN ('open', 'assigned', 'active')
+     DO UPDATE SET
+       attempt_count = squad_dispatch.attempt_count + 1,
+       metadata = squad_dispatch.metadata
+                || jsonb_build_object(
+                     'last_replay_at', to_jsonb(now()),
+                     'replay_reason', 'idempotency_collision'
+                   )
+     RETURNING id, attempt_count, (xmax::text::int <> 0) AS was_replay`,
 		[
 			transition.proposal_id,
 			worktree,
@@ -2193,9 +2305,16 @@ async function _dispatchTransitionQueue(queueId: number): Promise<void> {
 			transition.id,
 			transition.from_stage,
 			transition.to_stage,
+			transitionIdempotencyKey,
 		],
 	);
 	const dispatchId = dispatchRows[0]?.id;
+	if (dispatchRows[0]?.was_replay) {
+		logger.log(
+			`Gate dispatch idempotency replay for ${transition.display_id ?? transition.proposal_id} (dispatch ${dispatchId}, attempt ${dispatchRows[0].attempt_count}) — skipping spawn`,
+		);
+		return;
+	}
 
 	logger.log(
 		`Gate dispatch ${dispatchId} -> ${worktree} for ${transition.display_id ?? transition.proposal_id} (${transition.from_stage} -> ${transition.to_stage})`,

@@ -620,6 +620,24 @@ export async function setMaturity(
 		);
 	}
 
+	// Idempotency: skip the UPDATE + audit append when maturity is already
+	// the target value. Without this guard, repeated polls of self-declared
+	// "mature" or auto-resets to "new" produce a flood of useless
+	// MaturityChange audit entries (P184: 25+ "new → new" rows in 8h).
+	const { rows: priorRows } = await query<{ maturity: string | null }>(
+		`SELECT maturity FROM roadmap_proposal.proposal WHERE id = $1`,
+		[proposalId],
+	);
+	const prior = priorRows[0];
+	if (!prior) return null;
+	if (prior.maturity === maturity) {
+		const { rows: unchanged } = await query<ProposalRow>(
+			`SELECT ${PROPOSAL_COLUMNS} FROM roadmap_proposal.proposal WHERE id = $1`,
+			[proposalId],
+		);
+		return unchanged[0] ?? null;
+	}
+
 	const { rows } = await query<ProposalRow>(
 		`WITH _actor AS (
        SELECT set_config('app.agent_identity', $1, true) AS agent_identity
@@ -644,6 +662,7 @@ export async function setMaturity(
 				TS: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
 				Agent: agentIdentity,
 				Activity: "MaturityChange",
+				From: prior.maturity ?? "new",
 				To: maturity,
 			}),
 			proposalId,
