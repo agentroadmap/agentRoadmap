@@ -440,6 +440,17 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		baseline,
 	]);
 
+	const lastActivity = useMemo(() => {
+		const candidates: Array<{ date: string; label: string }> = [];
+		if (proposal?.updatedDate) candidates.push({ date: proposal.updatedDate, label: "proposal updated" });
+		if (proposal?.createdDate) candidates.push({ date: proposal.createdDate, label: "created" });
+		for (const d of discussions) candidates.push({ date: d.created_at, label: `discussion by ${d.author_identity}` });
+		for (const r of reviews) candidates.push({ date: r.reviewed_at, label: `review by ${r.reviewer_identity}` });
+		for (const d of decisions) candidates.push({ date: d.decided_at, label: `decision by ${d.authority}` });
+		if (candidates.length === 0) return null;
+		return candidates.reduce((max, cur) => (cur.date > max.date ? cur : max));
+	}, [proposal, discussions, reviews, decisions]);
+
 	// Reset local proposal only when the selected proposal changes.
 	useEffect(() => {
 		if (proposalId && proposalRef.current?.id !== proposalId) return;
@@ -1462,6 +1473,19 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 									</span>{" "}
 									<span className="text-gray-700 dark:text-gray-200">
 										{formatStoredUtcDateForDisplay(proposal.updatedDate)}
+									</span>
+								</div>
+							)}
+							{lastActivity && (
+								<div>
+									<span className="font-semibold text-gray-800 dark:text-gray-100">
+										Last activity:
+									</span>{" "}
+									<span className="text-gray-700 dark:text-gray-200">
+										{formatStoredUtcDateForDisplay(lastActivity.date)}
+									</span>
+									<span className="ml-1 text-gray-400 dark:text-gray-500 italic">
+										({lastActivity.label})
 									</span>
 								</div>
 							)}
