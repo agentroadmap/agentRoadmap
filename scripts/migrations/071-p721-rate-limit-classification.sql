@@ -86,12 +86,12 @@ COMMENT ON TABLE roadmap.host_model_route_throttle IS
   'postWorkOffer skips dispatch when now() < throttled_until.';
 
 -- ─── 4. Notification route seed ───────────────────────────────────────────────
--- One discord webhook at WARNING (not CRITICAL — outage is expected/transient).
+-- One discord webhook at ALERT (not CRITICAL — outage is expected/transient).
 -- Backstop log_only at INFO so the event is never silently dropped.
 INSERT INTO roadmap.notification_route
   (kind, severity_min, transport, target, notes)
 VALUES
-  ('route_throttled', 'WARNING', 'discord_webhook', NULL,
+  ('route_throttled', 'ALERT', 'discord_webhook', NULL,
    'P721: model route hit usage cap — throttled until reset time'),
   ('route_throttled', 'INFO',    'log_only',        NULL,
    'P721: backstop — always log throttle events regardless of discord delivery')
