@@ -65,7 +65,7 @@ export class ControlPlaneClient {
           FROM roadmap.project
       `;
 
-      const params: any[] = [];
+      const params: (string | number | boolean | null)[] = [];
       const conditions: string[] = [];
 
       if (filter?.status) {
@@ -304,7 +304,7 @@ export class ControlPlaneClient {
           FROM roadmap.agency
          WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: (string | number | boolean | null)[] = [];
 
       if (filter?.status) {
         params.push(filter.status);
@@ -394,7 +394,7 @@ export class ControlPlaneClient {
          WHERE project_id = $1::bigint
       `;
 
-      const params: any[] = [projectId];
+      const params: (string | number | boolean | null)[] = [projectId];
       let paramIndex = 2;
 
       if (filter?.status) {
@@ -503,7 +503,7 @@ export class ControlPlaneClient {
           FROM roadmap_workforce.squad_dispatch
          WHERE project_id = $1::bigint
       `;
-      const params: any[] = [projectId];
+      const params: (string | number | boolean | null)[] = [projectId];
 
       if (filter?.status) {
         params.push(filter.status);
@@ -550,7 +550,7 @@ export class ControlPlaneClient {
           FROM roadmap.proposal_lease
          WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: (string | number | boolean | null)[] = [];
 
       if (filter?.agent_identity) {
         params.push(filter.agent_identity);
@@ -679,7 +679,7 @@ export class ControlPlaneClient {
    * @returns Query result rows
    * @throws HiveError with code REMOTE_FAILURE if DB unreachable or query fails
    */
-  async query(sql: string): Promise<any[]> {
+  async query(sql: string): Promise<Record<string, unknown>[]> {
     const pool = getPool();
     try {
       const result = await pool.query(sql);

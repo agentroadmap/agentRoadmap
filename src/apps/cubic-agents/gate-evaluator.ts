@@ -101,7 +101,7 @@ export class GateEvaluatorAgent {
 		}
 
 		// Step 2: Verify acceptance criteria if gate requires them
-		let acStatus: any = null;
+		let acStatus: Awaited<ReturnType<typeof this.verifyAcceptanceCriteria>> | undefined;
 		if (gate.requires_ac) {
 			acStatus = await this.verifyAcceptanceCriteria(proposal.id);
 			if (acStatus.failedCount > 0) {
