@@ -434,6 +434,7 @@ export function getMcpClient(overrideMcpUrl?: string): HiveMcpClient {
     return globalMcpClient;
   }
 
+  // TODO(P787): convert to getMcpUrlAsync when getMcpClient can be made async
   const mcpUrl =
     overrideMcpUrl ||
     process.env.AGENTHIVE_MCP_URL ||

@@ -19,6 +19,7 @@ import {
 import { RfcStates, isTerminal } from "../workflow/state-names.ts";
 import { sendLiaisonPoke } from "../../infra/agency/liaison-message-service.ts";
 
+// TODO(P787): convert to getMcpUrlAsync when caller can be async
 const MCP_URL = process.env.MCP_URL || getMcpUrl();
 
 const MATURITY_CHANGED_CHANNEL = "proposal_maturity_changed";

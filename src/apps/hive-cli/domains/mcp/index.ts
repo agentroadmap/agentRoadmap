@@ -16,6 +16,7 @@ import { registerDomain, Errors, type DomainSchema } from "../../common/index";
 const DOMAIN_NAME = "mcp";
 const DOMAIN_DESCRIPTION = "MCP server status and tool introspection";
 
+// TODO(P787): convert to getMcpUrlAsync when module initialisation can be async
 const MCP_URL =
   process.env.MCP_SSE_URL || "http://127.0.0.1:6421/sse";
 
