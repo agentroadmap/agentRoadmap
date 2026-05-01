@@ -58,6 +58,33 @@ Important live facts:
 - Do not drop compatibility columns or old views unless your task explicitly completes the runtime migration and verifies every dependent code path.
 - Live data may still contain legacy-cased stage values such as `REVIEW` and `DEVELOP`. Avoid brittle case-sensitive assumptions in SQL and code.
 
+### Workflow States
+
+Canonical proposal workflow stages are stored in `roadmap.workflow_stages`, keyed by workflow template and ordered by `stage_order`.
+
+| Lifecycle step | Standard RFC stage | Hotfix stage | Purpose |
+| --- | --- | --- | --- |
+| 1 | `DRAFT` | `DRAFT` | Shape the proposal, confirm scope, and split broad work. |
+| 2 | `REVIEW` | — | Gate feasibility, coherence, and architectural fit. |
+| 3 | `DEVELOP` | `DEVELOP` | Implement, document, and run local validation. |
+| 4 | `CODE_REVIEW` | — | Review implementation quality and behavioral risk. |
+| 5 | `TEST_WRITING` | — | Add or repair tests for the changed behavior. |
+| 6 | `TEST_EXECUTION` | — | Execute the relevant test suite and capture failures. |
+| 7 | `MERGE` | — | Integrate to `main`; focus on compatibility and stability. |
+| 8 | `COMPLETE` | `COMPLETE` | Stable endpoint for the workflow. |
+
+Hotfix uses the unified vocabulary but skips the review, test-pipeline, and merge stages: `DRAFT -> DEVELOP -> COMPLETE`. The Code Review Pipeline workflow is separate and out of scope for the proposal lifecycle vocabulary.
+
+#### Terminal closure
+
+Rejected, discarded, replaced, escalated, wont-fix, and non-issue outcomes are not separate `proposal.status` values. Record them by setting `proposal.maturity = 'obsolete'` and writing `proposal.obsoleted_reason`. `obsoleted_reason` is free-text with no CHECK constraint; use it for the human-readable closure rationale, such as `replaced by P800`, `wont_fix: not reproducible`, or `escalated to RFC P799`.
+
+#### Boards and renderers
+
+Boards and other workflow renderers are workflow-aware. They must require a Workflow filter, show only proposals whose type maps to that workflow, and render columns from that workflow's stage rows ordered by `stage_order`.
+
+No code path may hardcode a list of workflow stages; render from `roadmap.workflow_stages`.
+
 ## 3. Where Things Live
 
 ### Tracked vs untracked, at a glance
@@ -166,26 +193,9 @@ AgentHive work is proposal-driven. Participate through MCP, not through chat-onl
 | **issue** | Type B (Impl) | Standard RFC | Problem in the product requiring code changes |
 | **hotfix** | Type C (Ops) | Hotfix | Localized operational fix to running instance |
 
-### Standard RFC Workflow (product, component, feature, issue)
+### Workflow State Vocabulary
 
-| State | Phase | Description |
-| :--- | :--- | :--- |
-| **Draft** | Architecture | Initial idea. If too broad or incoherent, **split it** into smaller proposals. |
-| **Review** | Gating | Gating review for feasibility, coherence, and architectural fit. |
-| **Develop** | Building | Building, coding and testing. |
-| **Merge** | Integration | Merging branch to `main`. Focus on compatibility and stability. |
-| **Complete** | Stable | Temporary stable state until the next evolution cycle begins. |
-
-### Hotfix Workflow (hotfix)
-
-| State | Phase | Description |
-| :--- | :--- | :--- |
-| **TRIAGE** | Confirm | Confirm the problem exists and is a localized operational fix |
-| **FIX** | Apply | Specialist/ops claims and applies the fix (often higher privilege) |
-| **DEPLOYED** | Verified | Fix applied and verified working |
-
-**Terminal states:** DEPLOYED, WONT_FIX, NON_ISSUE
-**Escape:** ESCALATE → creates a new issue proposal (Standard RFC)
+See §2 Workflow States for the canonical unified state vocabulary. Proposal type selects the workflow template; the workflow template selects the allowed stages from `roadmap.workflow_stages`.
 
 ### Maturity Levels
 
@@ -193,7 +203,7 @@ AgentHive work is proposal-driven. Participate through MCP, not through chat-onl
 | :--- | :--- |
 | **New** | Just entered the state. Waiting for an agent to claim or lease it, or for dependencies to clear. Every workflow state entry resets maturity to `new`, including entry into `Complete`. |
 | **Active** | Under lease and being worked on with fast iteration. |
-| **Mature** | Work in this state is complete enough to request a gate decision to advance. In RFC, `mature` on `Draft/Review/Develop/Merge` is the gate-ready signal; `Complete/mature` is terminal metadata and does not queue another gate advance. |
+| **Mature** | Work in this state is complete enough to request a gate decision to advance. In RFC, `mature` on any non-`COMPLETE` stage is the gate-ready signal; `COMPLETE/mature` is terminal metadata and does not queue another gate advance. |
 | **Obsolete** | No longer relevant because the structure or direction has changed. |
 
 ### Proposal-first rule of thumb
@@ -252,7 +262,7 @@ Do not wait for a human to ask twice if the need is clear. The proposal system, 
 
 Notes:
 
-- The default lifecycle is `Draft -> Review -> Develop -> Merge -> Complete`.
+- The Standard RFC lifecycle is `DRAFT -> REVIEW -> DEVELOP -> CODE_REVIEW -> TEST_WRITING -> TEST_EXECUTION -> MERGE -> COMPLETE`; Hotfix is `DRAFT -> DEVELOP -> COMPLETE`.
 - Proposal type determines workflow selection. Do not invent ad-hoc types. Check existing usage or `roadmap.proposal_type_config` before creating new proposals.
 
 ## 6. Database Conventions
@@ -660,7 +670,7 @@ AgentHive is shared infrastructure. The following patterns block parallel multi-
 | `"xiaomi"` as PGUSER fallback, `/home/xiaomi/...` paths | Fails on every other user; provider switch destroys env (P448) | `getDbUser()` / `getOsUser()` — fail fast if env unset |
 | `"http://127.0.0.1:6421/sse"`, `"http://localhost:6420"` | Two AgentHive instances on one host collide; cross-host blocked (P449) | `getMcpUrl()` / `getDaemonUrl()` from `src/shared/runtime/endpoints.ts` |
 | Hardcoded model name (`"claude-sonnet-4-6"`, `"xiaomi/mimo-v2-pro"`) | Bypasses `model_routes`; cross-platform leakage (P235, P450) | `resolveModelRoute(provider, modelHint)` from agent-spawner — never a literal |
-| Bare workflow state literal (`'DRAFT'`, `'COMPLETE'`, `'TRIAGE'`) | Per-project workflows can't override; SMDL drift (P410, P451) | `States.rfc.draft`, `isTerminal(template, stage)` from `src/core/workflow/state-names.ts` (per P453) |
+| Bare workflow state literal (`'DRAFT'`, `'COMPLETE'`) | Per-project workflows can't override; SMDL drift (P410, P451) | Load stages from `roadmap.workflow_stages`; use registry helpers such as `isTerminal(template, stage)` from `src/core/workflow/state-names.ts` where available |
 | Bare maturity literal (`'mature'`, `'obsolete'`) | Same problem (P451) | `Maturity.MATURE` etc. from same module |
 | Hardcoded agency name (`"hermes/agency-xiaomi"`, `"claude-bob"`) | One agent identity baked into routing decisions | Pass `agentIdentity` through the call chain; resolve from registry |
 | Schema-unqualified SQL (`FROM proposal` without `roadmap.`) | Lives in `public.*` ambiguity, breaks with control-plane rename | Always `FROM roadmap_proposal.proposal` (or future `control_*`) |
@@ -834,10 +844,10 @@ The orchestrator handles the "how" of dispatch. Hermes handles the "what" and "w
 
 | Cubic Phase | Design Intent | Why | Cost Tier |
 | :--- | :--- | :--- | :--- |
-| **Design** (DRAFT, REVIEW, TRIAGE) | Deep reasoning model | Architecture, adversarial review | Premium |
-| **Build** (DEVELOP, FIX) | Code generation model | Implementation, balanced cost | Standard |
-| **Test** (MERGE) | Balanced model | Integration testing, validation | Standard |
-| **Ship** (COMPLETE, DEPLOYED) | Fast economy model | Documentation, finalization, low-cost | Economy |
+| **Design** (DRAFT, REVIEW) | Deep reasoning model | Architecture, adversarial review | Premium |
+| **Build** (DEVELOP) | Code generation model | Implementation, balanced cost | Standard |
+| **Test** (CODE_REVIEW, TEST_WRITING, TEST_EXECUTION, MERGE) | Balanced model | Review, integration testing, validation | Standard |
+| **Ship** (COMPLETE) | Fast economy model | Documentation, finalization, low-cost | Economy |
 
 **To see actual routed models:** Query `model_routes` in the DB or check `roadmap.yaml`. Do not hardcode model names from this table into code — the DB is the source of truth.
 
