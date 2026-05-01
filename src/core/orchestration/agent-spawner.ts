@@ -47,6 +47,22 @@ const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 // stale entries are removed on `close`/`error`.
 const liveChildren: Set<ChildProcess> = new Set();
 
+/**
+ * Register a spawned child in the live-child registry and automatically
+ * deregister it when it emits `close` or `error`.
+ *
+ * Exported so tests can inject mock ChildProcess-like objects and verify
+ * shutdown-plumbing behavior without spawning real processes.
+ *
+ * @internal — callers outside agent-spawner should only need this for tests.
+ */
+export function trackLiveChild(child: ChildProcess): void {
+	liveChildren.add(child);
+	const deregister = () => liveChildren.delete(child);
+	child.once("close", deregister);
+	child.once("error", deregister);
+}
+
 export function liveChildCount(): number {
 	return liveChildren.size;
 }
@@ -1234,7 +1250,7 @@ function runProcess(
 			env,
 			stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
-		liveChildren.add(child);
+		trackLiveChild(child);
 
 		let stdout = "";
 		let stderr = "";
@@ -1272,7 +1288,8 @@ function runProcess(
 		const cleanup = () => {
 			clearTimeout(timer);
 			if (killTimer) clearTimeout(killTimer);
-			liveChildren.delete(child);
+			// liveChildren removal is handled by the once("close"/"error") listeners
+			// registered by trackLiveChild(); no manual delete needed here.
 		};
 
 		child.on("close", (code) => {

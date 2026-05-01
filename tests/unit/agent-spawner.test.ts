@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { EventEmitter } from "node:events";
+import { describe, it, afterEach } from "node:test";
+import type { ChildProcess } from "node:child_process";
 
 import {
 	assertResolvedRouteMetadata,
@@ -7,7 +9,33 @@ import {
 	liveChildCount,
 	renderClosingHint,
 	terminateLiveChildren,
+	trackLiveChild,
 } from "../../src/core/orchestration/agent-spawner.ts";
+
+// ─── Minimal ChildProcess mock ────────────────────────────────────────────────
+// Uses EventEmitter so we can fire "close"/"error" programmatically without
+// spawning real OS processes.
+
+function makeMockChild(opts: { killed?: boolean; exitCode?: number | null } = {}): ChildProcess {
+	const ee = new EventEmitter();
+	const child = ee as unknown as ChildProcess;
+	(child as any).pid = Math.floor(Math.random() * 90_000) + 10_000;
+	(child as any).killed = opts.killed ?? false;
+	(child as any).exitCode = opts.exitCode ?? null;
+	(child as any).kill = (sig: NodeJS.Signals) => {
+		(child as any).killed = true;
+		(child as any).lastSignal = sig;
+		return true;
+	};
+	return child;
+}
+
+// After each test, drain any leftover children so registry is clean
+afterEach(async () => {
+	if (liveChildCount() > 0) {
+		await terminateLiveChildren({ graceMs: 0 });
+	}
+});
 
 describe("live-child registry", () => {
 	it("starts empty when no children have been spawned", () => {
@@ -15,6 +43,90 @@ describe("live-child registry", () => {
 	});
 
 	it("terminateLiveChildren is a no-op on empty registry", async () => {
+		const result = await terminateLiveChildren({ graceMs: 0 });
+		assert.deepEqual(result, { signalled: 0, killed: 0 });
+	});
+
+	it("trackLiveChild adds a child to the registry", () => {
+		const child = makeMockChild();
+		assert.equal(liveChildCount(), 0);
+		trackLiveChild(child);
+		assert.equal(liveChildCount(), 1);
+		// Emit close so cleanup fires and registry shrinks back
+		child.emit("close", 0);
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("trackLiveChild auto-removes child on close event", () => {
+		const child = makeMockChild();
+		trackLiveChild(child);
+		assert.equal(liveChildCount(), 1);
+		child.emit("close", 0);
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("trackLiveChild auto-removes child on error event", () => {
+		const child = makeMockChild();
+		trackLiveChild(child);
+		assert.equal(liveChildCount(), 1);
+		child.emit("error", new Error("spawn ENOENT"));
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("registry handles multiple children independently", () => {
+		const a = makeMockChild();
+		const b = makeMockChild();
+		const c = makeMockChild();
+		trackLiveChild(a);
+		trackLiveChild(b);
+		trackLiveChild(c);
+		assert.equal(liveChildCount(), 3);
+		b.emit("close", 0);
+		assert.equal(liveChildCount(), 2);
+		a.emit("error", new Error("boom"));
+		assert.equal(liveChildCount(), 1);
+		c.emit("close", 0);
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("terminateLiveChildren sends SIGTERM to all live children (graceMs=0)", async () => {
+		const a = makeMockChild();
+		const b = makeMockChild();
+		trackLiveChild(a);
+		trackLiveChild(b);
+		// graceMs=0 skips the SIGKILL pass; children stay in registry
+		// unless they emit close/error themselves
+		const result = await terminateLiveChildren({ graceMs: 0 });
+		assert.equal(result.signalled, 2, "both children should be SIGTERMed");
+		assert.equal(result.killed, 0, "no SIGKILL with graceMs=0");
+		// Manually emit close to restore registry for afterEach
+		a.emit("close", 0);
+		b.emit("close", 0);
+	});
+
+	it("terminateLiveChildren skips already-killed children", async () => {
+		const alive = makeMockChild();
+		const dead = makeMockChild({ killed: true });
+		trackLiveChild(alive);
+		trackLiveChild(dead);
+		const result = await terminateLiveChildren({ graceMs: 0 });
+		assert.equal(result.signalled, 1, "only the alive child is signalled");
+		alive.emit("close", 0);
+		dead.emit("close", 0);
+	});
+
+	it("terminateLiveChildren skips children with non-null exitCode", async () => {
+		const alive = makeMockChild();
+		const exited = makeMockChild({ exitCode: 1 });
+		trackLiveChild(alive);
+		trackLiveChild(exited);
+		const result = await terminateLiveChildren({ graceMs: 0 });
+		assert.equal(result.signalled, 1, "already-exited child is not re-signalled");
+		alive.emit("close", 0);
+		exited.emit("close", 0);
+	});
+
+	it("terminateLiveChildren returns {signalled:0,killed:0} when registry is empty", async () => {
 		const result = await terminateLiveChildren({ graceMs: 0 });
 		assert.deepEqual(result, { signalled: 0, killed: 0 });
 	});

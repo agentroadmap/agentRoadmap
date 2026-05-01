@@ -2794,9 +2794,9 @@ async function main() {
 		// then let the in-flight dispatch promises settle naturally. Use a
 		// shorter grace than the overall drain budget so the SIGKILL fallback
 		// still happens inside SHUTDOWN_DRAIN_MS.
-		const childGraceMs = Math.max(
-			2000,
-			Math.min(60_000, Math.floor(SHUTDOWN_DRAIN_MS / 4)),
+		const childGraceMs = Math.min(
+			SHUTDOWN_DRAIN_MS,
+			Math.max(2000, Math.min(60_000, Math.floor(SHUTDOWN_DRAIN_MS / 4))),
 		);
 		void terminateLiveChildren({
 			graceMs: childGraceMs,
