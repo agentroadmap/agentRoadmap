@@ -110,6 +110,142 @@ type ModelMetadataRow = {
 	is_active: boolean;
 };
 
+// P797: Row type for the model_metadata JOIN model_routes query
+type ModelRouteRow = {
+	model_name: string;
+	provider: string;
+	cost_per_million_input: string | null;
+	context_window: number | null;
+	capabilities: Record<string, boolean> | null;
+	rating: number | null;
+	is_active: boolean;
+	route_provider: string;
+	priority: number;
+};
+
+// P797: 2-second stale-while-revalidate in-memory cache for model_list
+type ModelListCacheEntry = {
+	rows: ModelRouteRow[];
+	fetchedAt: number;
+	revalidating: boolean;
+};
+const MODEL_LIST_CACHE_TTL_MS = 2_000;
+const modelListCache = new Map<string, ModelListCacheEntry>();
+
+function modelListCacheKey(args: {
+	provider?: string;
+	tier?: string;
+	project_id?: number;
+	active_only?: boolean;
+}): string {
+	return JSON.stringify({
+		provider: args.provider ?? null,
+		tier: args.tier ?? null,
+		project_id: args.project_id ?? null,
+		active_only: args.active_only !== false,
+	});
+}
+
+// P797: Maps P797 tier aliases to DB tier values
+function normaliseTier(tier: string): string {
+	if (tier === "standard") return "mid";
+	if (tier === "economy") return "lower";
+	return tier;
+}
+
+async function fetchModelRouteRows(args: {
+	provider?: string;
+	tier?: string;
+	project_id?: number;
+	active_only?: boolean;
+}): Promise<ModelRouteRow[]> {
+	const activeOnly = args.active_only !== false;
+	const provider = args.provider ?? null;
+	const tier = args.tier ? normaliseTier(args.tier) : null;
+	const { rows } = await query<ModelRouteRow>(
+		`SELECT m.model_name, m.provider, m.cost_per_million_input,
+		        m.context_window, m.capabilities, m.rating, m.is_active,
+		        r.route_provider, r.priority
+		 FROM   model_metadata m
+		 JOIN   roadmap.model_routes r
+		          ON r.model_name = m.model_name AND r.is_enabled = true
+		 WHERE  ($1::boolean IS FALSE OR COALESCE(m.is_active, true) = true)
+		   AND  ($2::text IS NULL OR r.route_provider = $2)
+		   AND  ($3::text IS NULL OR r.tier = $3)
+		 ORDER BY m.rating DESC NULLS LAST, r.priority ASC`,
+		[activeOnly, provider, tier],
+	);
+	return rows;
+}
+
+function getCachedModelRows(key: string): ModelRouteRow[] | null {
+	const entry = modelListCache.get(key);
+	if (!entry) return null;
+	const age = Date.now() - entry.fetchedAt;
+	if (age > MODEL_LIST_CACHE_TTL_MS && !entry.revalidating) {
+		// Stale — kick off background revalidation
+		entry.revalidating = true;
+	}
+	// Return stale data immediately while revalidation is in flight
+	return entry.rows;
+}
+
+async function getModelRouteRows(args: {
+	provider?: string;
+	tier?: string;
+	project_id?: number;
+	active_only?: boolean;
+}): Promise<ModelRouteRow[]> {
+	const key = modelListCacheKey(args);
+	const cached = getCachedModelRows(key);
+
+	if (cached) {
+		const entry = modelListCache.get(key)!;
+		if (entry.revalidating) {
+			// Background revalidate without awaiting
+			fetchModelRouteRows(args)
+				.then((fresh) => {
+					modelListCache.set(key, { rows: fresh, fetchedAt: Date.now(), revalidating: false });
+				})
+				.catch(() => {
+					entry.revalidating = false;
+				});
+		}
+		return cached;
+	}
+
+	// Cold miss — fetch synchronously
+	const rows = await fetchModelRouteRows(args);
+	modelListCache.set(key, { rows, fetchedAt: Date.now(), revalidating: false });
+	return rows;
+}
+
+/**
+ * P797: Validate that a model has at least one enabled route in roadmap.model_routes.
+ * Returns structured error payload if no route is found.
+ */
+export async function validateModelForDispatch(
+	modelName: string,
+	projectId?: number,
+): Promise<{ valid: boolean; reason?: string; error?: string; provider?: string; model?: string }> {
+	const { rows } = await query<{ route_provider: string }>(
+		`SELECT route_provider
+		 FROM   roadmap.model_routes
+		 WHERE  model_name = $1 AND is_enabled = true
+		 LIMIT  1`,
+		[modelName],
+	);
+	if (rows.length === 0) {
+		return {
+			valid: false,
+			reason: "No enabled route found for model",
+			error: "NO_ENABLED_ROUTE",
+			model: modelName,
+		};
+	}
+	return { valid: true };
+}
+
 export class PgSpendingHandlers {
 	constructor(
 		readonly _core: McpServer,
@@ -599,40 +735,51 @@ export class PgModelHandlers {
 		readonly _projectRoot: string,
 	) {}
 
-	// P059: Enhanced model listing with capability filtering and is_active support
+	// P797: Rewritten with model_routes JOIN, provider/tier/project_id filtering, and SWR cache
 	async listModels(args: {
 		capability?: string;
 		max_cost_per_million_input?: string;
 		max_cost_per_1k_input?: string;
 		active_only?: boolean;
+		// P797: new filters
+		provider?: string;
+		tier?: string;
+		project_id?: number;
 	}): Promise<CallToolResult> {
 		try {
-			const perMillionPricing = await supportsPerMillionModelPricing();
 			const maxCostPerMillion =
 				parseOptionalNumber(args.max_cost_per_million_input) ??
 				perMillionFromPer1k(args.max_cost_per_1k_input);
-			// Filter by active status (default: active only)
-			let rows: ModelMetadataRow[] = [];
-			if (perMillionPricing) {
-				({ rows } = await query<ModelMetadataRow>(
-					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
-					        cost_per_million_input, cost_per_million_output,
-					        cost_per_million_cache_write, cost_per_million_cache_hit,
-					        max_tokens, context_window, capabilities, rating, is_active
-					 FROM model_metadata
-					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
-					 ORDER BY rating DESC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC`,
-					[args.active_only !== false],
-				));
-			} else {
-				({ rows } = await query<ModelMetadataRow>(
-					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
-					        max_tokens, context_window, capabilities, rating, is_active
-					 FROM model_metadata
-					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
-					 ORDER BY rating DESC, cost_per_1k_input ASC`,
-					[args.active_only !== false],
-				));
+
+			// P797: Fetch rows via JOIN on model_routes with 2s stale-while-revalidate cache
+			const rows = await getModelRouteRows({
+				provider: args.provider,
+				tier: args.tier,
+				project_id: args.project_id,
+				active_only: args.active_only,
+			});
+
+			if (rows.length === 0) {
+				// P797: Return structured error when no enabled routes exist
+				const filterDesc = [
+					args.provider ? `provider=${args.provider}` : null,
+					args.tier ? `tier=${args.tier}` : null,
+				].filter(Boolean).join(", ");
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								error: "NO_ENABLED_ROUTE",
+								provider: args.provider ?? null,
+								tier: args.tier ?? null,
+								message: filterDesc
+									? `No models with enabled routes found for: ${filterDesc}`
+									: "No models with enabled routes found.",
+							}),
+						},
+					],
+				};
 			}
 
 			const filteredRows = rows.filter((row) => {
@@ -648,10 +795,7 @@ export class PgModelHandlers {
 				if (maxCostPerMillion === null) {
 					return true;
 				}
-				const costPerMillion = perMillionPricing
-					? (parseOptionalNumber(row.cost_per_million_input ?? undefined) ??
-						perMillionFromPer1k(row.cost_per_1k_input))
-					: perMillionFromPer1k(row.cost_per_1k_input);
+				const costPerMillion = parseOptionalNumber(row.cost_per_million_input ?? undefined);
 				return costPerMillion !== null && costPerMillion <= maxCostPerMillion;
 			});
 
@@ -662,35 +806,24 @@ export class PgModelHandlers {
 					],
 				};
 			}
+
 			const lines = filteredRows.map((r) => {
 				const caps = r.capabilities
 					? Object.keys(r.capabilities)
 							.filter((k: string) => (r.capabilities as Record<string, boolean>)[k])
 							.join(", ")
 					: "none";
-				const inputCost = perMillionPricing
-					? (parseOptionalNumber(r.cost_per_million_input ?? undefined) ??
-						perMillionFromPer1k(r.cost_per_1k_input))
-					: perMillionFromPer1k(r.cost_per_1k_input);
-				const outputCost = perMillionPricing
-					? (parseOptionalNumber(r.cost_per_million_output ?? undefined) ??
-						perMillionFromPer1k(r.cost_per_1k_output))
-					: perMillionFromPer1k(r.cost_per_1k_output);
-				const cacheWriteCost = perMillionPricing
-					? parseOptionalNumber(r.cost_per_million_cache_write ?? undefined)
-					: null;
-				const cacheHitCost = perMillionPricing
-					? parseOptionalNumber(r.cost_per_million_cache_hit ?? undefined)
-					: null;
-				const pricing = [
+				const inputCost = parseOptionalNumber(r.cost_per_million_input ?? undefined);
+				return [
+					`${r.model_name} (${r.provider})`,
+					`route: ${r.route_provider}`,
+					`priority: ${r.priority}`,
+					`rating: ${r.rating ?? "?"}/5`,
 					`input: ${formatMillionCost(inputCost)}`,
-					`output: ${formatMillionCost(outputCost)}`,
-				];
-				if (cacheWriteCost !== null || cacheHitCost !== null) {
-					pricing.push(`cache_write: ${formatMillionCost(cacheWriteCost)}`);
-					pricing.push(`cache_hit: ${formatMillionCost(cacheHitCost)}`);
-				}
-				return `${r.model_name} (${r.provider}) — rating: ${r.rating}/5, ${pricing.join(", ")}, ctx: ${r.context_window || "?"}, caps: [${caps}]${r.is_active === false ? " [INACTIVE]" : ""}`;
+					`ctx: ${r.context_window || "?"}`,
+					`caps: [${caps}]`,
+					r.is_active === false ? "[INACTIVE]" : null,
+				].filter(Boolean).join(", ");
 			});
 			return { content: [{ type: "text", text: lines.join("\n") }] };
 		} catch (err) {

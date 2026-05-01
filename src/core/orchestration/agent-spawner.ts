@@ -23,6 +23,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { query } from "../../infra/postgres/pool.ts";
 import { RfcStates, HotfixStates } from "../workflow/state-names.ts";
+import { validateModelForDispatch } from "../../apps/mcp-server/tools/spending/pg-handlers.ts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1058,6 +1059,13 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	const provider = providerOverride ?? await detectProvider(worktree, worktreeRoot);
 	// P235/M026: resolve full route (model + api_spec + base_url) from model_routes
 	const route = await resolveModelRoute(provider, modelHint);
+	// P797: validate that the resolved model has at least one enabled route before spawning
+	const routeCheck = await validateModelForDispatch(route.modelName, req.proposalId);
+	if (!routeCheck.valid) {
+		throw new Error(
+			`[P797] Cannot spawn agent: ${routeCheck.error} — model="${routeCheck.model ?? route.modelName}"`,
+		);
+	}
 	// P245: enforce host-level spawn policy before launching any CLI subprocess.
 	await assertSpawnAllowed(AGENTHIVE_HOST, route, proposalId, worktree);
 	const agentEnv = await loadEnvAgent(worktree, worktreeRoot);

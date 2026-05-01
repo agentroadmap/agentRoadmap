@@ -790,16 +790,23 @@ export async function createMcpServer(
 			handler: (a) =>
 				spending.getTokenEfficiencyReport(a as GetTokenEfficiencyReportArgs),
 		});
-		// P059: Enhanced model_list with capability filtering and is_active support
+		// P797: model_list with provider/tier/project_id filtering and route join
 		server.addTool({
 			name: "model_list",
-			description: "List registered models with optional capability and cost filters",
+			description: "List registered models with optional capability, cost, provider, and tier filters. Results are joined with model_routes — only models with at least one enabled route are returned.",
 			inputSchema: {
 				type: "object",
 				properties: {
 					capability: { type: "string", description: "Filter by capability, e.g. 'tool_use=true'" },
 					max_cost_per_1k_input: { type: "string", description: "Max cost per 1k input tokens" },
 					active_only: { type: "boolean", description: "Only show active models (default: true)" },
+					provider: { type: "string", description: "Filter by route provider (e.g. 'anthropic', 'openai')" },
+					tier: {
+						type: "string",
+						enum: ["frontier", "standard", "economy"],
+						description: "Filter by model tier: frontier, standard (maps to mid), economy (maps to lower)",
+					},
+					project_id: { type: "number", description: "Optional project context for future per-project route filtering" },
 				},
 			},
 			handler: (a) => models.listModels(a as ListModelsArgs),
