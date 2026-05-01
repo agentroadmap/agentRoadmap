@@ -22,6 +22,7 @@ import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { query } from "../../infra/postgres/pool.ts";
+import { getCached } from "../provider-health/cache.ts";
 import { RfcStates, HotfixStates } from "../workflow/state-names.ts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -208,6 +209,18 @@ export interface ModelRoute {
 	spawnToolsets: string | null;
 	/** Whether agents spawned on this route may spawn their own subagents */
 	spawnDelegate: boolean;
+}
+
+export function softSortProviderHealthCandidates<
+	T extends { route_provider: string; model_name: string },
+>(rows: T[], getHealth = getCached): T[] {
+	return [...rows].sort((a, b) => {
+		const aStatus = getHealth(a.route_provider, a.model_name)?.status;
+		const bStatus = getHealth(b.route_provider, b.model_name)?.status;
+		const aDegraded = aStatus === "error" || aStatus === "timeout";
+		const bDegraded = bStatus === "error" || bStatus === "timeout";
+		return Number(aDegraded) - Number(bDegraded);
+	});
 }
 
 // Lazy-loaded Claude settings.json env vars (read once, cached)
@@ -761,8 +774,8 @@ async function resolveModelRoute(
 		// would have been rejected post-hoc by assertSpawnAllowed never get
 		// returned here.
 		if (perMillionPricing) {
-		return query<RouteRow>(
-			`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
+			return query<RouteRow>(
+				`SELECT mr.model_name, mr.route_provider, mr.agent_provider,
                mr.agent_cli, mr.cli_path, mr.api_spec, mr.base_url, mr.plan_type,
                mr.cost_per_million_input, mr.cost_per_million_output,
                mr.api_key_env, mr.api_key_fallback_env, mr.base_url_env, mr.cli_api_key_env,
@@ -772,8 +785,7 @@ async function resolveModelRoute(
           AND mr.agent_provider = $2
           AND mr.is_enabled = true
           AND ${hostPolicyFilterSql(3, "mr")}
-        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC
-        LIMIT 1`,
+        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC`,
 				[modelName, provider, AGENTHIVE_HOST],
 			);
 		}
@@ -790,8 +802,7 @@ async function resolveModelRoute(
          AND mr.agent_provider = $2
          AND mr.is_enabled = true
          AND ${hostPolicyFilterSql(3, "mr")}
-        ORDER BY mr.priority ASC
-        LIMIT 1`,
+        ORDER BY mr.priority ASC`,
 			[modelName, provider, AGENTHIVE_HOST],
 		);
 	};
@@ -821,7 +832,7 @@ async function resolveModelRoute(
 	if (hint) {
 		const { rows } = await fetchRoute(hint);
 		if (rows.length > 0) {
-			const route = toModelRoute(rows[0]);
+			const route = toModelRoute(softSortProviderHealthCandidates(rows)[0]);
 			assertResolvedRouteMetadata(provider, route);
 			return route;
 		}
@@ -849,8 +860,7 @@ async function resolveModelRoute(
         ORDER BY
           CASE WHEN mr.is_default = true THEN 0 ELSE 1 END,
           mr.priority ASC,
-          COALESCE(mr.cost_per_million_input, 0) ASC
-        LIMIT 1`,
+          COALESCE(mr.cost_per_million_input, 0) ASC`,
 				[provider, AGENTHIVE_HOST],
 			)
 		: await query<RouteRow>(
@@ -866,13 +876,12 @@ async function resolveModelRoute(
          AND ${hostPolicyFilterSql(2, "mr")}
         ORDER BY
           CASE WHEN mr.is_default = true THEN 0 ELSE 1 END,
-          mr.priority ASC
-        LIMIT 1`,
+          mr.priority ASC`,
 				[provider, AGENTHIVE_HOST],
 			);
 
 	if (rows.length > 0) {
-		const route = toModelRoute(rows[0]);
+		const route = toModelRoute(softSortProviderHealthCandidates(rows)[0]);
 		assertResolvedRouteMetadata(provider, route);
 		return route;
 	}
@@ -894,8 +903,7 @@ async function resolveModelRoute(
           AND mr.agent_provider = $2
           AND mr.is_enabled = true
           AND ${hostPolicyFilterSql(3, "mr")}
-        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC
-        LIMIT 1`,
+        ORDER BY mr.priority ASC, COALESCE(mr.cost_per_million_input, 0) ASC`,
 					[fallbackModel, provider, AGENTHIVE_HOST],
 				)
 			: await query<RouteRow>(
@@ -910,12 +918,11 @@ async function resolveModelRoute(
          AND mr.agent_provider = $2
          AND mr.is_enabled = true
          AND ${hostPolicyFilterSql(3, "mr")}
-        ORDER BY mr.priority ASC
-        LIMIT 1`,
+        ORDER BY mr.priority ASC`,
 					[fallbackModel, provider, AGENTHIVE_HOST],
 				);
 		if (defaultRows.length > 0) {
-			const route = toModelRoute(defaultRows[0]);
+			const route = toModelRoute(softSortProviderHealthCandidates(defaultRows)[0]);
 			assertResolvedRouteMetadata(provider, route);
 			return route;
 		}

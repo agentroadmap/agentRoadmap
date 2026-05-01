@@ -279,6 +279,7 @@ const opsRoutes: RouteMap = {
 	efficiency_report: "spending_efficiency_report",
 	model_list: "model_list",
 	model_add: "model_add",
+	provider_health: "provider_health",
 	escalation_add: "escalation_add",
 	escalation_list: "escalation_list",
 	escalation_resolve: "escalation_resolve",

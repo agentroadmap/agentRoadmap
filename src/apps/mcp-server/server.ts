@@ -13,6 +13,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { RelayService } from "../../core/messaging/relay.ts";
 import { PipelineCron } from "../../core/pipeline/pipeline-cron.ts";
+import { startProviderHealthCheckerOnce } from "../../core/provider-health/checker.ts";
 import { Core } from "../../core/roadmap.ts";
 import * as pgPool from "../../postgres/pool.ts";
 import { loadStateNames } from "../../core/workflow/state-names.ts";
@@ -29,6 +30,7 @@ import { registerMilestoneTools } from "./tools/milestones/index.ts";
 import { registerNoteTools } from "./tools/notes/index.ts";
 import { registerProposalTools as registerFilesystemProposalTools } from "./tools/proposals/index.ts";
 import { registerProtocolTools } from "./tools/protocol/index.ts";
+import { registerProviderTools } from "./tools/provider/health.ts";
 import { registerTeamTools } from "./tools/teams/index.ts";
 import { registerTestingTools } from "./tools/testing/index.ts";
 import { registerWorkflowTools } from "./tools/workflow/index.ts";
@@ -528,6 +530,9 @@ export async function createMcpServer(
 	if (usePostgres) {
 		if (config.database) {
 			pgPool.initPoolFromConfig(config.database);
+		}
+		if (process.env.AGENTHIVE_PROVIDER_HEALTH_CHECKS !== "0") {
+			startProviderHealthCheckerOnce();
 		}
 
 		// Load state-names registry from DB (includes NOTIFY listener for live reloads)
@@ -1406,6 +1411,7 @@ export async function createMcpServer(
 	}
 	registerTestingTools(server);
 	registerDependencyTools(server);
+	registerProviderTools(server);
 	if (usePostgres) {
 		registerConsolidatedTools(server);
 		server.setConsolidatedToolSurface(true);
