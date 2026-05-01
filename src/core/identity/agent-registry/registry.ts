@@ -13,7 +13,7 @@
  *   created_at      — registration timestamp
  */
 
-import { getMcpUrl, getDaemonUrl } from "../../../shared/runtime/endpoints.ts";
+import { getMcpUrl, getDaemonUrl, getMcpUrlAsync } from "../../../shared/runtime/endpoints.ts";
 
 import { randomUUID } from "node:crypto";
 import { query } from "../../../infra/postgres/pool.ts";
@@ -213,7 +213,7 @@ async function announcePresence(
 	content: string,
 ): Promise<void> {
 	try {
-		const response = await fetch(getMcpUrl(), {
+		const response = await fetch(await getMcpUrlAsync(), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({

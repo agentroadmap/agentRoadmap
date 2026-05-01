@@ -9,9 +9,11 @@ rules:
     tags: [workflow, state, smdl-drift]
     file_glob_exclude:
       - 'src/core/workflow/state-names.ts'
+      - 'src/core/workflow/stage-registry.ts'
       - 'database/ddl/**'
       - 'database/dml/**'
       - 'database/smdl/**'
+      - 'database/migrations/**'
       - '**/*.test.ts'
       - '**/*.spec.ts'
       - 'tests/**'
@@ -55,21 +57,23 @@ rules:
       - "if (States.isValidRfcStage(proposal.stage)) { }"
 
   - id: workflow-states.bare-hotfix-stage
-    description: Bare hotfix workflow state literal ('TRIAGE', 'FIX', 'DEPLOYED', 'WONT_FIX', 'NON_ISSUE', 'ESCALATE')
+    description: Bare hotfix/legacy workflow state literal — must come from stage registry, not hardcoded (P779)
     severity: high
     confidence: high
-    proposal: P451
+    proposal: P779
     tags: [workflow, state, hotfix, smdl-drift]
     file_glob_exclude:
       - 'src/core/workflow/state-names.ts'
+      - 'src/core/workflow/stage-registry.ts'
       - 'database/ddl/**'
       - 'database/dml/**'
       - 'database/smdl/**'
+      - 'database/migrations/**'
       - '**/*.test.ts'
       - '**/*.spec.ts'
       - 'tests/**'
       - 'docs/**'
-    regex: "['\"](TRIAGE|FIX|DEPLOYED|WONT_FIX|NON_ISSUE|ESCALATE)['\"]"
+    regex: "['\"](TRIAGE|FIX|DEPLOYED|WONT_FIX|NON_ISSUE|ESCALATE|REJECTED|DISCARDED|REPLACED)['\"]"
     fix_suggestion: |
       Hotfix workflow states must use the canonical state-names module (P453):
 

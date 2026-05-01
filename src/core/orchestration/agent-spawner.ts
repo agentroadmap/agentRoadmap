@@ -16,7 +16,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { getMcpUrl, getDaemonUrl } from "../../shared/runtime/endpoints.ts";
+import { getMcpUrl, getDaemonUrl, getMcpUrlAsync } from "../../shared/runtime/endpoints.ts";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -1098,7 +1098,7 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		agentEnv,
 		extraEnv: {
 			...extraEnv,
-			MCP_URL: process.env.MCP_URL ?? getMcpUrl(),
+			MCP_URL: process.env.MCP_URL ?? await getMcpUrlAsync(),
 			// P466: hand the warm-boot briefing id to the child via env so it
 			// can call `briefing_load(<id>)` on boot. Real uuid → child can
 			// retrieve mission, success_criteria, allowed_tools, MCP quirks,

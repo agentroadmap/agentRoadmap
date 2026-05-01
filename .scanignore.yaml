@@ -26,3 +26,11 @@
     - example-hardcoded-tmpdir
     - example-literal-db-host
   reason: conventions documentation references literal paths and hosts as examples
+
+- path: scripts/cli.cjs.js
+  rules: "*"
+  reason: generated CLI bundle — literals come from compiled source, not hand-written
+
+- path: scripts/cli.cjs
+  rules: "*"
+  reason: generated CLI wrapper script

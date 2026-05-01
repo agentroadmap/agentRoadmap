@@ -1,13 +1,19 @@
 /**
  * Central URL resolution for MCP and daemon endpoints.
  *
- * Resolution order:
+ * Sync resolution order (getMcpUrl / getDaemonUrl):
  * 1. Environment variable (AGENTHIVE_MCP_URL, AGENTHIVE_DAEMON_URL)
- * 2. control_runtime registry row (when P431 lands; for now tries and catches missing table)
- * 3. Hard fail with AgentHiveConfigError (no literal default)
+ * 2. Hard fail with AgentHiveConfigError (no literal default)
  *
- * Values are cached per process; flushed on pg_notify('runtime_endpoint_changed') if/when P431 ships.
+ * Async resolution order (getMcpUrlAsync / getDaemonUrlAsync) — P787:
+ * 1. Environment variable (MCP_URL / DAEMON_URL)
+ * 2. roadmap.control_runtime_service DB row
+ * 3. Hard fail with Error if unresolvable
+ *
+ * Async values are cached per process; call invalidateEndpointCache() to flush.
  */
+
+import { query } from "../../infra/postgres/pool.ts";
 
 export class AgentHiveConfigError extends Error {
 	constructor(message: string) {
@@ -130,30 +136,81 @@ export function clearEndpointCache(): void {
 	daemonUrlCache = null;
 }
 
+// ─── P787: Async DB-backed endpoint registry ──────────────────────────────────
+
+let _endpointCache = new Map<string, string>();
+let _cachePopulated = false;
+
+async function _populateCache(): Promise<void> {
+	try {
+		const result = await query(
+			`SELECT service_key, url FROM roadmap.control_runtime_service WHERE is_active = true`,
+		);
+		_endpointCache = new Map(
+			result.rows.map((r: any) => [r.service_key as string, r.url as string]),
+		);
+		_cachePopulated = true;
+	} catch (err) {
+		// Table may not exist yet in some environments; treat as empty registry
+		_cachePopulated = true;
+	}
+}
+
 /**
- * TODO: When P431 lands and control_runtime.service table exists,
- * implement registry query logic here:
+ * Flush the async DB endpoint cache.
+ * Call on pg_notify('runtime_endpoint_changed') or after a config change.
+ */
+export function invalidateEndpointCache(): void {
+	_endpointCache.clear();
+	_cachePopulated = false;
+}
+
+async function getFromRegistry(key: string): Promise<string | null> {
+	if (!_cachePopulated) await _populateCache();
+	return _endpointCache.get(key) ?? null;
+}
+
+/**
+ * Resolve the MCP endpoint URL (async, with DB fallback — P787).
  *
- * async function queryControlRuntimeRegistry(serviceType: 'mcp' | 'daemon'): Promise<string | null> {
- *   try {
- *     const client = new pg.Client(...);
- *     await client.connect();
- *     const result = await client.query(
- *       'SELECT url FROM control_runtime.service WHERE service_type = $1',
- *       [serviceType]
- *     );
- *     await client.end();
- *     return result.rows[0]?.url || null;
- *   } catch (err) {
- *     // Table likely doesn't exist yet
- *     return null;
- *   }
- * }
+ * Resolution:
+ * 1. MCP_URL environment variable
+ * 2. roadmap.control_runtime_service row with service_key='mcp'
+ * 3. Throws if unresolvable
+ */
+export async function getMcpUrlAsync(): Promise<string> {
+	if (process.env.MCP_URL) return process.env.MCP_URL;
+	const dbUrl = await getFromRegistry("mcp");
+	if (dbUrl) return dbUrl;
+	throw new Error(
+		"MCP URL not configured: set MCP_URL env or add a control_runtime_service row",
+	);
+}
+
+/**
+ * Resolve the daemon endpoint URL (async, with DB fallback — P787).
  *
- * Also implement pg_notify listener:
+ * Resolution:
+ * 1. DAEMON_URL environment variable
+ * 2. roadmap.control_runtime_service row with service_key='daemon'
+ * 3. Throws if unresolvable
+ */
+export async function getDaemonUrlAsync(): Promise<string> {
+	if (process.env.DAEMON_URL) return process.env.DAEMON_URL;
+	const dbUrl = await getFromRegistry("daemon");
+	if (dbUrl) return dbUrl;
+	throw new Error(
+		"Daemon URL not configured: set DAEMON_URL env or add a control_runtime_service row",
+	);
+}
+
+/**
+ * TODO(P787): When P431 lands and control_runtime.service table exists,
+ * implement pg_notify listener:
  * client.query('LISTEN runtime_endpoint_changed');
  * client.on('notification', (msg) => {
  *   if (msg.channel === 'runtime_endpoint_changed') {
+ *     invalidateEndpointCache();
  *     clearEndpointCache();
  *   }
  * });

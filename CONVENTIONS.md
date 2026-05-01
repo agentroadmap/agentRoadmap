@@ -170,31 +170,50 @@ AgentHive work is proposal-driven. Participate through MCP, not through chat-onl
 
 | State | Phase | Description |
 | :--- | :--- | :--- |
-| **Draft** | Architecture | Initial idea. If too broad or incoherent, **split it** into smaller proposals. |
-| **Review** | Gating | Gating review for feasibility, coherence, and architectural fit. |
-| **Develop** | Building | Building, coding and testing. |
-| **Merge** | Integration | Merging branch to `main`. Focus on compatibility and stability. |
-| **Complete** | Stable | Temporary stable state until the next evolution cycle begins. |
+| **DRAFT** | Architecture | Initial idea. If too broad or incoherent, **split it** into smaller proposals. |
+| **REVIEW** | Gating | Gating review for feasibility, coherence, and architectural fit. |
+| **DEVELOP** | Building | Building, coding and testing. |
+| **MERGE** | Integration | Merging branch to `main`. Focus on compatibility and stability. |
+| **COMPLETE** | Stable | Temporary stable state until the next evolution cycle begins. |
 
 ### Hotfix Workflow (hotfix)
+
+The hotfix workflow uses the same 3-stage structure, drawn from `roadmap.workflow_stage_definition`:
 
 | State | Phase | Description |
 | :--- | :--- | :--- |
 | **TRIAGE** | Confirm | Confirm the problem exists and is a localized operational fix |
-| **FIX** | Apply | Specialist/ops claims and applies the fix (often higher privilege) |
-| **DEPLOYED** | Verified | Fix applied and verified working |
+| **DEPLOY** | Apply | Specialist/ops claims and applies the fix (often higher privilege) |
+| **CLOSED** | Verified | Fix applied and verified working |
 
-**Terminal states:** DEPLOYED, WONT_FIX, NON_ISSUE
+**Terminal states:** CLOSED, WONT_FIX, NON_ISSUE  
 **Escape:** ESCALATE → creates a new issue proposal (Standard RFC)
+
+> **Legacy note:** Older data may reference FIX, DEPLOYED, ESCALATE, REJECTED, DISCARDED, REPLACED from pre-P774 hotfix vocabulary. These are migration artifacts; do not introduce them in new code.
+
+### Unified Vocabulary Table
+
+Both workflows share the same maturity axis and are stored in `roadmap.workflow_stage_definition`. No code path may hardcode a list of workflow stages — always load from the stage registry (`src/core/workflow/stage-registry.ts`).
+
+| Attribute | RFC value | Hotfix value | Source |
+| :--- | :--- | :--- | :--- |
+| Status values | DRAFT, REVIEW, DEVELOP, MERGE, COMPLETE | TRIAGE, DEPLOY, CLOSED | `roadmap.workflow_stage_definition` |
+| Maturity values | new, active, mature, obsolete | same | `roadmap_proposal.proposal.maturity` |
+| Terminal closure | COMPLETE/mature | CLOSED/mature | stage `is_terminal = true` |
+| Obsolete reason | `obsoleted_reason TEXT` free-text | same | `roadmap_proposal.proposal.obsoleted_reason` |
+
+### Boards are workflow-aware
+
+Board columns are rendered from `roadmap.workflow_stage_definition` for the active workflow. A workflow filter is always required. No code path may hardcode a list of stages — columns must derive from the stage registry at runtime.
 
 ### Maturity Levels
 
 | Maturity | Description |
 | :--- | :--- |
-| **New** | Just entered the state. Waiting for an agent to claim or lease it, or for dependencies to clear. Every workflow state entry resets maturity to `new`, including entry into `Complete`. |
-| **Active** | Under lease and being worked on with fast iteration. |
-| **Mature** | Work in this state is complete enough to request a gate decision to advance. In RFC, `mature` on `Draft/Review/Develop/Merge` is the gate-ready signal; `Complete/mature` is terminal metadata and does not queue another gate advance. |
-| **Obsolete** | No longer relevant because the structure or direction has changed. |
+| **new** | Just entered the state. Waiting for an agent to claim or lease it, or for dependencies to clear. Every workflow state entry resets maturity to `new`, including entry into `COMPLETE`. |
+| **active** | Under lease and being worked on with fast iteration. |
+| **mature** | Work in this state is complete enough to request a gate decision to advance. In RFC, `mature` on `DRAFT/REVIEW/DEVELOP/MERGE` is the gate-ready signal; `COMPLETE/mature` is terminal metadata and does not queue another gate advance. |
+| **obsolete** | No longer relevant because the structure or direction has changed. Set `obsoleted_reason` to explain why. |
 
 ### Proposal-first rule of thumb
 

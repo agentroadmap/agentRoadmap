@@ -91,6 +91,7 @@
 		"check:hardcoded": "bash scripts/check-hardcoded.sh",
 		"check:migrations": "tsx scripts/check-migration-prefixes.ts",
 		"scan": "node --import jiti/register scripts/scan-hardcoding.ts",
+		"scan:workflow-states": "node --import jiti/register scripts/scan-hardcoding.ts --rule-tag workflow --fail-on high",
 		"scan:self-test": "node --import jiti/register scripts/scan-hardcoding.ts --self-test"
 	},
 	"author": "Alex Gavrilescu (https://github.com/MrLesk)",

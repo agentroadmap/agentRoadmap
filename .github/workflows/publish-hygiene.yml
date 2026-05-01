@@ -40,3 +40,9 @@ jobs:
         env:
           DATABASE_URL: ${{ env.AUDIT_DATABASE_URL }}
         run: npm run audit:sql
+
+      # P779: Scanner guard for legacy workflow state literals.
+      # Fails CI if any .ts/.tsx file outside migrations/tests hardcodes
+      # RFC or Hotfix stage names instead of importing from the stage registry.
+      - name: Workflow state literal guard
+        run: npm run scan:workflow-states
