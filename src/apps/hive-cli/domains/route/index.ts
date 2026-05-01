@@ -121,23 +121,40 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listRoutes on ControlPlaneClient
-  // Query roadmap.model_routes
-  return [];
+  const enabled =
+    typeof options.enabled === "string"
+      ? options.enabled === "true"
+      : undefined;
+  return client.listRoutes({
+    provider: typeof options.provider === "string" ? options.provider : undefined,
+    agent_provider:
+      typeof options.agentProvider === "string" ? options.agentProvider : undefined,
+    enabled,
+  });
 }
 
-async function handleInfo(routeId: string, options: Record<string, unknown>) {
-  // TODO: Implement getRoute on ControlPlaneClient
-  throw Errors.notFound(`Route '${routeId}' not found (stub)`, {
-    route_id: routeId,
-  });
+async function handleInfo(routeId: string, _options: Record<string, unknown>) {
+  const client = getControlPlaneClient();
+  const route = await client.getRoute(routeId);
+  if (!route) {
+    throw Errors.notFound(`Route '${routeId}' not found`, {
+      route_id: routeId,
+    });
+  }
+  return route;
 }
 
 async function handleTest(routeId: string, options: Record<string, unknown>) {
-  // TODO: Implement testRoute on ControlPlaneClient
-  throw Errors.notFound(`Route '${routeId}' not found (stub)`, {
-    route_id: routeId,
+  const client = getControlPlaneClient();
+  const result = await client.testRoute(routeId, {
+    host: typeof options.host === "string" ? options.host : undefined,
   });
+  if (!result) {
+    throw Errors.notFound(`Route '${routeId}' not found`, {
+      route_id: routeId,
+    });
+  }
+  return result;
 }
 
 export function register(program: Command): void {
@@ -151,9 +168,12 @@ export function register(program: Command): void {
   domainCmd
     .command("list")
     .description("List all dispatch routes")
+    .option("-p, --provider <provider>", "Filter by route provider")
+    .option("--agent-provider <provider>", "Filter by agent provider")
+    .option("--enabled <true|false>", "Filter by enabled state")
     .action(async (options) => {
       const result = await handleList(options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 
   domainCmd
@@ -161,14 +181,15 @@ export function register(program: Command): void {
     .description("Get route details")
     .action(async (routeId: string, options) => {
       const result = await handleInfo(routeId, options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 
   domainCmd
     .command("test <ROUTE_ID>")
     .description("Test route connectivity and credentials")
+    .option("--host <hostname>", "Evaluate host model policy for this host")
     .action(async (routeId: string, options) => {
       const result = await handleTest(routeId, options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 }

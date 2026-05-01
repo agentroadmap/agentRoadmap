@@ -5,7 +5,7 @@ type RouteMap = Record<string, string>;
 
 type RouterArgs = {
 	action?: string;
-	args?: Record<string, unknown>;
+	args?: unknown;
 	[key: string]: unknown;
 };
 
@@ -19,10 +19,11 @@ const routerSchema = {
 	properties: {
 		action: {
 			type: "string",
-			description: "Domain action to run. Use action=list_actions to inspect supported actions.",
+			description:
+				"Domain action to run. Use action=list_actions to inspect supported actions.",
 		},
 		args: {
-			...jsonObjectSchema,
+			oneOf: [jsonObjectSchema, { type: "string" }],
 			description: "Arguments passed to the selected action.",
 		},
 	},
@@ -37,27 +38,45 @@ function textResult(text: string): CallToolResult {
 function formatActions(domain: string, routes: RouteMap): CallToolResult {
 	const lines = Object.entries(routes)
 		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([action, tool]) => `- ${action} -> ${tool}`);
-	return textResult(`Actions for ${domain}:\n${lines.join("\n")}`);
+		.map(([action, tool]) => `| ${action} | ${tool} |`);
+	return textResult(
+		`Actions for ${domain}:\n| action | tool_name |\n| --- | --- |\n${lines.join("\n")}`,
+	);
 }
 
-function extractArgs(input: RouterArgs): Record<string, unknown> {
+export function extractArgs(input: RouterArgs): Record<string, unknown> {
 	const { action: _action, args, ...rest } = input;
 	// args may arrive as an object (well-behaved client) or as a JSON-encoded
 	// string (some MCP clients stringify nested object params before send).
 	// Tolerate both — parse the string form once before merging.
 	let argsObj: Record<string, unknown> | undefined;
-	if (args && typeof args === "object" && !Array.isArray(args)) {
+	if (args == null) {
+		argsObj = undefined;
+	} else if (typeof args === "object" && !Array.isArray(args)) {
 		argsObj = args as Record<string, unknown>;
-	} else if (typeof args === "string" && args.trim().length) {
+	} else if (typeof args === "string") {
+		const trimmed = args.trim();
+		if (!trimmed) {
+			return rest;
+		}
 		try {
-			const parsed = JSON.parse(args);
+			const parsed = JSON.parse(trimmed);
 			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 				argsObj = parsed as Record<string, unknown>;
+			} else {
+				throw new Error("Router args JSON string must decode to an object");
 			}
-		} catch {
-			// Leave argsObj undefined; rest-only fallback below
+		} catch (error) {
+			throw new Error(
+				`Router args must be an object or JSON-encoded object string: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
+	} else {
+		throw new Error(
+			"Router args must be an object or JSON-encoded object string",
+		);
 	}
 	if (argsObj) {
 		return { ...rest, ...argsObj };

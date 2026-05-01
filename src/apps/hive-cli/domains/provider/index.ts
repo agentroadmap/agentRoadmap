@@ -84,16 +84,20 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listProviders method on ControlPlaneClient
-  // Query roadmap_workforce.provider_registry
-  return [];
+  void options;
+  return client.listProviders();
 }
 
 async function handleInfo(providerId: string, options: Record<string, unknown>) {
-  // TODO: Implement getProvider method on ControlPlaneClient
-  throw Errors.notFound(`Provider '${providerId}' not found (stub)`, {
-    provider_id: providerId,
-  });
+  void options;
+  const client = getControlPlaneClient();
+  const provider = await client.getProvider(providerId);
+  if (!provider) {
+    throw Errors.notFound(`Provider '${providerId}' not found`, {
+      provider_id: providerId,
+    });
+  }
+  return provider;
 }
 
 export function register(program: Command): void {
@@ -109,7 +113,7 @@ export function register(program: Command): void {
     .description("List all LLM providers")
     .action(async (options) => {
       const result = await handleList(options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 
   domainCmd
@@ -117,6 +121,6 @@ export function register(program: Command): void {
     .description("Get provider details")
     .action(async (providerId: string, options) => {
       const result = await handleInfo(providerId, options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 }

@@ -73,6 +73,15 @@ const CONSOLIDATED_TOOL_NAMES = new Set([
 	"mcp_ops",
 ]);
 
+function toolRegistryStrictMode(): boolean {
+	return process.env.AGENTHIVE_TOOL_REGISTRY_STRICT === "true";
+}
+
+function captureToolRegistrationStack(): string {
+	const stack = new Error().stack ?? "";
+	return stack.split("\n").slice(2).join("\n");
+}
+
 // Track whether gate pipeline (PipelineCron) has already been started to avoid duplicates
 let gatePipelineStarted = false;
 
@@ -148,6 +157,24 @@ export class McpServer extends Core {
 	 * Register a tool implementation with the server.
 	 */
 	public addTool(tool: McpToolHandler): void {
+		const priorTool = this.tools.get(tool.name);
+		if (priorTool) {
+			const collision = {
+				event: "mcp_tool_name_collision",
+				tool_name: tool.name,
+				prior_description: priorTool.description,
+				new_description: tool.description,
+				callsite_stack: captureToolRegistrationStack(),
+			};
+			if (toolRegistryStrictMode()) {
+				throw new Error(
+					`MCP tool registration collision for '${tool.name}': ${JSON.stringify(
+						collision,
+					)}`,
+				);
+			}
+			console.warn("[McpServer] duplicate tool registration", collision);
+		}
 		this.tools.set(tool.name, tool);
 	}
 

@@ -115,22 +115,27 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listModels on ControlPlaneClient
-  // Query roadmap.model_routes
-  return [];
+  return client.listModels({
+    provider: typeof options.provider === "string" ? options.provider : undefined,
+  });
 }
 
-async function handleInfo(modelId: string, options: Record<string, unknown>) {
-  // TODO: Implement getModel on ControlPlaneClient
-  throw Errors.notFound(`Model '${modelId}' not found (stub)`, {
-    model_id: modelId,
-  });
+async function handleInfo(modelId: string, _options: Record<string, unknown>) {
+  const client = getControlPlaneClient();
+  const model = await client.getModel(modelId);
+  if (!model) {
+    throw Errors.notFound(`Model '${modelId}' not found`, {
+      model_id: modelId,
+    });
+  }
+  return model;
 }
 
 async function handleCost(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement getModelCosts on ControlPlaneClient
-  return [];
+  return client.getModelCosts({
+    provider: typeof options.provider === "string" ? options.provider : undefined,
+  });
 }
 
 export function register(program: Command): void {
@@ -147,7 +152,7 @@ export function register(program: Command): void {
     .option("-p, --provider <provider>", "Filter by provider")
     .action(async (options) => {
       const result = await handleList(options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 
   domainCmd
@@ -155,14 +160,15 @@ export function register(program: Command): void {
     .description("Get model details")
     .action(async (modelId: string, options) => {
       const result = await handleInfo(modelId, options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 
   domainCmd
     .command("cost")
     .description("Show model pricing summary")
+    .option("-p, --provider <provider>", "Filter by provider")
     .action(async (options) => {
       const result = await handleCost(options);
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     });
 }

@@ -14,7 +14,8 @@
 import { execSync } from "node:child_process";
 import { getPool } from "../../../infra/postgres/pool";
 import { HiveError, Errors } from "./error";
-import {
+import { encodeCursor, decodeCursor } from "./control-plane-types";
+import type {
   ProjectRow,
   ProposalRow,
   AgencyRow,
@@ -22,10 +23,11 @@ import {
   WorkflowTemplateRow,
   DispatchRow,
   LeaseRow,
+  ModelRow,
+  ProviderRow,
+  RouteRow,
+  RouteTestResult,
   PaginatedResult,
-  encodeCursor,
-  decodeCursor,
-  PaginationCursor,
 } from "./control-plane-types";
 
 /**
@@ -65,7 +67,7 @@ export class ControlPlaneClient {
           FROM roadmap.project
       `;
 
-      const params: any[] = [];
+      const params: string[] = [];
       const conditions: string[] = [];
 
       if (filter?.status) {
@@ -304,7 +306,7 @@ export class ControlPlaneClient {
           FROM roadmap.agency
          WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: Array<string | boolean> = [];
 
       if (filter?.status) {
         params.push(filter.status);
@@ -550,7 +552,7 @@ export class ControlPlaneClient {
           FROM roadmap.proposal_lease
          WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: string[] = [];
 
       if (filter?.agent_identity) {
         params.push(filter.agent_identity);
@@ -747,6 +749,369 @@ export class ControlPlaneClient {
         { error: msg }
       );
     }
+  }
+
+  /**
+   * List model catalog entries with route availability summary.
+   *
+   * Implements P455 hive-cli model read slice. Model metadata is the catalog,
+   * while route availability comes from roadmap.model_routes.
+   */
+  async listModels(filter?: { provider?: string }): Promise<ModelRow[]> {
+    const pool = getPool();
+    try {
+      let query = `
+        SELECT
+          m.model_name AS model_id,
+          m.model_name,
+          m.model_name AS name,
+          m.provider,
+          CASE WHEN m.is_active THEN 'active' ELSE 'inactive' END AS status,
+          m.is_active,
+          m.max_tokens,
+          m.context_window,
+          m.capabilities,
+          m.rating,
+          m.cost_per_million_input::float8 AS cost_per_million_input,
+          m.cost_per_million_output::float8 AS cost_per_million_output,
+          m.cost_per_million_cache_write::float8 AS cost_per_million_cache_write,
+          m.cost_per_million_cache_hit::float8 AS cost_per_million_cache_hit,
+          COUNT(r.id)::int AS route_count,
+          COUNT(r.id) FILTER (WHERE r.is_enabled)::int AS enabled_route_count,
+          COALESCE(
+            ARRAY_AGG(DISTINCT r.agent_provider) FILTER (WHERE r.agent_provider IS NOT NULL),
+            ARRAY[]::text[]
+          ) AS agent_providers,
+          COALESCE(
+            ARRAY_AGG(DISTINCT r.route_provider) FILTER (WHERE r.route_provider IS NOT NULL),
+            ARRAY[]::text[]
+          ) AS route_providers,
+          m.created_at,
+          m.updated_at
+        FROM roadmap.model_metadata m
+        LEFT JOIN roadmap.model_routes r
+          ON r.model_name = m.model_name
+        WHERE 1=1
+      `;
+      const params: Array<string | boolean> = [];
+
+      if (filter?.provider) {
+        params.push(filter.provider);
+        query += ` AND m.provider = $${params.length}`;
+      }
+
+      query += `
+        GROUP BY m.id, m.model_name, m.provider, m.is_active, m.max_tokens,
+                 m.context_window, m.capabilities, m.rating,
+                 m.cost_per_million_input, m.cost_per_million_output,
+                 m.cost_per_million_cache_write, m.cost_per_million_cache_hit,
+                 m.created_at, m.updated_at
+        ORDER BY m.provider ASC, m.model_name ASC
+      `;
+
+      const result = await pool.query<ModelRow>(query, params);
+      return result.rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to list models: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
+
+  async getModel(modelId: string): Promise<ModelRow | null> {
+    const models = await this.listModels();
+    return models.find((model) => model.model_id === modelId) ?? null;
+  }
+
+  async getModelCosts(filter?: { provider?: string }): Promise<ModelRow[]> {
+    const models = await this.listModels(filter);
+    return models
+      .filter(
+        (model) =>
+          model.cost_per_million_input !== null ||
+          model.cost_per_million_output !== null ||
+          model.cost_per_million_cache_write !== null ||
+          model.cost_per_million_cache_hit !== null
+      )
+      .sort((a, b) => {
+        const providerCmp = a.provider.localeCompare(b.provider);
+        if (providerCmp !== 0) return providerCmp;
+        return a.model_name.localeCompare(b.model_name);
+      });
+  }
+
+  /**
+   * List runnable model routes from the live control-plane route table.
+   */
+  async listRoutes(filter?: {
+    provider?: string;
+    agent_provider?: string;
+    enabled?: boolean;
+  }): Promise<RouteRow[]> {
+    const pool = getPool();
+    try {
+      let query = `
+        SELECT
+          id::text AS route_id,
+          id::text AS id,
+          model_name AS model_id,
+          model_name,
+          route_provider,
+          route_provider AS provider,
+          agent_provider,
+          plan_type,
+          priority,
+          is_enabled AS enabled,
+          is_enabled,
+          COALESCE(is_default, false) AS is_default,
+          notes,
+          base_url,
+          api_spec,
+          agent_cli,
+          fallback_cli,
+          cli_path,
+          api_key_env,
+          api_key_fallback_env,
+          base_url_env,
+          spawn_toolsets,
+          spawn_delegate,
+          tier,
+          confidence_threshold::float8 AS confidence_threshold,
+          capabilities,
+          objective_rating::float8 AS objective_rating,
+          cost_per_million_input::float8 AS cost_per_million_input,
+          cost_per_million_output::float8 AS cost_per_million_output,
+          cost_per_million_cache_write::float8 AS cost_per_million_cache_write,
+          cost_per_million_cache_hit::float8 AS cost_per_million_cache_hit,
+          created_at
+        FROM roadmap.model_routes
+        WHERE 1=1
+      `;
+      const params: Array<string | boolean> = [];
+
+      if (filter?.provider) {
+        params.push(filter.provider);
+        query += ` AND route_provider = $${params.length}`;
+      }
+
+      if (filter?.agent_provider) {
+        params.push(filter.agent_provider);
+        query += ` AND agent_provider = $${params.length}`;
+      }
+
+      if (typeof filter?.enabled === "boolean") {
+        params.push(filter.enabled);
+        query += ` AND is_enabled = $${params.length}`;
+      }
+
+      query += `
+        ORDER BY is_enabled DESC, COALESCE(is_default, false) DESC,
+                 priority ASC, agent_provider ASC, model_name ASC, id ASC
+      `;
+
+      const result = await pool.query<RouteRow>(query, params);
+      return result.rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to list routes: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
+
+  async getRoute(routeId: string): Promise<RouteRow | null> {
+    const pool = getPool();
+    try {
+      const query = `
+        SELECT
+          id::text AS route_id,
+          id::text AS id,
+          model_name AS model_id,
+          model_name,
+          route_provider,
+          route_provider AS provider,
+          agent_provider,
+          plan_type,
+          priority,
+          is_enabled AS enabled,
+          is_enabled,
+          COALESCE(is_default, false) AS is_default,
+          notes,
+          base_url,
+          api_spec,
+          agent_cli,
+          fallback_cli,
+          cli_path,
+          api_key_env,
+          api_key_fallback_env,
+          base_url_env,
+          spawn_toolsets,
+          spawn_delegate,
+          tier,
+          confidence_threshold::float8 AS confidence_threshold,
+          capabilities,
+          objective_rating::float8 AS objective_rating,
+          cost_per_million_input::float8 AS cost_per_million_input,
+          cost_per_million_output::float8 AS cost_per_million_output,
+          cost_per_million_cache_write::float8 AS cost_per_million_cache_write,
+          cost_per_million_cache_hit::float8 AS cost_per_million_cache_hit,
+          created_at
+        FROM roadmap.model_routes
+        WHERE id = $1::bigint
+      `;
+
+      const result = await pool.query<RouteRow>(query, [routeId]);
+      return result.rows[0] ?? null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to get route: ${msg}`,
+        { error: msg, routeId }
+      );
+    }
+  }
+
+  async listProviders(): Promise<ProviderRow[]> {
+    const pool = getPool();
+    try {
+      const query = `
+        WITH route_provider_summary AS (
+          SELECT
+            r.route_provider AS provider_id,
+            r.route_provider AS name,
+            COUNT(DISTINCT r.id)::int AS route_count,
+            COUNT(DISTINCT r.id) FILTER (WHERE r.is_enabled)::int AS enabled_route_count,
+            COUNT(DISTINCT r.model_name)::int AS model_count,
+            COALESCE(
+              ARRAY_AGG(DISTINCT r.agent_provider) FILTER (WHERE r.agent_provider IS NOT NULL),
+              ARRAY[]::text[]
+            ) AS agent_providers,
+            COALESCE(
+              ARRAY_AGG(DISTINCT env.credential_env) FILTER (WHERE env.credential_env IS NOT NULL),
+              ARRAY[]::text[]
+            ) AS credential_env_vars
+          FROM roadmap.model_routes r
+          LEFT JOIN LATERAL unnest(
+            array_remove(ARRAY[r.api_key_env, r.api_key_fallback_env], NULL)
+          ) AS env(credential_env) ON true
+          GROUP BY r.route_provider
+        ),
+        active_workers AS (
+          SELECT
+            split_part(agency_identity, '/', 1) AS agent_provider,
+            COUNT(*)::int AS active_worker_count
+          FROM roadmap_workforce.provider_registry
+          WHERE COALESCE(is_active, status = 'active') = true
+          GROUP BY split_part(agency_identity, '/', 1)
+        )
+        SELECT
+          r.provider_id,
+          r.name,
+          CASE WHEN r.enabled_route_count > 0 THEN 'active' ELSE 'inactive' END AS status,
+          r.route_count,
+          r.enabled_route_count,
+          r.model_count,
+          r.agent_providers,
+          COALESCE(SUM(w.active_worker_count), 0)::int AS active_worker_count,
+          false AS credentials_active,
+          r.credential_env_vars
+        FROM route_provider_summary r
+        LEFT JOIN active_workers w ON w.agent_provider = ANY(r.agent_providers)
+        GROUP BY r.provider_id, r.name, r.route_count, r.enabled_route_count,
+                 r.model_count, r.agent_providers, r.credential_env_vars
+        ORDER BY r.provider_id ASC
+      `;
+
+      const result = await pool.query<ProviderRow>(query);
+      return result.rows.map((provider) => ({
+        ...provider,
+        credentials_active: provider.credential_env_vars.some((envVar) =>
+          Boolean(process.env[envVar])
+        ),
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw Errors.remoteFailure(
+        `Failed to list providers: ${msg}`,
+        { error: msg }
+      );
+    }
+  }
+
+  async getProvider(providerId: string): Promise<ProviderRow | null> {
+    const providers = await this.listProviders();
+    return providers.find((provider) => provider.provider_id === providerId) ?? null;
+  }
+
+  /**
+   * Read-only route readiness check. This does not call provider APIs; it
+   * validates route enablement, local credential env presence, and optional
+   * host policy because CLI tests must not spend tokens or mutate state.
+   */
+  async testRoute(
+    routeId: string,
+    options?: { host?: string }
+  ): Promise<RouteTestResult | null> {
+    const start = Date.now();
+    const route = await this.getRoute(routeId);
+    if (!route) return null;
+
+    const requiredEnv = [
+      route.api_key_env,
+      route.api_key_fallback_env,
+    ].filter((envVar): envVar is string => Boolean(envVar));
+    const missingEnv = requiredEnv.filter((envVar) => !process.env[envVar]);
+    const credentialsActive =
+      requiredEnv.length === 0 || missingEnv.length < requiredEnv.length;
+
+    let hostAllowed: boolean | null = null;
+    if (options?.host) {
+      const pool = getPool();
+      const policy = await pool.query<{
+        allowed_providers: string[];
+        forbidden_providers: string[];
+      }>(
+        `
+          SELECT allowed_providers, forbidden_providers
+            FROM roadmap.host_model_policy
+           WHERE host_name = $1
+        `,
+        [options.host]
+      );
+      const row = policy.rows[0];
+      if (row) {
+        const allowed = row.allowed_providers ?? [];
+        const forbidden = row.forbidden_providers ?? [];
+        hostAllowed =
+          !forbidden.includes(route.route_provider) &&
+          (allowed.length === 0 || allowed.includes(route.route_provider));
+      }
+    }
+
+    const failures: string[] = [];
+    if (!route.is_enabled) failures.push("route disabled");
+    if (!credentialsActive) failures.push("no configured credential env var is set");
+    if (hostAllowed === false) failures.push("host policy denies route provider");
+
+    const status: RouteTestResult["status"] =
+      failures.length === 0 ? "ok" : route.is_enabled ? "warning" : "failed";
+
+    return {
+      route_id: route.route_id,
+      status,
+      enabled: route.is_enabled,
+      host_allowed: hostAllowed,
+      credentials_active: credentialsActive,
+      missing_env: missingEnv,
+      latency_ms: Date.now() - start,
+      message:
+        failures.length === 0
+          ? "Route passed local readiness checks; provider API connectivity was not exercised."
+          : `Route has local readiness issues: ${failures.join(", ")}.`,
+    };
   }
 }
 
