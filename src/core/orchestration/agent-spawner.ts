@@ -1113,10 +1113,14 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 	);
 	const durationMs = Date.now() - startMs;
 
-	// Update agent_runs on completion
-	const status = exitCode === 0 ? "completed" : "failed";
 	const outputSummary = stdout.slice(-1000);
 	const errorDetail = stderr.slice(-4000);
+
+	// P721: classify non-zero exits — rate-limit hits must not count toward
+	// P689's circuit breaker and must throttle the route for future dispatches.
+	const exitClass = classifyExit(stdout, stderr, exitCode);
+	const status = exitClass.outcome === "rate_limited" ? "rate_limited" : exitClass.outcome;
+
 	await query(
 		`UPDATE agent_runs
      SET status = $1,
@@ -1128,7 +1132,80 @@ export async function spawnAgent(req: SpawnRequest): Promise<SpawnResult> {
 		[status, durationMs, outputSummary, errorDetail, agentRunId],
 	);
 
+	if (exitClass.outcome === "rate_limited") {
+		const throttledUntil = exitClass.resetAt ?? new Date(Date.now() + 60 * 60 * 1000);
+		await query(
+			`INSERT INTO roadmap.host_model_route_throttle
+			   (provider, model, throttled_until, reason)
+			 VALUES ($1, $2, $3, $4)
+			 ON CONFLICT (provider, model) DO UPDATE
+			   SET throttled_until = EXCLUDED.throttled_until,
+			       reason = EXCLUDED.reason`,
+			[
+				route.routeProvider,
+				route.modelName,
+				throttledUntil.toISOString(),
+				outputSummary.slice(0, 500),
+			],
+		);
+		// Emit one notification per throttle event (not per proposal)
+		await query(
+			`INSERT INTO roadmap.notification_queue
+			   (proposal_id, severity, kind, title, body, metadata)
+			 VALUES ($1, 'WARNING', 'route_throttled', $2, $3, $4::jsonb)
+			 ON CONFLICT DO NOTHING`,
+			[
+				proposalId ?? null,
+				`Route throttled: ${route.routeProvider}/${route.modelName}`,
+				`Usage cap hit — route throttled until ${throttledUntil.toISOString()}. Affected run: ${agentRunId}.`,
+				JSON.stringify({
+					provider: route.routeProvider,
+					model: route.modelName,
+					throttled_until: throttledUntil.toISOString(),
+					agent_run_id: agentRunId,
+				}),
+			],
+		).catch(() => {/* non-fatal */});
+	}
+
 	return { agentRunId, worktree, exitCode, stdout, stderr, durationMs };
+}
+
+// ─── P721: Rate-limit exit classifier ────────────────────────────────────────
+
+const RATE_LIMIT_PATTERNS: RegExp[] = [
+	/you'?ve hit your limit\s*·?\s*resets/i,
+	/rate.?limit/i,
+	/quota.{0,40}exceeded/i,
+	/429\s+too many requests/i,
+	/usage.{0,20}cap/i,
+];
+
+interface ExitClassification {
+	outcome: "completed" | "failed" | "rate_limited";
+	resetAt?: Date | null;
+}
+
+function parseResetTime(text: string): Date | null {
+	// e.g. "resets 11pm (America/Toronto)" or "resets at 2026-04-29T03:00Z"
+	const match = text.match(/resets(?:\s+at)?\s+([^\n(]{1,40})(?:\s*\([^)]+\))?/i);
+	if (!match) return null;
+	const raw = match[1].trim();
+	const attempt = new Date(raw);
+	if (!isNaN(attempt.getTime())) return attempt;
+	// Fallback: +1h
+	return new Date(Date.now() + 60 * 60 * 1000);
+}
+
+function classifyExit(stdout: string, stderr: string, exitCode: number | null): ExitClassification {
+	if (exitCode === 0) return { outcome: "completed" };
+	const hay = `${stdout}\n${stderr}`;
+	for (const pat of RATE_LIMIT_PATTERNS) {
+		if (pat.test(hay)) {
+			return { outcome: "rate_limited", resetAt: parseResetTime(hay) };
+		}
+	}
+	return { outcome: "failed" };
 }
 
 // ─── Process runner ───────────────────────────────────────────────────────────

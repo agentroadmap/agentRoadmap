@@ -150,10 +150,30 @@ export async function postWorkOffer(
 		);
 	}
 
+	// P721: skip dispatch if the target route is currently throttled due to
+	// a usage cap (e.g. Claude daily limit). This avoids consuming a
+	// circuit-breaker slot on a route outage.
+	if (input.model) {
+		const { rows: throttleRows } = await queryFn<{ throttled_until: string }>(
+			`SELECT throttled_until::text
+			   FROM roadmap.host_model_route_throttle
+			  WHERE model = $1
+			    AND throttled_until > now()
+			  LIMIT 1`,
+			[input.model],
+		);
+		if (throttleRows.length > 0) {
+			throw new Error(
+				`postWorkOffer: route for model '${input.model}' is throttled until ${throttleRows[0].throttled_until}. Skipping dispatch.`,
+			);
+		}
+	}
+
 	// P689 circuit breaker: bail before posting if (proposal, role) is in a
 	// completed-run loop. agent_runs.stage carries the role under several
 	// historical aliases (uppercase stage name, role string, "gate:STAGE"),
 	// so accept any match.
+	// P721: exclude 'rate_limited' — those are route outages, not loops.
 	const { rows: loopRows } = await queryFn<{ recent_runs: number }>(
 		`SELECT count(*)::int AS recent_runs
 		   FROM roadmap_workforce.agent_runs
