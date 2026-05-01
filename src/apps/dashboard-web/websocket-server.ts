@@ -39,6 +39,12 @@ async function loadProposals(): Promise<Record<string, unknown>[]> {
 		tags: r.tags ? (Array.isArray(r.tags) ? r.tags.join(",") : String(r.tags)) : null,
 		createdAt: r.created_at,
 		updatedAt: r.modified_at ?? r.created_at,
+		createdDate: r.created_at
+			? new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")
+			: undefined,
+		updatedDate: (r.modified_at ?? r.created_at)
+			? new Date(r.modified_at ?? r.created_at).toISOString().slice(0, 16).replace("T", " ")
+			: undefined,
 	}));
 }
 
