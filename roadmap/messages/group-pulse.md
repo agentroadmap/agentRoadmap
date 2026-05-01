@@ -1599,3 +1599,129 @@
 [2026-04-28 22:24:01] System: **[proposal created]** PROPOSAL-3 - Low Priority
 [2026-04-28 22:24:28] System: **[proposal created]** PROPOSAL-1 - Test Proposal
 [2026-04-28 22:24:57] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gTmV3IFByb2plY3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-28 22:26:30] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-28 22:26:48] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-28 22:27:29] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-28 22:27:35] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-28 22:28:11] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-28 22:28:21] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-28 22:28:24] System: **[proposal created]** PROPOSAL-1 - Dead End
+[2026-04-28 22:29:04] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:11:13] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 00:11:15] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 00:11:17] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 00:11:24] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 00:11:26] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 00:11:28] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 00:11:39] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 00:11:41] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 00:11:43] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 00:11:49] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 00:11:51] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 00:11:52] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 00:21:17] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:21:19] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:21:21] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:21:27] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:21:29] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:21:39] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:21:41] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:21:57] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:22:00] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:22:03] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:22:16] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:22:20] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:22:44] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:22:49] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:23:12] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:23:15] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:23:18] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:23:24] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:23:26] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:23:36] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:23:38] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:24:18] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:20] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:23] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:30] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:24:32] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:36] System: **[proposal created]** DRAFT-1 - Test Proposal
+[2026-04-29 00:24:40] System: **[proposal created]** DRAFT-1 - Crash Recovery Test
+[2026-04-29 00:24:42] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:24:44] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:24:51] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:53] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:24:55] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:25:00] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
+[2026-04-29 00:25:02] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:25:06] System: **[proposal created]** DRAFT-1 - Test Proposal
+[2026-04-29 00:25:10] System: **[proposal created]** DRAFT-1 - Crash Recovery Test
+[2026-04-29 00:25:12] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:25:14] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:26:21] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:26:23] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:26:25] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:26:31] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:26:33] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:26:37] System: **[proposal created]** DRAFT-1 - Test Proposal
+[2026-04-29 00:26:43] System: **[proposal created]** PROPOSAL-1 - Crash Recovery Test
+[2026-04-29 00:26:48] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gQ3Jhc2ggUmVjb3ZlcnkgVGVzdAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQGNyYXNoaW5nLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
+[2026-04-29 00:26:49] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:26:51] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 00:28:48] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:28:51] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:28:54] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:29:01] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
+[2026-04-29 00:29:04] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 00:29:11] System: **[proposal created]** DRAFT-1 - Test Proposal
+[2026-04-29 00:29:16] System: **[proposal created]** PROPOSAL-1 - Crash Recovery Test
+[2026-04-29 00:29:21] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gQ3Jhc2ggUmVjb3ZlcnkgVGVzdAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQGNyYXNoaW5nLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMCBtaW51dGVzLg==
+[2026-04-29 00:29:22] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 00:29:24] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 03:16:42] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gUnVudGltZSBBc3NldHMgUHJvamVjdAo+IFByb2plY3QgaW5pdGlhbGl6ZWQgd2l0aCBBZ2VudCBVdGlsaXR5IEJlbHQgaW5mcmFzdHJ1Y3R1cmUu
+[2026-04-29 03:18:24] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gSklSQSBJbml0IFRlc3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-29 03:19:00] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gUmUtSW5pdCBUZXN0Cj4gUHJvamVjdCBpbml0aWFsaXplZCB3aXRoIEFnZW50IFV0aWxpdHkgQmVsdCBpbmZyYXN0cnVjdHVyZS4=
+[2026-04-29 03:19:36] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gRGVmYXVsdCBQcmVmaXggSW5pdAo+IFByb2plY3QgaW5pdGlhbGl6ZWQgd2l0aCBBZ2VudCBVdGlsaXR5IEJlbHQgaW5mcmFzdHJ1Y3R1cmUu
+[2026-04-29 03:20:07] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gRGlzayBQZXJzaXN0ZW5jZSBUZXN0Cj4gUHJvamVjdCBpbml0aWFsaXplZCB3aXRoIEFnZW50IFV0aWxpdHkgQmVsdCBpbmZyYXN0cnVjdHVyZS4=
+[2026-04-29 03:22:57] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:24:37] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:26:27] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:28:15] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 03:29:14] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBwcm9wb3NhbC0xIC0gVGVzdCBQcm9wb3NhbAo+IFNUQUxFIExFQVNFIFJFQ09WRVJFRDogQWdlbnQgQHN0YWxlLWFnZW50IG1pc3NlZCBoZWFydGJlYXQgZm9yIDEyMSBtaW51dGVzLg==
+[2026-04-29 03:30:01] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 03:30:52] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:31:32] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 03:32:12] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gTmV3IFByb2plY3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-29 03:33:19] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-29 03:35:26] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 03:36:01] System: **[proposal created]** PROPOSAL-1 - Dependency
+[2026-04-29 03:36:41] System: **[proposal created]** PROPOSAL-1 - Renewal Test
+[2026-04-29 03:36:49] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 03:38:00] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 03:38:08] System: **[proposal created]** PROPOSAL-1 - Dead End
+[2026-04-29 03:38:24] System: **[proposal created]** PROPOSAL-1 - Renewal Extension Test
+[2026-04-29 03:43:49] System: **[proposal created]** PROPOSAL-1 - Test 1
+[2026-04-29 03:44:43] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 03:44:45] System: **[proposal created]** PROPOSAL-2 - Test 2
+[2026-04-29 03:45:41] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 03:46:34] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 03:48:09] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:49:03] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-29 03:49:28] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:50:06] System: **[proposal created]** PROPOSAL-2 - Medium Priority
+[2026-04-29 03:50:43] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:50:59] System: **[proposal created]** PROPOSAL-3 - Low Priority
+[2026-04-29 03:51:51] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:53:07] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:53:50] System: **[proposal created]** PROPOSAL-1 - Symlink root proposal
+[2026-04-29 03:54:30] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-29 03:55:06] System: **[proposal created]** PROPOSAL-1 - Symlink root auto-commit
+[2026-04-30 21:59:08] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gUnVudGltZSBBc3NldHMgUHJvamVjdAo+IFByb2plY3QgaW5pdGlhbGl6ZWQgd2l0aCBBZ2VudCBVdGlsaXR5IEJlbHQgaW5mcmFzdHJ1Y3R1cmUu
+[2026-04-30 21:59:08] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gSklSQSBJbml0IFRlc3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-30 21:59:08] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gUmUtSW5pdCBUZXN0Cj4gUHJvamVjdCBpbml0aWFsaXplZCB3aXRoIEFnZW50IFV0aWxpdHkgQmVsdCBpbmZyYXN0cnVjdHVyZS4=
+[2026-04-30 21:59:08] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gRGVmYXVsdCBQcmVmaXggSW5pdAo+IFByb2plY3QgaW5pdGlhbGl6ZWQgd2l0aCBBZ2VudCBVdGlsaXR5IEJlbHQgaW5mcmFzdHJ1Y3R1cmUu
+[2026-04-30 21:59:09] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gRGlzayBQZXJzaXN0ZW5jZSBUZXN0Cj4gUHJvamVjdCBpbml0aWFsaXplZCB3aXRoIEFnZW50IFV0aWxpdHkgQmVsdCBpbmZyYXN0cnVjdHVyZS4=
+[2026-04-30 21:59:18] System: **[proposal created]** PROPOSAL-1 - Test Proposal
+[2026-04-30 21:59:20] System: __roadmap_msg_b64__:KipbcHJvcG9zYWwgY3JlYXRlZF0qKiBQUk9KRUNUIC0gTmV3IFByb2plY3QKPiBQcm9qZWN0IGluaXRpYWxpemVkIHdpdGggQWdlbnQgVXRpbGl0eSBCZWx0IGluZnJhc3RydWN0dXJlLg==
+[2026-04-30 21:59:20] System: **[proposal created]** PROPOSAL-1 - High Priority
+[2026-04-30 21:59:22] System: **[proposal created]** PROPOSAL-1 - Test Proposal

@@ -9,7 +9,7 @@ if [ -z "${PGPASSWORD:-}" ] && [ -f "$HOME/.hermes/.env" ]; then
 fi
 PGPASSWORD="${PGPASSWORD:?ERROR: PGPASSWORD not set — source ~/.hermes/.env}"
 export PGPASSWORD
-PG="psql -h 127.0.0.1 -U ${PGUSER:-xiaomi} -d ${PGDATABASE:-agenthive} -t -A"
+PG="psql -h 127.0.0.1 -U ${PGUSER:-$USER} -d ${PGDATABASE:-agenthive} -t -A"
 
 # --- Services ---
 SERVICES=""

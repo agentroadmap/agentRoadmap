@@ -90,10 +90,9 @@ export const StructuralKeys = {
 		class: "structural" as const,
 		parse: (v: string) => v,
 		required: true,
-		description: "PostgreSQL username",
+		description: "PostgreSQL username (no default — set PGUSER env or rely on OS user via peer auth)",
 		yamlPath: "database.user",
 		envOverride: true,
-		defaultValue: "xiaomi",
 	} satisfies ConfigKey<string>,
 
 	PG_SCHEMA: {

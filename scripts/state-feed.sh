@@ -4,7 +4,7 @@
 set -euo pipefail
 
 export PGPASSWORD="${PG_PASSWORD:-}"
-PG="psql -h 127.0.0.1 -U xiaomi -d agenthive -t -A"
+PG="psql -h 127.0.0.1 -U ${PGUSER:-$USER} -d ${PGDATABASE:-agenthive} -t -A"
 
 # Webhook for state/maturity feed (separate channel)
 WEBHOOK_URL="${DISCORD_WEBHOOK_STATEFEED:?ERROR: DISCORD_WEBHOOK_STATEFEED not set — add to ~/.hermes/.env}"

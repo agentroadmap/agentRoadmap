@@ -66,7 +66,7 @@ type ColumnView = {
 	box: BoxInterface;
 };
 
-export type WorkflowViewKey = "all" | "rfc" | "quick-fix" | "hotfix" | "obsolete";
+export type WorkflowViewKey = "all" | "rfc" | "hotfix" | "obsolete";
 
 export interface WorkflowViewDefinition {
 	key: WorkflowViewKey;
@@ -76,34 +76,54 @@ export interface WorkflowViewDefinition {
 	statuses: string[];
 }
 
+// Single status path in the DB: every proposal flows through DRAFT → REVIEW →
+// DEVELOP → MERGE → COMPLETE. The Hotfix tab is a type filter that re-labels
+// those columns using the Hotfix SMDL stage names — TRIAGE / FIX / DEPLOYED —
+// because hotfixes don't have a meaningful Review or Merge step.
+//
+// Mapping (DB → display, hotfix view only):
+//   DRAFT, REVIEW    → TRIAGE
+//   DEVELOP, MERGE   → FIX
+//   COMPLETE         → DEPLOYED
+const RFC_STATUSES_CANONICAL = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
+const HOTFIX_STATUSES_CANONICAL = [
+	"TRIAGE",
+	"FIX",
+	"DEPLOYED",
+	"ESCALATE",
+	"WONT_FIX",
+	"NON_ISSUE",
+];
+const HOTFIX_PROPOSAL_TYPES = new Set(["hotfix"]);
+const HOTFIX_DISPLAY_MAP: Record<string, string> = {
+	DRAFT: "TRIAGE",
+	REVIEW: "TRIAGE",
+	DEVELOP: "FIX",
+	MERGE: "FIX",
+	COMPLETE: "DEPLOYED",
+};
+
 const WORKFLOW_VIEWS: WorkflowViewDefinition[] = [
 	{
 		key: "all",
 		label: "All",
-		description: "Combined workflow view",
+		description: "All non-obsolete proposals",
 		proposalTypes: [],
 		statuses: [],
 	},
 	{
 		key: "rfc",
 		label: "RFC",
-		description: "Standard RFC workflow",
-		proposalTypes: ["product", "component", "feature", "issue"],
-		statuses: ["Draft", "Review", "Develop", "Merge", "Complete"],
-	},
-	{
-		key: "quick-fix",
-		label: "Legacy Quick Fix",
-		description: "Compatibility view for pre-RFC issue data",
+		description: "Standard RFC proposals (excludes hotfix-type)",
 		proposalTypes: [],
-		statuses: ["TRIAGE", "FIX", "DEPLOYED", "ESCALATE", "WONT_FIX", "NON_ISSUE"],
+		statuses: [...RFC_STATUSES_CANONICAL],
 	},
 	{
 		key: "hotfix",
 		label: "Hotfix",
-		description: "Urgent operational workflow",
+		description: "Hotfix-type proposals — TRIAGE / FIX / DEPLOYED columns",
 		proposalTypes: ["hotfix"],
-		statuses: ["TRIAGE", "FIX", "DEPLOYED", "ESCALATE", "WONT_FIX", "NON_ISSUE"],
+		statuses: [...HOTFIX_STATUSES_CANONICAL],
 	},
 	{
 		key: "obsolete",
@@ -117,135 +137,41 @@ const WORKFLOW_VIEWS: WorkflowViewDefinition[] = [
 const WORKFLOW_BY_KEY = new Map(
 	WORKFLOW_VIEWS.map((workflow) => [workflow.key, workflow]),
 );
-const RFC_TYPES = new Set(["product", "component", "feature", "issue"]);
-const HOTFIX_TYPES = new Set(["hotfix"]);
-const RFC_STATUSES = new Set([
-	"draft",
-	"review",
-	"develop",
-	"merge",
-	"complete",
-]);
-const RFC_STATUS_ALIASES = new Map<string, string>([
-	["todo", "Draft"],
-	["new", "Draft"],
-	["open", "Draft"],
-	["proposal", "Draft"],
-	["reviewing", "Review"],
-	["accepted", "Develop"],
-	["building", "Develop"],
-	["active", "Develop"],
-	["developing", "Develop"],
-	["done", "Complete"],
-	["completed", "Complete"],
-	["closed", "Complete"],
-]);
-const QUICK_FIX_STATUS_ALIASES = new Map<string, string>([
-	["draft", "TRIAGE"],
-	["todo", "TRIAGE"],
-	["new", "TRIAGE"],
-	["open", "TRIAGE"],
-	["proposal", "TRIAGE"],
-	["triage", "TRIAGE"],
-	["review", "FIX"],
-	["reviewing", "FIX"],
-	["develop", "FIX"],
-	["developing", "FIX"],
-	["merge", "FIX"],
-	["accepted", "FIX"],
-	["active", "FIX"],
-	["building", "FIX"],
-	["fix", "FIX"],
-	["fixing", "FIX"],
-	["done", "DEPLOYED"],
-	["completed", "DEPLOYED"],
-	["complete", "DEPLOYED"],
-	["deployed", "DEPLOYED"],
-	["closed", "DEPLOYED"],
-	["wont_fix", "WONT_FIX"],
-	["non_issue", "NON_ISSUE"],
-	["escalate", "ESCALATE"],
-]);
-const HOTFIX_STATUS_ALIASES = new Map<string, string>([
-	["draft", "TRIAGE"],
-	["todo", "TRIAGE"],
-	["new", "TRIAGE"],
-	["open", "TRIAGE"],
-	["proposal", "TRIAGE"],
-	["triage", "TRIAGE"],
-	["review", "FIX"],
-	["reviewing", "FIX"],
-	["develop", "FIX"],
-	["developing", "FIX"],
-	["merge", "FIX"],
-	["accepted", "FIX"],
-	["active", "FIX"],
-	["building", "FIX"],
-	["fix", "FIX"],
-	["fixing", "FIX"],
-	["done", "DEPLOYED"],
-	["completed", "DEPLOYED"],
-	["complete", "DEPLOYED"],
-	["deployed", "DEPLOYED"],
-	["closed", "DEPLOYED"],
-	["wont_fix", "WONT_FIX"],
-	["non_issue", "NON_ISSUE"],
-	["escalate", "ESCALATE"],
-]);
-const STATUS_ALIASES_BY_WORKFLOW: Record<
-	WorkflowViewKey,
-	Map<string, string>
-> = {
-	rfc: RFC_STATUS_ALIASES,
-	"quick-fix": QUICK_FIX_STATUS_ALIASES,
-	hotfix: HOTFIX_STATUS_ALIASES,
-};
-const QUICK_FIX_STATUSES = new Set([
-	"triage",
-	"fix",
-	"deployed",
-	"escalate",
-	"wont_fix",
-	"non_issue",
-	"fixing",
-	"done",
-]);
-const HOTFIX_STATUSES = new Set([
-	"triage",
-	"fix",
-	"deployed",
-	"escalate",
-	"wont_fix",
-	"non_issue",
-	"fixing",
-	"done",
-]);
 
 function isObsoleteProposal(proposal: Proposal): boolean {
 	return (proposal.maturity ?? "").toLowerCase() === "obsolete";
 }
 
-function getCombinedWorkflowStatuses(proposals: Proposal[]): string[] {
-	const canonicalStatuses = [
-		...new Set(
-			WORKFLOW_VIEWS.flatMap((workflow) =>
-				workflow.key === "all" || workflow.key === "obsolete"
-					? []
-					: workflow.statuses,
-			),
-		),
-	];
-	const extraStatuses = new Set<string>();
+function statusKey(status: string): string {
+	return status.trim().toUpperCase();
+}
+
+function statusForView(status: string, workflowKey: WorkflowViewKey): string {
+	const raw = statusKey(status);
+	if (workflowKey === "hotfix") {
+		return HOTFIX_DISPLAY_MAP[raw] ?? raw;
+	}
+	return raw;
+}
+
+function getCombinedWorkflowStatuses(
+	proposals: Proposal[],
+	workflowKey: WorkflowViewKey,
+): string[] {
+	const canonical =
+		workflowKey === "hotfix"
+			? [...HOTFIX_STATUSES_CANONICAL]
+			: [...RFC_STATUSES_CANONICAL];
+	const extras = new Set<string>();
 	for (const proposal of proposals) {
-		const workflow = getWorkflowViewForProposal(proposal);
-		const status = normalizeWorkflowStatus(proposal.status, workflow.key);
-		if (status && !canonicalStatuses.includes(status)) {
-			extraStatuses.add(status);
+		const status = statusForView(proposal.status, workflowKey);
+		if (status && !canonical.includes(status)) {
+			extras.add(status);
 		}
 	}
 	return [
-		...canonicalStatuses,
-		...Array.from(extraStatuses).sort((a, b) => a.localeCompare(b)),
+		...canonical,
+		...Array.from(extras).sort((a, b) => a.localeCompare(b)),
 	];
 }
 
@@ -255,48 +181,20 @@ export function getWorkflowViewDefinition(
 	return WORKFLOW_BY_KEY.get(key) ?? WORKFLOW_VIEWS[0];
 }
 
-function normalizeWorkflowStatus(
-	status: string,
-	workflowKey: WorkflowViewKey,
-): string {
-	const trimmed = status.trim();
-	const workflow = getWorkflowViewDefinition(workflowKey);
-	const canonical = workflow.statuses.find(
-		(candidate) => candidate.toLowerCase() === trimmed.toLowerCase(),
-	);
-	if (canonical) return canonical;
-	return (
-		STATUS_ALIASES_BY_WORKFLOW[workflowKey].get(trimmed.toLowerCase()) ??
-		trimmed
-	);
+function isHotfixProposal(proposal: Proposal): boolean {
+	const type = proposal.proposalType?.trim().toLowerCase();
+	return type ? HOTFIX_PROPOSAL_TYPES.has(type) : false;
 }
 
 export function getWorkflowViewForProposal(
 	proposal: Proposal,
 ): WorkflowViewDefinition {
-	const proposalType = proposal.proposalType?.trim().toLowerCase();
-	const status = proposal.status.trim().toLowerCase();
-	if (proposalType && HOTFIX_TYPES.has(proposalType)) {
+	if (isObsoleteProposal(proposal)) {
+		return getWorkflowViewDefinition("obsolete");
+	}
+	if (isHotfixProposal(proposal)) {
 		return getWorkflowViewDefinition("hotfix");
 	}
-	if (proposalType === "issue") {
-		return QUICK_FIX_STATUSES.has(status)
-			? getWorkflowViewDefinition("quick-fix")
-			: getWorkflowViewDefinition("rfc");
-	}
-	if (proposalType && RFC_TYPES.has(proposalType)) {
-		return getWorkflowViewDefinition("rfc");
-	}
-	if (RFC_STATUSES.has(status)) {
-		return getWorkflowViewDefinition("rfc");
-	}
-	if (HOTFIX_STATUSES.has(status)) {
-		return getWorkflowViewDefinition("hotfix");
-	}
-	if (QUICK_FIX_STATUSES.has(status)) {
-		return getWorkflowViewDefinition("quick-fix");
-	}
-
 	return getWorkflowViewDefinition("rfc");
 }
 
@@ -304,62 +202,37 @@ export function filterProposalsForWorkflow(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): Proposal[] {
-	if (workflowKey === "all") {
-		return proposals.filter((proposal) => !isObsoleteProposal(proposal));
-	}
 	if (workflowKey === "obsolete") {
 		return proposals.filter((proposal) => isObsoleteProposal(proposal));
 	}
-	return proposals.filter(
-		(proposal) =>
-			getWorkflowViewForProposal(proposal).key === workflowKey &&
-			!isObsoleteProposal(proposal),
-	);
+	const live = proposals.filter((proposal) => !isObsoleteProposal(proposal));
+	if (workflowKey === "hotfix") {
+		return live.filter((proposal) => isHotfixProposal(proposal));
+	}
+	if (workflowKey === "rfc") {
+		return live.filter((proposal) => !isHotfixProposal(proposal));
+	}
+	// "all" — every non-obsolete proposal, hotfix and RFC alike.
+	return live;
 }
 
 export function resolveWorkflowStatuses(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): string[] {
-	if (workflowKey === "all" || workflowKey === "obsolete") {
-		return getCombinedWorkflowStatuses(
-			filterProposalsForWorkflow(proposals, workflowKey),
-		);
-	}
-	const workflow = getWorkflowViewDefinition(workflowKey);
-	const canonicalStatuses = [...workflow.statuses];
-	const extraStatuses = new Set<string>();
-	for (const proposal of proposals) {
-		if (getWorkflowViewForProposal(proposal).key !== workflowKey) {
-			continue;
-		}
-		const status = normalizeWorkflowStatus(proposal.status, workflowKey);
-		if (status && !canonicalStatuses.includes(status)) {
-			extraStatuses.add(status);
-		}
-	}
-	return [
-		...canonicalStatuses,
-		...Array.from(extraStatuses).sort((a, b) => a.localeCompare(b)),
-	];
+	const scoped = filterProposalsForWorkflow(proposals, workflowKey);
+	return getCombinedWorkflowStatuses(scoped, workflowKey);
 }
 
 function normalizeProposalsForWorkflow(
 	proposals: Proposal[],
 	workflowKey: WorkflowViewKey,
 ): Proposal[] {
-	if (workflowKey === "all" || workflowKey === "obsolete") {
-		return proposals.map((proposal) => ({
-			...proposal,
-			status: normalizeWorkflowStatus(
-				proposal.status,
-				getWorkflowViewForProposal(proposal).key,
-			),
-		}));
-	}
+	// RFC view surfaces DB-truth statuses verbatim. Hotfix view re-labels
+	// using the Hotfix SMDL stage names so columns read TRIAGE/FIX/DEPLOYED.
 	return proposals.map((proposal) => ({
 		...proposal,
-		status: normalizeWorkflowStatus(proposal.status, workflowKey),
+		status: statusForView(proposal.status, workflowKey),
 	}));
 }
 

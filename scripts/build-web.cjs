@@ -61,6 +61,18 @@ if (!jsOnly) {
 		],
 		{ stdio: "inherit" },
 	);
+	// index.html in src/web/ loads ./styles/style.css (next to itself), so
+	// mirror the freshly built tailwind output into src/web/styles/.
+	// Without this, the browser keeps reading a stale style.css and any
+	// newly used Tailwind classes silently render as unstyled.
+	const builtCss = path.join(
+		repoRoot,
+		"src/apps/dashboard-web/styles/style.css",
+	);
+	const servedCss = path.join(repoRoot, "src/web/styles/style.css");
+	fs.mkdirSync(path.dirname(servedCss), { recursive: true });
+	fs.copyFileSync(builtCss, servedCss);
+	console.log(`[build-web] deployed → ${servedCss}`);
 }
 
 const entry = "src/web/main.tsx";

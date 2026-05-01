@@ -38,14 +38,14 @@ const ProjectChip: React.FC<ProjectChipProps> = ({ serverEcho }) => {
 		serverEcho.project_id !== scope.current.project_id;
 
 	return (
-		<label className="inline-flex items-center gap-1.5 text-xs">
-			<span className="text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+		<label className="inline-flex items-center gap-1.5 text-xs min-w-0">
+			<span className="hidden sm:inline text-gray-500 dark:text-gray-400 uppercase tracking-wide">
 				project
 			</span>
 			<select
 				value={scope.current?.project_id ?? ""}
 				onChange={(e) => scope.setProjectId(Number(e.target.value))}
-				className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 text-xs"
+				className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 text-xs max-w-[10rem] sm:max-w-none truncate"
 				aria-label="Active project"
 			>
 				{scope.projects.map((p) => (

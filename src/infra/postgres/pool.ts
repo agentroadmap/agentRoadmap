@@ -175,7 +175,7 @@ const resolvedPassword =
 			Number(config?.port ?? process.env.PGPORT ?? databaseUrlConfig.port) ||
 			5432,
 		user:
-			config?.user ?? process.env.PGUSER ?? databaseUrlConfig.user ?? "xiaomi",
+			config?.user ?? process.env.PGUSER ?? databaseUrlConfig.user,
 		password: resolvedPassword,
 		database:
 			config?.database ??
@@ -295,7 +295,7 @@ export function initPoolFromConfig(dbConfig: Record<string, any>): Pool {
 	return getPool({
 		host: dbConfig.host ?? process.env.PGHOST ?? "127.0.0.1",
 		port: Number(dbConfig.port || process.env.PGPORT || 5432),
-		user: dbConfig.user ?? process.env.PGUSER ?? "xiaomi",
+		user: dbConfig.user ?? process.env.PGUSER,
 		password: process.env.PGPASSWORD ?? process.env.__PGPASSWORD_FROM_CONFIG,
 		database: dbConfig.name ?? process.env.PGDATABASE ?? "agenthive",
 		schema: configuredSchema,

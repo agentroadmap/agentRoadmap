@@ -10,6 +10,20 @@ interface BoardPageProps {
 	onProposalClick: (proposal: Proposal) => void;
 }
 
+const MATURITY_OPTIONS = [
+	{ value: "non-obsolete", label: "All except obsolete" },
+	{ value: "all", label: "All including obsolete" },
+	{ value: "new", label: "New only" },
+	{ value: "active", label: "Active only" },
+	{ value: "mature", label: "Mature only" },
+	{ value: "obsolete", label: "Obsolete only" },
+] as const;
+
+type MaturityFilter = (typeof MATURITY_OPTIONS)[number]["value"];
+
+const isMaturityFilter = (v: string | null): v is MaturityFilter =>
+	v !== null && MATURITY_OPTIONS.some((o) => o.value === v);
+
 export default function BoardPage({
 	proposals,
 	statuses,
@@ -22,17 +36,27 @@ export default function BoardPage({
 	const [laneMode, setLaneMode] = useState<LaneMode>("none");
 	const [typeFilter, setTypeFilter] = useState<string | null>(null);
 	const [domainFilter, setDomainFilter] = useState<string | null>(null);
+	const [statusFilter, setStatusFilter] = useState<string | null>(null);
+	const [maturityFilter, setMaturityFilter] =
+		useState<MaturityFilter>("non-obsolete");
 	const [searchText, setSearchText] = useState("");
 	const laneStorageKey = "roadmap.board.lane";
+	const maturityStorageKey = "roadmap.board.maturity";
 
 	useEffect(() => {
 		const storedLane =
 			typeof window !== "undefined"
 				? window.localStorage.getItem(laneStorageKey)
 				: null;
+		const storedMaturity =
+			typeof window !== "undefined"
+				? window.localStorage.getItem(maturityStorageKey)
+				: null;
 		const paramLane = searchParams.get("lane");
 		const paramType = searchParams.get("type");
 		const paramDomain = searchParams.get("domain");
+		const paramStatus = searchParams.get("status");
+		const paramMaturity = searchParams.get("maturity");
 
 		const parseLane = (value: string | null): LaneMode | null => {
 			if (value === "type" || value === "domain" || value === "none")
@@ -41,12 +65,21 @@ export default function BoardPage({
 		};
 
 		const nextLane = parseLane(paramLane) ?? parseLane(storedLane) ?? "none";
+		const nextMaturity: MaturityFilter = isMaturityFilter(paramMaturity)
+			? paramMaturity
+			: isMaturityFilter(storedMaturity)
+				? storedMaturity
+				: "non-obsolete";
+
 		setLaneMode(nextLane);
 		setTypeFilter(paramType);
 		setDomainFilter(paramDomain);
+		setStatusFilter(paramStatus);
+		setMaturityFilter(nextMaturity);
 
 		if (typeof window !== "undefined") {
 			window.localStorage.setItem(laneStorageKey, nextLane);
+			window.localStorage.setItem(maturityStorageKey, nextMaturity);
 		}
 	}, [searchParams]);
 
@@ -86,10 +119,23 @@ export default function BoardPage({
 		);
 	};
 
-	// Filter proposals by type/domain/text if active
+	const matchesMaturity = (p: Proposal): boolean => {
+		const m = (p.maturity ?? "").toLowerCase();
+		switch (maturityFilter) {
+			case "all":
+				return true;
+			case "non-obsolete":
+				return m !== "obsolete";
+			default:
+				return m === maturityFilter;
+		}
+	};
+
+	// Filter proposals by type/domain/text/maturity if active
 	const filteredProposals = proposals.filter((p) => {
 		if (typeFilter && p.proposalType !== typeFilter) return false;
 		if (domainFilter && p.domainId !== domainFilter) return false;
+		if (!matchesMaturity(p)) return false;
 		if (searchText) {
 			const q = searchText.toLowerCase();
 			const idMatch = p.displayId?.toLowerCase().includes(q);
@@ -107,11 +153,44 @@ export default function BoardPage({
 	const laneSelectId = "board-lane-mode";
 	const typeSelectId = "board-type-filter";
 	const domainSelectId = "board-domain-filter";
+	const statusSelectId = "board-status-filter";
+	const maturitySelectId = "board-maturity-filter";
+
+	const updateParam = (key: string, value: string | null) => {
+		setSearchParams(
+			(params: URLSearchParams) => {
+				if (value === null || value === "") {
+					params.delete(key);
+				} else {
+					params.set(key, value);
+				}
+				return params;
+			},
+			{ replace: true },
+		);
+	};
+
+	const handleStatusChange = (next: string) => {
+		const value = next === "" ? null : next;
+		setStatusFilter(value);
+		updateParam("status", value);
+	};
+
+	const handleMaturityChange = (next: MaturityFilter) => {
+		setMaturityFilter(next);
+		if (typeof window !== "undefined") {
+			window.localStorage.setItem(maturityStorageKey, next);
+		}
+		updateParam("maturity", next === "non-obsolete" ? null : next);
+	};
+
+	const focusStatus =
+		statusFilter && statuses.includes(statusFilter) ? statusFilter : null;
 
 	return (
-		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
+		<div className="container mx-auto px-0 sm:px-4 py-3 sm:py-8 transition-colors duration-200">
 			{/* Lane Controls */}
-			<div className="mb-4 flex items-center gap-4">
+			<div className="mb-4 px-3 sm:px-0 flex flex-wrap items-center gap-x-4 gap-y-2">
 				{/* Search filter */}
 				<input
 					id="board-search"
@@ -119,7 +198,7 @@ export default function BoardPage({
 					placeholder="Filter by # or title…"
 					value={searchText}
 					onChange={(e) => setSearchText(e.target.value)}
-					className="rounded border px-3 py-1.5 text-sm w-64 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400"
+					className="rounded border px-3 py-1.5 text-sm w-full sm:w-64 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400"
 				/>
 				<div className="flex items-center gap-2">
 					<label
@@ -188,7 +267,52 @@ export default function BoardPage({
 					</div>
 				)}
 
-				<div className="ml-auto text-sm text-gray-500">
+				<div className="flex items-center gap-2">
+					<label
+						htmlFor={statusSelectId}
+						className="text-sm font-medium text-gray-600"
+					>
+						Status:
+					</label>
+					<select
+						id={statusSelectId}
+						value={statusFilter ?? ""}
+						onChange={(e) => handleStatusChange(e.target.value)}
+						className="rounded border px-2 py-1 text-sm"
+					>
+						<option value="">All states</option>
+						{statuses.map((s) => (
+							<option key={s} value={s}>
+								{s}
+							</option>
+						))}
+					</select>
+				</div>
+
+				<div className="flex items-center gap-2">
+					<label
+						htmlFor={maturitySelectId}
+						className="text-sm font-medium text-gray-600"
+					>
+						Maturity:
+					</label>
+					<select
+						id={maturitySelectId}
+						value={maturityFilter}
+						onChange={(e) =>
+							handleMaturityChange(e.target.value as MaturityFilter)
+						}
+						className="rounded border px-2 py-1 text-sm"
+					>
+						{MATURITY_OPTIONS.map((o) => (
+							<option key={o.value} value={o.value}>
+								{o.label}
+							</option>
+						))}
+					</select>
+				</div>
+
+				<div className="sm:ml-auto text-sm text-gray-500 dark:text-gray-400">
 					{filteredProposals.length} proposals
 				</div>
 			</div>
@@ -201,6 +325,7 @@ export default function BoardPage({
 				laneMode={laneMode}
 				proposalTypes={proposalTypes}
 				domains={domains}
+				focusStatus={focusStatus}
 			/>
 		</div>
 	);

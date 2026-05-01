@@ -67,12 +67,12 @@ const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({
 	title,
 	right,
 }) => (
-	<div className="flex items-center justify-between mb-3">
-		<h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight transition-colors duration-200">
+	<div className="flex items-center justify-between mb-3 pb-1.5 sm:pb-0 border-b sm:border-b-0 border-gray-200 dark:border-gray-700">
+		<h3 className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300 transition-colors duration-200">
 			{title}
 		</h3>
 		{right ? (
-			<div className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+			<div className="ml-2 text-xs text-gray-500 dark:text-gray-400 normal-case tracking-normal">
 				{right}
 			</div>
 		) : null}
@@ -840,12 +840,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		emptyText: string,
 		height = 220,
 	) => (
-		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+		<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 			<SectionHeader title={fieldTitle} />
 			{mode === "preview" ? (
 				value.trim().length > 0 ? (
 					<div
-						className="prose prose-sm !max-w-none wmde-markdown"
+						className="prose prose-sm !max-w-none wmde-markdown prose-headings:font-semibold prose-h1:text-base prose-h1:mt-3 prose-h1:mb-2 prose-h2:text-[15px] prose-h2:mt-3 prose-h2:mb-1.5 prose-h3:text-sm prose-h3:mt-2 prose-h3:mb-1 prose-h4:text-sm prose-h5:text-sm prose-h6:text-sm"
 						data-color-mode={theme}
 					>
 						<MermaidMarkdown source={value} />
@@ -1054,12 +1054,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 				</div>
 			)}
 
-			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+			<div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-6">
 				{/* Main content */}
-				<div className="md:col-span-2 space-y-6">
+				<div className="md:col-span-2 space-y-0 sm:space-y-6">
 					{/* Title field for create mode */}
 					{isCreateMode && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Title" />
 							<input
 								type="text"
@@ -1099,7 +1099,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 
 					{/* References */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 						<SectionHeader title="References" right="Links and file paths" />
 						<div className="space-y-3">
 							{references.length > 0 ? (
@@ -1199,7 +1199,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 					{/* Documentation */}
 					{documentation.length > 0 && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Documentation" />
 							<div className="space-y-2">
 								<ul className="space-y-2">
@@ -1233,7 +1233,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 
 					{/* Acceptance Criteria */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 						<SectionHeader
 							title={`Acceptance Criteria ${totalCount ? `(${checkedCount}/${totalCount})` : ""}`}
 							right={mode === "preview" ? <span>Toggle to update</span> : null}
@@ -1273,12 +1273,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Implementation Plan */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 						<SectionHeader title="Implementation Plan" />
 						{mode === "preview" ? (
 							plan ? (
 								<div
-									className="prose prose-sm !max-w-none wmde-markdown"
+									className="prose prose-sm !max-w-none wmde-markdown prose-headings:font-semibold prose-h1:text-base prose-h1:mt-3 prose-h1:mb-2 prose-h2:text-[15px] prose-h2:mt-3 prose-h2:mb-1.5 prose-h3:text-sm prose-h3:mt-2 prose-h3:mb-1 prose-h4:text-sm prose-h5:text-sm prose-h6:text-sm"
 									data-color-mode={theme}
 								>
 									<MermaidMarkdown source={plan} />
@@ -1302,12 +1302,12 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Implementation Notes */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 						<SectionHeader title="Implementation Notes" />
 						{mode === "preview" ? (
 							notes ? (
 								<div
-									className="prose prose-sm !max-w-none wmde-markdown"
+									className="prose prose-sm !max-w-none wmde-markdown prose-headings:font-semibold prose-h1:text-base prose-h1:mt-3 prose-h1:mb-2 prose-h2:text-[15px] prose-h2:mt-3 prose-h2:mb-1.5 prose-h3:text-sm prose-h3:mt-2 prose-h3:mb-1 prose-h4:text-sm prose-h5:text-sm prose-h6:text-sm"
 									data-color-mode={theme}
 								>
 									<MermaidMarkdown source={notes} />
@@ -1332,11 +1332,11 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 					{/* Final Summary */}
 					{(mode !== "preview" || finalSummary.trim().length > 0) && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Final Summary" right="Completion summary" />
 							{mode === "preview" ? (
 								<div
-									className="prose prose-sm !max-w-none wmde-markdown"
+									className="prose prose-sm !max-w-none wmde-markdown prose-headings:font-semibold prose-h1:text-base prose-h1:mt-3 prose-h1:mb-2 prose-h2:text-[15px] prose-h2:mt-3 prose-h2:mb-1.5 prose-h3:text-sm prose-h3:mt-2 prose-h3:mb-1 prose-h4:text-sm prose-h5:text-sm prose-h6:text-sm"
 									data-color-mode={theme}
 								>
 									<MermaidMarkdown source={finalSummary} />
@@ -1360,7 +1360,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 					{/* Decisions */}
 					{mode === "preview" && decisions.length > 0 && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Decisions" right={`${decisions.length} recorded`} />
 							<div className="space-y-3">
 								{decisions.map((d) => (
@@ -1385,7 +1385,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 					{/* Reviews */}
 					{mode === "preview" && reviews.length > 0 && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Reviews" right={`${reviews.length} recorded`} />
 							<div className="space-y-3">
 								{reviews.map((r) => (
@@ -1429,7 +1429,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 					{/* Discussions */}
 					{mode === "preview" && discussions.length > 0 && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
 							<SectionHeader title="Discussions" right={`${discussions.length} entries`} />
 							<div className="space-y-2 max-h-96 overflow-y-auto">
 								{discussions.map((d) => (
@@ -1456,10 +1456,10 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 				</div>
 
 				{/* Sidebar */}
-				<div className="md:col-span-1 space-y-4">
+				<div className="md:col-span-1 space-y-0 sm:space-y-4">
 					{/* Dates */}
 					{proposal && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
 							<div>
 								<span className="font-semibold text-gray-800 dark:text-gray-100">
 									Created:
@@ -1482,7 +1482,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 					{/* Title (editable for existing proposals) */}
 					{proposal && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 							<SectionHeader title="Title" />
 							<input
 								type="text"
@@ -1507,7 +1507,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					)}
 
 					{/* Status */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader
 							title="Status"
 							right={
@@ -1539,7 +1539,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Assignee */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Assignee" />
 						<ChipInput
 							name="assignee"
@@ -1552,7 +1552,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Labels */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Labels" />
 						<ChipInput
 							name="labels"
@@ -1565,7 +1565,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Priority */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Priority" />
 						<select
 							className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? "opacity-60 cursor-not-allowed" : ""}`}
@@ -1589,7 +1589,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Directive */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Directive" right="Owning initiative" />
 						<select
 							className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? "opacity-60 cursor-not-allowed" : ""}`}
@@ -1618,7 +1618,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Dependencies */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Dependencies" right="Type to search proposals" />
 						<DependencyInput
 							value={dependencies}
@@ -1633,7 +1633,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					</div>
 
 					{/* Required Capabilities */}
-					<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 						<SectionHeader title="Required Capabilities" />
 						<ChipInput
 							name="required-capabilities"
@@ -1653,7 +1653,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 					{/* Archive button at bottom of sidebar */}
 					{proposal && onArchive && !isFromOtherBranch && (
-						<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
 							<button
 								type="button"
 								onClick={handleArchive}

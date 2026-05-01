@@ -11,7 +11,7 @@ cd "$PROJECT_ROOT"
 
 export PGHOST="${PGHOST:-127.0.0.1}"
 export PGPORT="${PGPORT:-5432}"
-export PGUSER="${PGUSER:-xiaomi}"
+export PGUSER="${PGUSER:-$USER}"
 
 if [ -z "${PGPASSWORD:-}" ] && [ -n "${PG_PASSWORD:-}" ]; then
 	export PGPASSWORD="$PG_PASSWORD"

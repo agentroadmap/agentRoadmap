@@ -46,19 +46,29 @@ const Modal: React.FC<ModalProps> = ({
 
 	return (
 		<div
-			className="fixed inset-0 bg-black/40 dark:bg-black/60 flex items-start sm:items-center justify-center z-50 p-4"
+			className="fixed inset-0 bg-black/40 dark:bg-black/60 flex items-start sm:items-center justify-center z-50 p-0 sm:p-4"
 			style={{
-				paddingTop: "max(1rem, env(safe-area-inset-top))",
-				paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+				paddingTop: "max(0px, env(safe-area-inset-top))",
+				paddingBottom: "max(0px, env(safe-area-inset-bottom))",
+			}}
+			onClick={(e) => {
+				// Click on backdrop (not modal content) closes
+				if (e.target === e.currentTarget && !disableEscapeClose) {
+					onClose();
+				}
 			}}
 		>
 			<div
-				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-full sm:max-h-[94vh] overflow-y-auto transition-colors duration-200`}
+				className={`bg-white dark:bg-gray-800 sm:rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-full sm:max-h-[94vh] overflow-y-auto transition-colors duration-200`}
+				style={{
+					touchAction: "pan-y",
+					overscrollBehavior: "contain",
+				}}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="modal-title"
 			>
-				<div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
+				<div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 sm:px-6 pt-3 sm:pt-4 pb-2 sm:pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
 					<h2
 						id="modal-title"
 						className="text-base font-semibold text-gray-900 dark:text-gray-100 min-w-0 flex-1 truncate"
@@ -78,7 +88,9 @@ const Modal: React.FC<ModalProps> = ({
 						</button>
 					</div>
 				</div>
-				<div className="px-6 pt-4 pb-6">{children}</div>
+				<div className="px-3 sm:px-6 pt-3 sm:pt-4 pb-4 sm:pb-6">
+					{children}
+				</div>
 			</div>
 		</div>
 	);

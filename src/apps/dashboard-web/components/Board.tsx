@@ -21,6 +21,7 @@ interface BoardProps {
 	laneMode: LaneMode;
 	proposalTypes: string[];
 	domains: string[];
+	focusStatus?: string | null;
 }
 
 const Board: React.FC<BoardProps> = ({
@@ -31,22 +32,14 @@ const Board: React.FC<BoardProps> = ({
 	laneMode,
 	proposalTypes,
 	domains,
+	focusStatus,
 }) => {
 	const [_collapsedLanes, setCollapsedLanes] = useState<
 		Record<string, boolean>
 	>({});
-	const [hideComplete, setHideComplete] = useState(false);
-	const [hideObsolete, setHideObsolete] = useState(true);
+	const [activeStatus, setActiveStatus] = useState<string | null>(null);
 
-	const visibleProposals = useMemo(
-		() =>
-			hideObsolete
-				? proposals.filter(
-						(proposal) => (proposal.maturity ?? "").toLowerCase() !== "obsolete",
-					)
-				: proposals,
-		[hideObsolete, proposals],
-	);
+	const visibleProposals = proposals;
 
 	// Build lane definitions
 	const lanes = useMemo(
@@ -66,11 +59,18 @@ const Board: React.FC<BoardProps> = ({
 		[laneMode, lanes, statuses, visibleProposals],
 	);
 
-	// Filtered proposals (hide complete if toggled)
+	// When focusStatus is set, restrict to that one column (single-state focus view).
 	const visibleStatuses = useMemo(
-		() => (hideComplete ? statuses.filter((s) => s.toUpperCase() !== "COMPLETE") : statuses),
-		[statuses, hideComplete],
+		() =>
+			focusStatus && statuses.includes(focusStatus) ? [focusStatus] : statuses,
+		[statuses, focusStatus],
 	);
+	const isFocused = visibleStatuses.length === 1 && !!focusStatus;
+
+	const mobileActiveStatus =
+		activeStatus && visibleStatuses.includes(activeStatus)
+			? activeStatus
+			: visibleStatuses[0] ?? null;
 
 	const _toggleLane = (laneKey: string) => {
 		setCollapsedLanes((prev) => ({ ...prev, [laneKey]: !prev[laneKey] }));
@@ -92,36 +92,57 @@ const Board: React.FC<BoardProps> = ({
 
 	return (
 		<div>
-			{/* Controls */}
-			<div className="mb-4 flex items-center gap-4">
-				<label className="flex items-center gap-2 text-sm text-gray-600">
-					<input
-						type="checkbox"
-						checked={hideComplete}
-						onChange={(e) => setHideComplete(e.target.checked)}
-					/>
-					Hide Complete
-				</label>
-				<label className="flex items-center gap-2 text-sm text-gray-600">
-					<input
-						type="checkbox"
-						checked={hideObsolete}
-						onChange={(e) => setHideObsolete(e.target.checked)}
-					/>
-					Hide Obsolete
-				</label>
-				<div className="ml-auto text-sm text-gray-500">
+			{/* Lane summary (status + maturity filters now live in BoardPage controls) */}
+			<div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+				<div className="text-sm text-gray-500 dark:text-gray-400 w-full md:w-auto">
 					{visibleProposals.length} proposals across {lanes.length} lane
 					{lanes.length !== 1 ? "s" : ""}
+					{isFocused && (
+						<span className="ml-2 text-xs px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200">
+							Focused on {focusStatus}
+						</span>
+					)}
+				</div>
+			</div>
+
+			{/* Mobile status picker */}
+			<div
+				className="md:hidden mb-3 px-3 overflow-x-auto"
+				style={{ touchAction: "pan-x" }}
+			>
+				<div className="inline-flex gap-2 pb-1">
+					{visibleStatuses.map((status) => {
+						const count = visibleProposals.filter((p) => p.status === status).length;
+						const isOn = status === mobileActiveStatus;
+						return (
+							<button
+								key={status}
+								type="button"
+								onClick={() => setActiveStatus(status)}
+								className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+									isOn
+										? "bg-stone-700 text-white border-stone-700 dark:bg-stone-200 dark:text-stone-900 dark:border-stone-200"
+										: "bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600"
+								}`}
+							>
+								{status} <span className="opacity-70">({count})</span>
+							</button>
+						);
+					})}
 				</div>
 			</div>
 
 			{/* Board Grid */}
-			<div className="overflow-x-auto">
-				<div className="inline-flex gap-4 min-w-full">
+			<div className="md:overflow-x-auto">
+				<div className="flex flex-col md:inline-flex md:flex-row gap-4 md:min-w-full">
 					{/* Status columns */}
 					{visibleStatuses.map((status) => (
-						<div key={status} className="flex-shrink-0 w-64">
+						<div
+							key={status}
+							className={`flex-shrink-0 w-full ${
+								isFocused ? "md:w-full md:max-w-3xl md:mx-auto" : "md:w-64"
+							} ${status === mobileActiveStatus ? "" : "hidden md:block"}`}
+						>
 							{/* Column header */}
 							<div className="sticky top-0 z-10 bg-gray-100 rounded-t-lg px-3 py-2 border-b">
 								<div className="flex items-center justify-between">
@@ -138,7 +159,7 @@ const Board: React.FC<BoardProps> = ({
 							</div>
 
 							{/* Cards */}
-							<div className="bg-gray-50 rounded-b-lg p-2 min-h-[200px] space-y-2">
+							<div className="bg-gray-50 dark:bg-gray-800/40 rounded-b-lg px-0 py-1 md:p-2 min-h-[200px] space-y-2">
 								{lanes.map((lane) => {
 									const cellProposals = getProposalsForCell(lane.key, status);
 									if (cellProposals.length === 0) return null;
@@ -155,11 +176,11 @@ const Board: React.FC<BoardProps> = ({
 													key={proposal.id}
 													type="button"
 													onClick={() => onProposalClick?.(proposal)}
-													className={`
-                            w-full text-left bg-white rounded-lg p-3 shadow-sm border cursor-pointer
-                            hover:shadow-md transition-shadow mb-2
-                            ${proposal.id === highlightProposalId ? "ring-2 ring-blue-400" : ""}
-                          `}
+													className={`w-full text-left bg-white dark:bg-gray-900 rounded-none md:rounded-lg p-3 border-y md:border md:shadow-sm cursor-pointer md:hover:shadow-md transition-shadow border-gray-200 dark:border-gray-700 ${
+														proposal.id === highlightProposalId
+															? "ring-2 ring-blue-400"
+															: ""
+													}`}
 												>
 													<div
 														className={`-mx-3 -mt-3 mb-2 px-3 py-1 rounded-t-lg flex items-center justify-between gap-2 ${getMaturityTitleBarColor(proposal.maturity)}`}
@@ -246,14 +267,17 @@ function getPriorityColor(priority: string): string {
 
 function getMaturityTitleBarColor(maturity?: string | null): string {
 	switch ((maturity ?? "").toLowerCase()) {
-		case "mature":
-			return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
+		case "new":
+			// fresh / just landed → light green
+			return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200";
 		case "active":
-			return "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200";
+			// in progress / hot → warm amber
+			return "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100";
+		case "mature":
+			// settled / ready → cool sky-blue
+			return "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200";
 		case "obsolete":
 			return "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-500";
-		case "new":
-			return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
 		default:
 			return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
 	}

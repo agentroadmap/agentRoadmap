@@ -10,7 +10,7 @@ if [ -z "${PGPASSWORD:-}" ] && [ -f "$HOME/.hermes/.env" ]; then
 fi
 PGPASSWORD="${PGPASSWORD:?ERROR: PGPASSWORD not set — source ~/.hermes/.env}"
 export PGPASSWORD
-PG="psql -h 127.0.0.1 -U ${PGUSER:-xiaomi} -d ${PGDATABASE:-agenthive} -t -A"
+PG="psql -h 127.0.0.1 -U ${PGUSER:-$USER} -d ${PGDATABASE:-agenthive} -t -A"
 WEBHOOK_URL="${DISCORD_WEBHOOK_STATEFEED:?ERROR: DISCORD_WEBHOOK_STATEFEED not set — add to ~/.hermes/.env}"
 LISTENER_SCRIPT="/data/code/AgentHive/scripts/state-feed-listener.ts"
 STATE_FILE="$HOME/.hermes/cron/output/.state-feed-watchdog"

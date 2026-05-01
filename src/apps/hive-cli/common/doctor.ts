@@ -210,7 +210,8 @@ async function checkDbReachable(): Promise<DoctorCheckResult> {
           },
           {
             description: "Verify credentials",
-            command: "psql -h 127.0.0.1 -U xiaomi -d agenthive -c 'SELECT 1'",
+            command:
+              "psql -h 127.0.0.1 -U \"${PGUSER:-$USER}\" -d \"${PGDATABASE:-agenthive}\" -c 'SELECT 1'",
           },
         ],
       },

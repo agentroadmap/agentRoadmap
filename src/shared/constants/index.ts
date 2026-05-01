@@ -37,36 +37,18 @@ export const DEFAULT_FILES = {
 } as const;
 
 /**
- * Default proposal statuses — ordered by workflow
- * Standard RFC workflow: Draft → Review → Develop → Merge → Complete
- *   (applies to: product, component, feature, issue)
- * Hotfix workflow: TRIAGE → FIX → DEPLOYED
- *   (applies to: hotfix)
+ * Default proposal statuses — single workflow path used for every proposal
+ * type today. Hotfix/Quick-Fix SMDL stages still live in
+ * roadmap.workflow_templates as product spec but are not written to
+ * proposal.status by the gate-transition code. See plan
+ * sharded-snacking-pixel.md for the deferred Option-C migration.
  */
 export const DEFAULT_STATUSES = [
-	// Standard RFC workflow (product, component, feature, issue)
 	"Draft",
 	"Review",
 	"Develop",
 	"Merge",
 	"Complete",
-	// Hotfix workflow (hotfix)
-	"TRIAGE",
-	"FIX",
-	"DEPLOYED",
-	"ESCALATE",
-	"WONT_FIX",
-	"NON_ISSUE",
-	// Legacy compatibility statuses
-	"FIXING",
-	"DONE",
-	// Other statuses
-	"OPEN",
-	"REVIEWING",
-	"APPROVED",
-	"CLOSED",
-	"REJECTED",
-	"DISCARDED",
 ] as const;
 
 /**

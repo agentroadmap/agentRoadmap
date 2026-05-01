@@ -2839,20 +2839,7 @@ proposalCmd
 				),
 			];
 
-			// Reorder by workflow: RFC first, then operational/legacy states
-			const workflowOrder = [
-				"DRAFT",
-				"REVIEW",
-				"DEVELOP",
-				"MERGE",
-				"COMPLETE",
-				"TRIAGE",
-				"FIX",
-				"DEPLOYED",
-				"ESCALATE",
-				"WONT_FIX",
-				"NON_ISSUE",
-			];
+			const workflowOrder = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
 
 			const reorderedStatuses = orderedStatuses.sort((a, b) => {
 				const aIdx = workflowOrder.indexOf(a.toUpperCase());
