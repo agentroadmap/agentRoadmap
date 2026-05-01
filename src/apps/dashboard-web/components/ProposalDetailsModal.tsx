@@ -17,6 +17,7 @@ import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import MermaidMarkdown from "./MermaidMarkdown";
 import Modal from "./Modal";
+import { maturityBadgeColors } from "../lib/maturity-colors";
 
 interface Props {
 	proposal?: Proposal; // Optional for create mode
@@ -79,20 +80,6 @@ const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({
 	</div>
 );
 
-const maturityBadgeClass = (maturity?: string) => {
-	switch ((maturity ?? "").toLowerCase()) {
-		case "active":
-			return "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300";
-		case "mature":
-			return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300";
-		case "obsolete":
-			return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
-		case "new":
-			return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
-		default:
-			return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
-	}
-};
 
 const getColorMode = (): "light" | "dark" =>
 	typeof document !== "undefined" &&
@@ -1522,7 +1509,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 									) : null}
 									{proposal?.maturity ? (
 										<span
-											className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${maturityBadgeClass(proposal.maturity)}`}
+											className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${maturityBadgeColors(proposal.maturity)}`}
 											title="Proposal maturity"
 										>
 											{proposal.maturity}

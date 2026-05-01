@@ -12,6 +12,7 @@ import {
 	groupProposalsByLaneAndStatus,
 	type LaneMode,
 } from "../lib/lanes";
+import { maturityBarColors } from "../lib/maturity-colors";
 
 interface BoardProps {
 	proposals: Proposal[];
@@ -183,7 +184,7 @@ const Board: React.FC<BoardProps> = ({
 													}`}
 												>
 													<div
-														className={`-mx-3 -mt-3 mb-2 px-3 py-1 rounded-t-lg flex items-center justify-between gap-2 ${getMaturityTitleBarColor(proposal.maturity)}`}
+														className={`-mx-3 -mt-3 mb-2 px-3 py-1 rounded-t-lg flex items-center justify-between gap-2 ${maturityBarColors(proposal.maturity)}`}
 													>
 														<span className="text-xs font-mono opacity-80">
 															{proposal.displayId}
@@ -262,24 +263,6 @@ function getPriorityColor(priority: string): string {
 			return "bg-green-100 text-green-700";
 		default:
 			return "bg-gray-100 text-gray-700";
-	}
-}
-
-function getMaturityTitleBarColor(maturity?: string | null): string {
-	switch ((maturity ?? "").toLowerCase()) {
-		case "new":
-			// fresh / just landed → light green
-			return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200";
-		case "active":
-			// in progress / hot → warm amber
-			return "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100";
-		case "mature":
-			// settled / ready → cool sky-blue
-			return "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200";
-		case "obsolete":
-			return "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-500";
-		default:
-			return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
 	}
 }
 
