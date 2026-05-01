@@ -981,6 +981,7 @@ export async function createMcpServer(
 		type FocusCubicArgs = Parameters<typeof cubic.focusCubic>[0];
 		type TransitionCubicArgs = Parameters<typeof cubic.transitionCubic>[0];
 		type RecycleCubicArgs = Parameters<typeof cubic.recycleCubic>[0];
+		type ForceReapCubicArgs = Parameters<typeof cubic.forceReapCubic>[0];
 		server.addTool({
 			name: "cubic_create",
 			description:
@@ -1091,8 +1092,30 @@ export async function createMcpServer(
 				},
 				required: ["cubicId"],
 			},
-		handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
-	});
+			handler: (a) => cubic.recycleCubic(a as RecycleCubicArgs),
+		});
+		server.addTool({
+			name: "cubic_force_reap",
+			description:
+				"P526 manual override: immediately classify a cubic as orphaned and delete or preserve its worktree based on git status.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					cubicId: { type: "string" },
+					reason: { type: "string" },
+					actor: {
+						type: "string",
+						description: "Optional operator/agent identity for audit.",
+					},
+					dryRun: {
+						type: "boolean",
+						description: "If true, classify only and do not mutate DB or filesystem.",
+					},
+				},
+				required: ["cubicId", "reason"],
+			},
+			handler: (a) => cubic.forceReapCubic(a as ForceReapCubicArgs),
+		});
 		server.addTool({
 			name: "cubic_acquire",
 			description:

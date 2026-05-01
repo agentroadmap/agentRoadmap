@@ -8,11 +8,12 @@
  * P462: Added agent identity sanitization to prevent path traversal and collisions.
  */
 
-import { query } from "../../../../postgres/pool.ts";
+import { CubicCleanupService } from "../../../../core/orchestration/cubic-cleanup.ts";
 import { CubicIdleDetector } from "../../../../core/orchestration/cubic-idle-detector.ts";
+import { query } from "../../../../postgres/pool.ts";
 import {
-	safeWorktreePath,
 	AgentIdInvalidError,
+	safeWorktreePath,
 } from "../../../../shared/identity/sanitize-agent-id.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -33,6 +34,7 @@ function errorResult(msg: string, err: unknown): CallToolResult {
 
 export class PgCubicHandlers {
 	private readonly detector = new CubicIdleDetector();
+	private readonly cleanup = new CubicCleanupService();
 
 	constructor(private readonly core: McpServer) {}
 
@@ -583,6 +585,44 @@ export class PgCubicHandlers {
 			};
 		} catch (err) {
 			return errorResult("Failed to recycle cubic", err);
+		}
+	}
+
+	async forceReapCubic(args: {
+		cubicId: string;
+		reason: string;
+		actor?: string;
+		dryRun?: boolean;
+	}): Promise<CallToolResult> {
+		try {
+			const result = await this.cleanup.forceReapCubic({
+				cubicId: args.cubicId,
+				reason: args.reason,
+				actor: args.actor,
+				dryRun: args.dryRun,
+			});
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								success: true,
+								status: result.action.toLowerCase(),
+								cubic_id: result.cubic_id,
+								path: result.recovery_path,
+								worktree_path: result.worktree_path,
+								dirty: result.dirty,
+								lease_release_count: result.lease_release_count,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (err) {
+			return errorResult("Failed to force reap cubic", err);
 		}
 	}
 }

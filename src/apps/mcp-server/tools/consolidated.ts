@@ -229,6 +229,7 @@ const agentRoutes: RouteMap = {
 	cubic_transition: "cubic_transition",
 	cubic_recycle: "cubic_recycle",
 	cubic_acquire: "cubic_acquire",
+	cubic_force_reap: "cubic_force_reap",
 	// P466 spawn-briefing protocol — child agents call these over the
 	// `mcp_agent` router (`action: 'briefing_load'` etc.) AND the raw tool
 	// names work via the standalone tool registrations.
