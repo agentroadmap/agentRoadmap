@@ -803,6 +803,8 @@ export async function createMcpServer(
 					capability: { type: "string", description: "Filter by capability, e.g. 'tool_use=true'" },
 					max_cost_per_1k_input: { type: "string", description: "Max cost per 1k input tokens" },
 					active_only: { type: "boolean", description: "Only show active models (default: true)" },
+					provider: { type: "string", description: "Filter by enabled route_provider" },
+					tier: { type: "string", description: "Filter by model_metadata.tier" },
 				},
 			},
 			handler: (a) => models.listModels(a as ListModelsArgs),

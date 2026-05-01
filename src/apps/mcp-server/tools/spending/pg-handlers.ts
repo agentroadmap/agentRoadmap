@@ -5,10 +5,12 @@
  * All handler methods catch errors and return MCP text responses instead of throwing.
  */
 
-import { query } from "../../../../postgres/pool.ts";
 import { resolveProposalId } from "../../../../infra/postgres/proposal-storage-v2.ts";
+import { query } from "../../../../postgres/pool.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
+
+type QueryFunction = typeof query;
 
 function hasMissingRelation(err: unknown, relationName: string): boolean {
 	return (
@@ -40,9 +42,11 @@ function errorResult(msg: string, err: unknown): CallToolResult {
 
 let perMillionModelPricingPromise: Promise<boolean> | undefined;
 
-async function supportsPerMillionModelPricing(): Promise<boolean> {
+async function supportsPerMillionModelPricing(
+	queryFn: QueryFunction = query,
+): Promise<boolean> {
 	if (!perMillionModelPricingPromise) {
-		perMillionModelPricingPromise = query<{ column_name: string }>(
+		perMillionModelPricingPromise = queryFn<{ column_name: string }>(
 			`SELECT column_name
        FROM information_schema.columns
        WHERE table_schema = 'roadmap'
@@ -61,8 +65,30 @@ async function supportsPerMillionModelPricing(): Promise<boolean> {
 	return perMillionModelPricingPromise;
 }
 
-function parseOptionalNumber(value?: string): number | null {
-	if (value === undefined || value.trim() === "") {
+let modelTierPromise: Promise<boolean> | undefined;
+
+async function supportsModelTier(
+	queryFn: QueryFunction = query,
+): Promise<boolean> {
+	if (!modelTierPromise) {
+		modelTierPromise = queryFn<{ column_name: string }>(
+			`SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = ANY($1::text[])
+         AND table_name = 'model_metadata'
+         AND column_name = 'tier'
+       LIMIT 1`,
+			[["roadmap", "public"]],
+		).then(({ rows }) => rows.length > 0);
+	}
+	return modelTierPromise;
+}
+
+function parseOptionalNumber(value?: string | number | null): number | null {
+	if (value === undefined || value === null) {
+		return null;
+	}
+	if (typeof value === "string" && value.trim() === "") {
 		return null;
 	}
 	const parsed = Number(value);
@@ -97,6 +123,9 @@ function formatMillionCost(value: number | null | undefined): string {
 type ModelMetadataRow = {
 	model_name: string;
 	provider: string;
+	tier?: string | null;
+	route_provider: string;
+	priority: number | null;
 	cost_per_1k_input: string | null;
 	cost_per_1k_output: string | null;
 	cost_per_million_input?: string | null;
@@ -109,6 +138,82 @@ type ModelMetadataRow = {
 	rating: number | null;
 	is_active: boolean;
 };
+
+type ModelListArgs = {
+	capability?: string;
+	max_cost_per_million_input?: string;
+	max_cost_per_1k_input?: string;
+	active_only?: boolean;
+	provider?: string;
+	tier?: string;
+};
+
+export type ModelDispatchValidation =
+	| { valid: true }
+	| { valid: false; reason: "NO_ENABLED_ROUTE" };
+
+const MODEL_LIST_CACHE_TTL_MS = 2000;
+
+const modelListMetrics = {
+	list_calls_total: 0,
+	cache_hit_total: 0,
+	no_route_errors_total: 0,
+};
+
+const modelListCache = new Map<
+	string,
+	{ expiresAt: number; result: CallToolResult }
+>();
+
+export function getModelListMetrics(): Readonly<typeof modelListMetrics> {
+	return { ...modelListMetrics };
+}
+
+export function resetModelListCacheForTest(): void {
+	modelListCache.clear();
+	modelListMetrics.list_calls_total = 0;
+	modelListMetrics.cache_hit_total = 0;
+	modelListMetrics.no_route_errors_total = 0;
+	perMillionModelPricingPromise = undefined;
+	modelTierPromise = undefined;
+}
+
+function cloneCallToolResult(result: CallToolResult): CallToolResult {
+	return {
+		...result,
+		content: result.content.map((item) => ({ ...item })),
+	};
+}
+
+function modelListCacheKey(args: ModelListArgs): string {
+	return JSON.stringify({
+		active_only: args.active_only !== false,
+		capability: args.capability ?? null,
+		max_cost_per_million_input: args.max_cost_per_million_input ?? null,
+		max_cost_per_1k_input: args.max_cost_per_1k_input ?? null,
+		provider: args.provider ?? null,
+		tier: args.tier ?? null,
+	});
+}
+
+export async function validateModelForDispatch(
+	modelName: string,
+	queryFn: QueryFunction = query,
+): Promise<ModelDispatchValidation> {
+	const { rows } = await queryFn<{ model_name: string }>(
+		`SELECT model_name
+     FROM roadmap.model_routes
+     WHERE model_name = $1
+       AND is_enabled = true
+     LIMIT 1`,
+		[modelName],
+	);
+	if (rows.length === 0) {
+		modelListMetrics.no_route_errors_total += 1;
+		return { valid: false, reason: "NO_ENABLED_ROUTE" };
+	}
+	return { valid: true };
+}
 
 export class PgSpendingHandlers {
 	constructor(
@@ -597,43 +702,81 @@ export class PgModelHandlers {
 	constructor(
 		readonly _core: McpServer,
 		readonly _projectRoot: string,
+		readonly queryFn: QueryFunction = query,
 	) {}
 
 	// P059: Enhanced model listing with capability filtering and is_active support
-	async listModels(args: {
-		capability?: string;
-		max_cost_per_million_input?: string;
-		max_cost_per_1k_input?: string;
-		active_only?: boolean;
-	}): Promise<CallToolResult> {
+	async listModels(args: ModelListArgs): Promise<CallToolResult> {
 		try {
-			const perMillionPricing = await supportsPerMillionModelPricing();
+			modelListMetrics.list_calls_total += 1;
+			const cacheKey = modelListCacheKey(args);
+			const cached = modelListCache.get(cacheKey);
+			if (cached && cached.expiresAt > Date.now()) {
+				modelListMetrics.cache_hit_total += 1;
+				return cloneCallToolResult(cached.result);
+			}
+
+			const perMillionPricing = await supportsPerMillionModelPricing(
+				this.queryFn,
+			);
+			const tierSupported = await supportsModelTier(this.queryFn);
 			const maxCostPerMillion =
 				parseOptionalNumber(args.max_cost_per_million_input) ??
 				perMillionFromPer1k(args.max_cost_per_1k_input);
-			// Filter by active status (default: active only)
-			let rows: ModelMetadataRow[] = [];
-			if (perMillionPricing) {
-				({ rows } = await query<ModelMetadataRow>(
-					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
-					        cost_per_million_input, cost_per_million_output,
-					        cost_per_million_cache_write, cost_per_million_cache_hit,
-					        max_tokens, context_window, capabilities, rating, is_active
-					 FROM model_metadata
-					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
-					 ORDER BY rating DESC, COALESCE(cost_per_million_input, cost_per_1k_input * 1000) ASC`,
-					[args.active_only !== false],
-				));
-			} else {
-				({ rows } = await query<ModelMetadataRow>(
-					`SELECT model_name, provider, cost_per_1k_input, cost_per_1k_output,
-					        max_tokens, context_window, capabilities, rating, is_active
-					 FROM model_metadata
-					 WHERE ($1::boolean IS FALSE OR COALESCE(is_active, true) = true)
-					 ORDER BY rating DESC, cost_per_1k_input ASC`,
-					[args.active_only !== false],
-				));
+
+			if (args.tier && !tierSupported) {
+				const result: CallToolResult = {
+					content: [
+						{ type: "text", text: "No models found matching criteria." },
+					],
+				};
+				modelListCache.set(cacheKey, {
+					expiresAt: Date.now() + MODEL_LIST_CACHE_TTL_MS,
+					result: cloneCallToolResult(result),
+				});
+				return result;
 			}
+
+			const params: unknown[] = [args.active_only !== false];
+			const where = [
+				"($1::boolean IS FALSE OR COALESCE(m.is_active, true) = true)",
+			];
+
+			if (args.provider) {
+				params.push(args.provider);
+				where.push(`r.route_provider = $${params.length}`);
+			}
+			if (args.tier && tierSupported) {
+				params.push(args.tier);
+				where.push(`m.tier = $${params.length}`);
+			}
+
+			const costOrder = perMillionPricing
+				? "COALESCE(m.cost_per_million_input, m.cost_per_1k_input * 1000)"
+				: "m.cost_per_1k_input";
+			const tierSelect = tierSupported ? "m.tier," : "NULL::text AS tier,";
+			const perMillionSelect = perMillionPricing
+				? `m.cost_per_million_input, m.cost_per_million_output,
+             m.cost_per_million_cache_write, m.cost_per_million_cache_hit,`
+				: `NULL::numeric AS cost_per_million_input,
+             NULL::numeric AS cost_per_million_output,
+             NULL::numeric AS cost_per_million_cache_write,
+             NULL::numeric AS cost_per_million_cache_hit,`;
+
+			const { rows } = await this.queryFn<ModelMetadataRow>(
+				`SELECT m.model_name, m.provider, ${tierSelect}
+                r.route_provider, r.priority,
+                m.cost_per_1k_input, m.cost_per_1k_output,
+                ${perMillionSelect}
+                m.max_tokens, m.context_window, m.capabilities, m.rating, m.is_active
+         FROM model_metadata m
+         JOIN roadmap.model_routes r
+           ON r.model_name = m.model_name
+          AND r.is_enabled = true
+         WHERE ${where.join("\n           AND ")}
+         ORDER BY m.rating DESC, ${costOrder} ASC, r.priority ASC`,
+				params,
+			);
 
 			const filteredRows = rows.filter((row) => {
 				if (args.capability) {
@@ -656,16 +799,22 @@ export class PgModelHandlers {
 			});
 
 			if (!filteredRows.length) {
-				return {
+				const result: CallToolResult = {
 					content: [
 						{ type: "text", text: "No models found matching criteria." },
 					],
 				};
+				modelListCache.set(cacheKey, {
+					expiresAt: Date.now() + MODEL_LIST_CACHE_TTL_MS,
+					result: cloneCallToolResult(result),
+				});
+				return result;
 			}
 			const lines = filteredRows.map((r) => {
+				const capabilities = r.capabilities ?? {};
 				const caps = r.capabilities
-					? Object.keys(r.capabilities)
-							.filter((k: string) => r.capabilities[k])
+					? Object.keys(capabilities)
+							.filter((k: string) => capabilities[k])
 							.join(", ")
 					: "none";
 				const inputCost = perMillionPricing
@@ -690,9 +839,16 @@ export class PgModelHandlers {
 					pricing.push(`cache_write: ${formatMillionCost(cacheWriteCost)}`);
 					pricing.push(`cache_hit: ${formatMillionCost(cacheHitCost)}`);
 				}
-				return `${r.model_name} (${r.provider}) — rating: ${r.rating}/5, ${pricing.join(", ")}, ctx: ${r.context_window || "?"}, caps: [${caps}]${r.is_active === false ? " [INACTIVE]" : ""}`;
+				return `${r.model_name} (${r.provider}) — route_provider: ${r.route_provider}, priority: ${r.priority ?? "?"}, tier: ${r.tier ?? "?"}, rating: ${r.rating}/5, ${pricing.join(", ")}, ctx: ${r.context_window || "?"}, caps: [${caps}]${r.is_active === false ? " [INACTIVE]" : ""}`;
 			});
-			return { content: [{ type: "text", text: lines.join("\n") }] };
+			const result: CallToolResult = {
+				content: [{ type: "text", text: lines.join("\n") }],
+			};
+			modelListCache.set(cacheKey, {
+				expiresAt: Date.now() + MODEL_LIST_CACHE_TTL_MS,
+				result: cloneCallToolResult(result),
+			});
+			return result;
 		} catch (err) {
 			return errorResult("Failed to list models", err);
 		}
