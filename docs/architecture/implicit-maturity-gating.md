@@ -77,18 +77,20 @@ Dependencies are not part of the gate decision for the current state.
 
 A gate evaluates whether the work for the current state is coherent and ready to move forward. It should not reject or hold a proposal only because a dependency is still unresolved.
 
-Unresolved dependencies carry forward with the proposal after an advance. They can block later work, later claims, or later advancement when the next state requires the dependency to be resolved.
+**Gating Decision:** If a proposal is mature and passes gate review, it advances regardless of unresolved dependencies. The gate agent should NOT block advancement due to transitive dependencies.
+
+**Dependency Handoff:** Unresolved dependencies carry forward with the proposal after an advance. They can block later work, later claims, or later advancement when the next state requires the dependency to be resolved. This enforcement happens at dispatch time, not at gate time.
 
 Example:
 
 ```text
 P300 is Draft/mature and depends on P250.
-D1 evaluates P300's draft quality and may advance P300 to Review/new.
-The dependency on P250 remains attached to P300.
-P300 may be blocked from later Review work or from D2 advancement until P250 is resolved.
+D1 evaluates P300's draft quality and ACs; P250 is unresolved but not a gate blocker.
+D1 advances P300 to Review/new. The dependency on P250 remains attached.
+P300 may be blocked from dispatch or later D2 advancement until P250 is resolved.
 ```
 
-This keeps gate review focused on current-state quality while preserving dependency enforcement for the stages where the dependency actually matters.
+This keeps gate review focused on current-state quality while preserving dependency enforcement for the stages where the dependency actually matters (dispatch, capability availability, etc.).
 
 ## Role of transition_queue
 
