@@ -77,20 +77,31 @@ export function laneKeyForProposal(mode: LaneMode, proposal: Proposal): string {
 	return DEFAULT_LANE_KEY;
 }
 
+const MATURITY_ORDER: Record<string, number> = {
+	mature: 0,
+	active: 1,
+	new: 2,
+	obsolete: 3,
+};
+
+const PRIORITY_ORDER: Record<string, number> = {
+	Strategic: 0,
+	High: 1,
+	Medium: 2,
+	Low: 3,
+};
+
 /**
- * Sort proposals by priority and updated date
+ * Sort proposals by maturity (mature → active → new → obsolete),
+ * then priority, then most-recently-updated.
  */
 export function sortProposals(proposals: Proposal[]): Proposal[] {
-	const priorityOrder: Record<string, number> = {
-		Strategic: 0,
-		High: 1,
-		Medium: 2,
-		Low: 3,
-	};
-
 	return proposals.slice().sort((a, b) => {
-		const pa = priorityOrder[a.priority] ?? 4;
-		const pb = priorityOrder[b.priority] ?? 4;
+		const ma = MATURITY_ORDER[(a.maturity ?? "").toLowerCase()] ?? 2;
+		const mb = MATURITY_ORDER[(b.maturity ?? "").toLowerCase()] ?? 2;
+		if (ma !== mb) return ma - mb;
+		const pa = PRIORITY_ORDER[a.priority] ?? 4;
+		const pb = PRIORITY_ORDER[b.priority] ?? 4;
 		if (pa !== pb) return pa - pb;
 		return b.updatedAt.localeCompare(a.updatedAt);
 	});
