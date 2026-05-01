@@ -146,8 +146,32 @@ export class McpServer extends Core {
 
 	/**
 	 * Register a tool implementation with the server.
+	 *
+	 * Collision detection: if a tool with the same name is already registered,
+	 * a structured warning is emitted (with old vs. new descriptions and the
+	 * call-site stack).  When AGENTHIVE_TOOL_REGISTRY_STRICT=true the conflict
+	 * is treated as a hard error; otherwise last-write-wins (the new tool
+	 * replaces the old one).
 	 */
 	public addTool(tool: McpToolHandler): void {
+		const existing = this.tools.get(tool.name);
+		if (existing) {
+			const callSite = new Error().stack ?? "(stack unavailable)";
+			const warning = {
+				event: "tool_registry_collision",
+				tool_name: tool.name,
+				prior_description: existing.description ?? "(none)",
+				new_description: tool.description ?? "(none)",
+				call_site: callSite,
+			};
+			if (process.env.AGENTHIVE_TOOL_REGISTRY_STRICT === "true") {
+				throw new Error(
+					`[tool-registry] Duplicate tool registration: '${tool.name}'\n${JSON.stringify(warning, null, 2)}`,
+				);
+			}
+			// biome-ignore lint/suspicious/noConsole: intentional structured warning
+			console.warn("[tool-registry] collision:", JSON.stringify(warning));
+		}
 		this.tools.set(tool.name, tool);
 	}
 

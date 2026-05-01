@@ -37,11 +37,11 @@ function textResult(text: string): CallToolResult {
 function formatActions(domain: string, routes: RouteMap): CallToolResult {
 	const lines = Object.entries(routes)
 		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([action, tool]) => `- ${action} -> ${tool}`);
+		.map(([action, tool]) => `- ${action}  tool_name: ${tool}`);
 	return textResult(`Actions for ${domain}:\n${lines.join("\n")}`);
 }
 
-function extractArgs(input: RouterArgs): Record<string, unknown> {
+export function extractArgs(input: RouterArgs): Record<string, unknown> {
 	const { action: _action, args, ...rest } = input;
 	// args may arrive as an object (well-behaved client) or as a JSON-encoded
 	// string (some MCP clients stringify nested object params before send).
