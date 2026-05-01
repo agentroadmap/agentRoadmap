@@ -9,6 +9,8 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      AUDIT_DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,8 +35,8 @@ jobs:
       # by removing `continue-on-error` once existing flagged drift sites are
       # remediated or allowlisted.
       - name: SQL column audit (informational)
-        if: ${{ secrets.AUDIT_DATABASE_URL != '' }}
+        if: ${{ env.AUDIT_DATABASE_URL != '' }}
         continue-on-error: true
         env:
-          DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
+          DATABASE_URL: ${{ env.AUDIT_DATABASE_URL }}
         run: npm run audit:sql
