@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { describe, it } from "node:test";
 
 import {
@@ -7,6 +9,7 @@ import {
 	liveChildCount,
 	renderClosingHint,
 	terminateLiveChildren,
+	trackLiveChild,
 } from "../../src/core/orchestration/agent-spawner.ts";
 
 describe("live-child registry", () => {
@@ -18,6 +21,36 @@ describe("live-child registry", () => {
 		const result = await terminateLiveChildren({ graceMs: 0 });
 		assert.deepEqual(result, { signalled: 0, killed: 0 });
 	});
+
+	it("removes tracked children when they close", async () => {
+		const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+		trackLiveChild(child);
+		assert.equal(liveChildCount(), 1);
+
+		await once(child, "close");
+
+		assert.equal(liveChildCount(), 0);
+	});
+
+	it("signals tracked children during termination", async () => {
+		const child = spawn(
+			process.execPath,
+			["-e", "setInterval(() => {}, 1000)"],
+			{
+				stdio: "ignore",
+			},
+		);
+		trackLiveChild(child);
+		assert.equal(liveChildCount(), 1);
+
+		const result = await terminateLiveChildren({
+			graceMs: 1000,
+			log: () => {},
+		});
+
+		assert.equal(result.signalled, 1);
+		assert.equal(liveChildCount(), 0);
+	});
 });
 
 describe("Hermes route compatibility", () => {
@@ -28,6 +61,7 @@ describe("Hermes route compatibility", () => {
 				routeProvider: "nous",
 				agentProvider: "openclaw",
 				agentCli: "hermes",
+				cliPath: null,
 				apiSpec: "openai",
 				baseUrl: "https://inference-api.nousresearch.com/v1",
 				planType: "token_plan",
@@ -37,8 +71,12 @@ describe("Hermes route compatibility", () => {
 				apiKeyEnv: "NOUS_API_KEY",
 				apiKeyFallbackEnv: "OPENAI_API_KEY",
 				baseUrlEnv: "OPENAI_BASE_URL",
+				cliApiKeyEnv: null,
+				apiKeyPrimary: null,
+				apiKeySecondary: null,
 				spawnToolsets:
 					"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
+				spawnDelegate: false,
 			}),
 		);
 	});
@@ -50,6 +88,7 @@ describe("Hermes route compatibility", () => {
 				routeProvider: "nous",
 				agentProvider: "claude",
 				agentCli: "claude",
+				cliPath: null,
 				apiSpec: "openai",
 				baseUrl: "https://inference-api.nousresearch.com/v1",
 				planType: "token_plan",
@@ -59,8 +98,12 @@ describe("Hermes route compatibility", () => {
 				apiKeyEnv: "NOUS_API_KEY",
 				apiKeyFallbackEnv: "OPENAI_API_KEY",
 				baseUrlEnv: "OPENAI_BASE_URL",
+				cliApiKeyEnv: null,
+				apiKeyPrimary: null,
+				apiKeySecondary: null,
 				spawnToolsets:
 					"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
+				spawnDelegate: false,
 			}),
 		);
 	});
@@ -81,6 +124,7 @@ describe("Hermes route compatibility", () => {
 					routeProvider: "nous",
 					agentProvider: "openclaw",
 					agentCli: "hermes",
+					cliPath: null,
 					apiSpec: "openai",
 					baseUrl: "https://inference-api.nousresearch.com/v1",
 					planType: "token_plan",
@@ -90,8 +134,12 @@ describe("Hermes route compatibility", () => {
 					apiKeyEnv: "NOUS_API_KEY",
 					apiKeyFallbackEnv: "OPENAI_API_KEY",
 					baseUrlEnv: "OPENAI_BASE_URL",
+					cliApiKeyEnv: null,
+					apiKeyPrimary: null,
+					apiKeySecondary: null,
 					spawnToolsets:
 						"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
+					spawnDelegate: false,
 				},
 				agentEnv: {
 					DATABASE_URL: "postgresql://example",
@@ -103,7 +151,7 @@ describe("Hermes route compatibility", () => {
 			});
 
 			assert.equal(env.ANTHROPIC_API_KEY, undefined);
-			assert.equal(env.OPENAI_API_KEY, "openai-secret");
+			assert.equal(env.OPENAI_API_KEY, undefined);
 			assert.equal(env.NOUS_API_KEY, "nous-secret");
 			assert.equal(env.AGENT_PROVIDER, "openclaw");
 		} finally {

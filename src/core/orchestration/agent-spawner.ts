@@ -47,6 +47,16 @@ const GITCONFIG_ROOT = "/data/code/AgentHive/.git/worktrees-config";
 // stale entries are removed on `close`/`error`.
 const liveChildren: Set<ChildProcess> = new Set();
 
+/** @internal exported so tests can exercise shutdown registry behavior. */
+export function trackLiveChild(child: ChildProcess): void {
+	liveChildren.add(child);
+	const cleanup = () => {
+		liveChildren.delete(child);
+	};
+	child.once("close", cleanup);
+	child.once("error", cleanup);
+}
+
 export function liveChildCount(): number {
 	return liveChildren.size;
 }
@@ -1157,7 +1167,7 @@ function runProcess(
 			env,
 			stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
-		liveChildren.add(child);
+		trackLiveChild(child);
 
 		let stdout = "";
 		let stderr = "";
@@ -1195,7 +1205,6 @@ function runProcess(
 		const cleanup = () => {
 			clearTimeout(timer);
 			if (killTimer) clearTimeout(killTimer);
-			liveChildren.delete(child);
 		};
 
 		child.on("close", (code) => {
