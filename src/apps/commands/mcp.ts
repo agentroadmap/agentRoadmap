@@ -1,4 +1,3 @@
-import { startWebSocketServer } from "../../web/websocket-server.ts";
 /**
  * MCP Command Group - Model Context Protocol CLI commands.
  *
@@ -49,9 +48,6 @@ function registerStartCommand(mcpCmd: Command): void {
 
 				await server.connect();
 				await server.start();
-
-				// Start WebSocket server for board
-				startWebSocketServer(3001, projectRoot);
 
 				if (options.debug) {
 					if (runtimeCwd.source !== "process") {
