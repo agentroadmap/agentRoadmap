@@ -27,7 +27,7 @@ class MockMcpClient extends HiveMcpClient {
     this.mockResponses.set(toolName, response);
   }
 
-  async callTool(
+  override async callTool(
     toolName: string,
     args: Record<string, unknown>,
     _opts?: { idempotencyKey?: string; timeoutMs?: number }

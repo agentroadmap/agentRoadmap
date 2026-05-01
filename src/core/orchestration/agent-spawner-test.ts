@@ -1,1 +1,2 @@
-test
+// Placeholder — implementation pending
+export {};

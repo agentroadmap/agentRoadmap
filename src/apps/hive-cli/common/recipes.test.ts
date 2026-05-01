@@ -10,10 +10,11 @@ import {
   loadRecipes,
   getRecipeById,
   validateRecipe,
+  type Recipe,
 } from "./recipes.js";
 
 describe("recipes", () => {
-  let recipes;
+  let recipes: Recipe[];
 
   before(async () => {
     recipes = await loadRecipes();

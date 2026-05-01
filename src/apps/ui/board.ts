@@ -712,10 +712,12 @@ export async function renderBoardTui(
 		// Move mode proposal
 		type MoveOperation = {
 			proposalId: string;
+			fromStatus: string;
 			originalStatus: string;
 			originalIndex: number;
 			targetStatus: string;
 			targetIndex: number;
+			proposal: Proposal;
 		};
 		let moveOp: MoveOperation | null = null;
 		let lastEscapeTime = 0;
@@ -734,10 +736,12 @@ export async function renderBoardTui(
 			if (!proposal) return;
 			moveOp = {
 				proposalId: proposal.id,
+				fromStatus: column.status,
 				originalStatus: column.status,
 				originalIndex: selectedIndex,
 				targetStatus: column.status,
 				targetIndex: selectedIndex,
+				proposal,
 			};
 			renderView();
 		};
@@ -2348,7 +2352,7 @@ export async function renderBoardTui(
 		let _allFeedEvents: StreamEvent[] = []; // kept for thread mode rebuild
 		const getFeedPageSize = () => {
 			// Use screen rows minus overhead (header=1, footer=2, borders=2)
-			return Math.max((screen.rows as number) - 5, 5);
+			return Math.max((screen.height as number) - 5, 5);
 		};
 		const renderFeedPanel = () => {
 			if (feedLines.length > 0) {

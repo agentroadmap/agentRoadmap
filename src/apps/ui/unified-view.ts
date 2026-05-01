@@ -464,9 +464,7 @@ export async function runUnifiedView(
 			// Auto-refresh: reload proposals from DB every 5s and push to board
 			const refreshTimer = setInterval(() => {
 				void (async () => {
-					await loadProposalsForUnifiedView(options.core, {
-						onProgress: () => {},
-					});
+					await loadProposalsForUnifiedView(options.core, {});
 					emitBoardUpdate();
 				})();
 			}, 5000);
@@ -493,10 +491,9 @@ export async function runUnifiedView(
 				};
 
 				const refresh = async () => {
-					// Load proposals first, then pass to listAgents to avoid deadlock
-					const pipelineProposals = await options.core.loadProposals();
-					options.core.setPreloadedProposalsForAgents(pipelineProposals);
-					const [agents, pulseMessages] = await Promise.all([
+					// Load proposals and agents concurrently
+					const [_pipelineProposals, agents, pulseMessages] = await Promise.all([
+						options.core.loadProposals(),
 						options.core.listAgents(),
 						options.core.readMessages({ channel: "public" }),
 					]);
@@ -521,7 +518,7 @@ export async function runUnifiedView(
 
 					renderCockpit(screen, {
 						agents: agentData,
-						proposals: pipelineProposals.map((proposal) => ({
+						proposals: _pipelineProposals.map((proposal: { id: string; title: string; status: string; priority?: string | null; proposalType?: string }) => ({
 							id: proposal.id,
 							display_id: proposal.id,
 							title: proposal.title,

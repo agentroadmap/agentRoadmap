@@ -324,9 +324,6 @@ export class CopilotCliBuilder implements CliBuilder {
 	): CommandSpec {
 		const argv = ["gh", "copilot", "suggest", "--model", route.modelName, task];
 		const env: Record<string, string> = {};
-		if (options?.apiKeyVault?.GITHUB_TOKEN) {
-			env.GITHUB_TOKEN = options.apiKeyVault.GITHUB_TOKEN;
-		}
 		return { argv, env };
 	}
 }

@@ -5,7 +5,7 @@ type RouteMap = Record<string, string>;
 
 type RouterArgs = {
 	action?: string;
-	args?: Record<string, unknown>;
+	args?: Record<string, unknown> | string;
 	[key: string]: unknown;
 };
 

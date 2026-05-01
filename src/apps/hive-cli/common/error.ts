@@ -13,7 +13,7 @@ export interface ErrorDetail {
 
 export class HiveError extends Error {
   public readonly code: string;
-  public readonly message: string;
+  public override readonly message: string;
   public readonly hint?: string;
   public readonly detail?: ErrorDetail;
   public readonly exitCode: number;

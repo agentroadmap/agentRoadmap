@@ -1,5 +1,7 @@
 import { query } from "../../../../infra/postgres/pool.ts";
-import type { ToolHandler } from "../../server.ts";
+import type { CallToolResult } from "../../types.ts";
+
+type ToolHandler = (args: Record<string, unknown>) => Promise<CallToolResult>;
 
 // List all projects
 export const projectListHandler: ToolHandler = async () => {

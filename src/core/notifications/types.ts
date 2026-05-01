@@ -53,7 +53,7 @@ export interface NotificationTransport {
 export class TransportError extends Error {
 	constructor(
 		readonly transport: string,
-		readonly cause: unknown,
+		override readonly cause: unknown,
 		message?: string,
 	) {
 		super(message ?? `Transport "${transport}" failed: ${describeCause(cause)}`);

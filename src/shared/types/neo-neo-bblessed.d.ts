@@ -106,4 +106,5 @@ declare module "neo-neo-bblessed" {
 	): ScrollableTextInterface;
 	export function log(options?: Record<string, unknown>): LogInterface;
 	export function textbox(options?: Record<string, unknown>): TextboxInterface;
+	export function escape(text: string): string;
 }

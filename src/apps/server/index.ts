@@ -1443,7 +1443,6 @@ export class RoadmapServer {
 					dependency_note: payload.dependency_note,
 					needs_capabilities:
 						payload.needs_capabilities ?? payload.required_capabilities,
-					required_capabilities: payload.required_capabilities,
 					implementationPlan: payload.design ?? payload.implementationPlan,
 					implementationNotes: payload.implementationNotes,
 					finalSummary: payload.finalSummary,

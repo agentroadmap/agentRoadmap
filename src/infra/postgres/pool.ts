@@ -175,7 +175,7 @@ const resolvedPassword =
 			Number(config?.port ?? process.env.PGPORT ?? databaseUrlConfig.port) ||
 			5432,
 		user:
-			config?.user ?? process.env.PGUSER ?? databaseUrlConfig.user,
+			config?.user ?? process.env.PGUSER ?? databaseUrlConfig.user ?? "postgres",
 		password: resolvedPassword,
 		database:
 			config?.database ??

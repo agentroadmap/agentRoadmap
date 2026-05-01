@@ -1,5 +1,5 @@
-import { Finding, Severity } from "./rules.ts";
-import { ScannerResult } from "./engine.ts";
+import type { Finding, Severity } from "./rules.ts";
+import type { ScannerResult } from "./engine.ts";
 import fs from "fs/promises";
 
 const COLORS = {

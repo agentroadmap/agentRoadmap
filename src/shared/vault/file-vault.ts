@@ -13,12 +13,13 @@
  */
 
 import * as fs from "node:fs/promises";
+import type { Stats } from "node:fs";
 import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
-	VaultAdapter,
+	type VaultAdapter,
 	VaultError,
 	VaultPermissionError,
 	VaultSymlinkDetectedError,
@@ -346,7 +347,7 @@ class FileVaultImpl implements VaultAdapter {
 	 */
 	private async checkPermissions(
 		filePath: string,
-		stat: fs.Stats,
+		stat: Stats,
 		ref: SecretRef,
 		op: string,
 	): Promise<void> {

@@ -731,7 +731,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 				design: design ?? proposal.design,
 				drawbacks: drawbacks ?? proposal.drawbacks,
 				alternatives: alternatives ?? proposal.alternatives,
-				dependencyNote: dependencyNote ?? proposal.dependencyNote,
+				dependency_note: dependencyNote ?? proposal.dependency_note,
 				description: description ?? proposal.description,
 				implementationPlan: plan ?? proposal.implementationPlan,
 			};

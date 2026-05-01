@@ -13,7 +13,7 @@
  *   created_at      — registration timestamp
  */
 
-import { getMcpUrl, getDaemonUrl } from "../../shared/runtime/endpoints.ts";
+import { getMcpUrl, getDaemonUrl } from "../../../shared/runtime/endpoints.ts";
 
 import { randomUUID } from "node:crypto";
 import { query } from "../../../infra/postgres/pool.ts";

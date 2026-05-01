@@ -188,7 +188,7 @@ export class FeatureFlagService {
       return result.rows[0] || null;
     } catch (err) {
       console.error(
-        `Error fetching flag '${flagName}' from DB: ${err.message}`
+        `Error fetching flag '${flagName}' from DB: ${err instanceof Error ? err.message : String(err)}`
       );
       return null;
     }

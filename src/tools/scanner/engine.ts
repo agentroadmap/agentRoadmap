@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { readFileSync } from "fs";
 import { glob } from "glob";
-import { Rule, RuleSet, Finding, ScannerConfig } from "./rules.ts";
+import type { Rule, RuleSet, Finding, ScannerConfig } from "./rules.ts";
 import { getAllowlist, isAllowed } from "./allowlist.ts";
 
 export interface ScannerResult {

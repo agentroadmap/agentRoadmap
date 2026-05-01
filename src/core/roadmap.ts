@@ -905,7 +905,7 @@ export class Core {
 			["Design", row.design],
 			["Drawbacks", row.drawbacks],
 			["Alternatives", row.alternatives],
-			["Dependency Note", row.dependency_note],
+			["Dependency Note", row.dependency],
 		].flatMap(([heading, value]) => {
 			const content = value?.trim();
 			return content ? [[heading, content] as [string, string]] : [];
@@ -2421,9 +2421,6 @@ export class Core {
 			...(input.maturity && { maturity: input.maturity }),
 			...(input.needs_capabilities && {
 				needs_capabilities: input.needs_capabilities,
-			}),
-			...(input.required_capabilities && {
-				required_capabilities: input.required_capabilities,
 			}),
 			...(input.external_injections && {
 				external_injections: input.external_injections,

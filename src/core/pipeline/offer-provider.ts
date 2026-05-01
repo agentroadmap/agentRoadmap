@@ -247,7 +247,7 @@ export class OfferProvider {
 		// and calls `briefing_load(<id>)` to retrieve mission, success criteria,
 		// allowed tools, MCP quirks, and escalation channels. If absent, the
 		// child runs in legacy "blind" mode with only the task prompt.
-		const briefingId = asString(meta.briefing_id);
+		const briefingId = asString(meta.briefing_id) ?? undefined;
 
 		// Generate ephemeral worker identity for this dispatch
 		const workerIdentity = `${this.agentIdentity}/worker-${dispatch_id}`;

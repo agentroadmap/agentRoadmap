@@ -1,7 +1,8 @@
 import { createHash } from "crypto";
 import { readFileSync, readdirSync } from "fs";
 import { join, basename } from "path";
-import { Pool, PoolClient } from "pg";
+import { Pool } from "pg";
+import type { PoolClient } from "pg";
 import process from "process";
 
 interface MigrationRecord {

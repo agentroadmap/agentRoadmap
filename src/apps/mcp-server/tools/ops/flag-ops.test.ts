@@ -59,7 +59,7 @@ describe("FlagOpsHandler — MCP Ops Tools", () => {
     assert.strictEqual(result.enabled_default, true, "enabled_default is true");
     assert.strictEqual(result.rollout_percent, 75, "rollout_percent is 75");
     assert.ok(
-      result.per_tenant_override.tenant1,
+      (result.per_tenant_override as Record<string, unknown>).tenant1,
       "per_tenant_override has tenant1"
     );
     assert.strictEqual(result.updated_by, "test-user", "updated_by matches");
@@ -156,7 +156,7 @@ describe("FlagOpsHandler — MCP Ops Tools", () => {
       await handler.flagSet("ops-test.invalid", undefined, 150);
       assert.fail("Should have thrown for invalid rollout");
     } catch (err) {
-      assert.ok(err.message.includes("rolloutPercent"), "Error mentions rolloutPercent");
+      assert.ok((err as Error).message.includes("rolloutPercent"), "Error mentions rolloutPercent");
     }
   });
 

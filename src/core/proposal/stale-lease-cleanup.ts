@@ -29,7 +29,7 @@ export async function cleanupStaleLeasesIfNeeded(): Promise<number> {
 		[staleThreshold],
 	);
 
-	return rowCount;
+	return rowCount ?? 0;
 }
 
 /**
@@ -45,7 +45,7 @@ export async function forceCleanupExpiredLeases(): Promise<number> {
        AND expires_at < NOW()`,
 	);
 
-	return rowCount;
+	return rowCount ?? 0;
 }
 
 /**
@@ -67,5 +67,5 @@ export async function cleanupStaleTransitionProcessing(): Promise<number> {
 		[staleThreshold],
 	);
 
-	return rowCount;
+	return rowCount ?? 0;
 }

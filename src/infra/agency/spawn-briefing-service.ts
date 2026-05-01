@@ -123,10 +123,10 @@ export async function briefingAssemble(
   const fallback_playbook = await fetchFallbackPlaybook(5);
 
   // Step 4: Fill budget (TODO: resolve from P464 agency capacity)
-  const budget = task.budget || {
-    max_tokens: null,
-    max_minutes: null,
-    max_tool_calls: null,
+  const budget: SpawnBriefing["budget"] = {
+    max_tokens: task.budget?.max_tokens ?? null,
+    max_minutes: task.budget?.max_minutes ?? null,
+    max_tool_calls: task.budget?.max_tool_calls ?? null,
   };
 
   // Step 5: P194 — Load project memory and agent semantic context before dispatch.

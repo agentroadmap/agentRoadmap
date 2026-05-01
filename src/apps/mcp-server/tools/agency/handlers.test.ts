@@ -152,7 +152,7 @@ test("handleSpawnSummaryEmit: validates outcome enum", async (t) => {
 
 test("handleBriefingList: lists recent briefings", async (t) => {
   // Create a few briefings
-  const ids = [];
+  const ids: string[] = [];
   for (let i = 0; i < 3; i++) {
     const input: BriefingAssembleInput = {
       task_id: `test-list-${i}`,

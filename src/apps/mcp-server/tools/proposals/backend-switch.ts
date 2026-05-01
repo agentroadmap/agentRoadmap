@@ -388,6 +388,6 @@ export function registerProposalTools(
 			},
 			required: ["id"],
 		},
-		handler: (args: any) => handlers.getProposalDetail(args),
+		handler: (args: any) => handlers.getProposalProjection(args),
 	});
 }

@@ -15,17 +15,17 @@ import { execSync } from "node:child_process";
 import { getPool } from "../../../infra/postgres/pool";
 import { HiveError, Errors } from "./error";
 import {
-  ProjectRow,
-  ProposalRow,
-  AgencyRow,
-  AgentRow,
-  WorkflowTemplateRow,
-  DispatchRow,
-  LeaseRow,
-  PaginatedResult,
+  type ProjectRow,
+  type ProposalRow,
+  type AgencyRow,
+  type AgentRow,
+  type WorkflowTemplateRow,
+  type DispatchRow,
+  type LeaseRow,
+  type PaginatedResult,
   encodeCursor,
   decodeCursor,
-  PaginationCursor,
+  type PaginationCursor,
 } from "./control-plane-types";
 
 /**

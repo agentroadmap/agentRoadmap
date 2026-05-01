@@ -5,7 +5,7 @@
  * Each formatter is a pure function that takes data + context and returns a string.
  */
 
-import { CliContext } from "./envelope";
+import type { CliContext } from "./envelope";
 
 export type OutputFormat = "text" | "json" | "jsonl" | "yaml" | "sarif";
 

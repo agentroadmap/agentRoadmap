@@ -98,7 +98,7 @@ export class FlagOpsHandler {
         updated_by: row.updated_by,
       };
     } catch (err) {
-      throw new Error(`flagGet error: ${err.message}`);
+      throw new Error(`flagGet error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -209,7 +209,7 @@ export class FlagOpsHandler {
       };
     } catch (err) {
       await client.query("ROLLBACK");
-      throw new Error(`flagSet error: ${err.message}`);
+      throw new Error(`flagSet error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       client.release();
     }
@@ -286,7 +286,7 @@ export class FlagOpsHandler {
       };
     } catch (err) {
       await client.query("ROLLBACK");
-      throw new Error(`flagOverride error: ${err.message}`);
+      throw new Error(`flagOverride error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       client.release();
     }
@@ -322,7 +322,7 @@ export class FlagOpsHandler {
         })),
       };
     } catch (err) {
-      throw new Error(`flagList error: ${err.message}`);
+      throw new Error(`flagList error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -394,7 +394,7 @@ export class FlagOpsHandler {
         total_count: result.rows.length,
       };
     } catch (err) {
-      throw new Error(`flagAudit error: ${err.message}`);
+      throw new Error(`flagAudit error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

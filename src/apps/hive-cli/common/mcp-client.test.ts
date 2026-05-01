@@ -33,8 +33,8 @@ const originalFetch = global.fetch;
 
 
 global.fetch = async (
-  _url: string,
-  _opts: RequestInit
+  _url: string | URL | Request,
+  _opts?: RequestInit
 ): Promise<Response> => {
   // Check for abort signal
   const signal = _opts?.signal as AbortSignal | undefined;

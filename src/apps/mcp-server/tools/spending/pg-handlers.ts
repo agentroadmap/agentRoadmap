@@ -649,7 +649,7 @@ export class PgModelHandlers {
 					return true;
 				}
 				const costPerMillion = perMillionPricing
-					? (parseOptionalNumber(row.cost_per_million_input ?? null) ??
+					? (parseOptionalNumber(row.cost_per_million_input ?? undefined) ??
 						perMillionFromPer1k(row.cost_per_1k_input))
 					: perMillionFromPer1k(row.cost_per_1k_input);
 				return costPerMillion !== null && costPerMillion <= maxCostPerMillion;
@@ -665,22 +665,22 @@ export class PgModelHandlers {
 			const lines = filteredRows.map((r) => {
 				const caps = r.capabilities
 					? Object.keys(r.capabilities)
-							.filter((k: string) => r.capabilities[k])
+							.filter((k: string) => (r.capabilities as Record<string, boolean>)[k])
 							.join(", ")
 					: "none";
 				const inputCost = perMillionPricing
-					? (parseOptionalNumber(r.cost_per_million_input) ??
+					? (parseOptionalNumber(r.cost_per_million_input ?? undefined) ??
 						perMillionFromPer1k(r.cost_per_1k_input))
 					: perMillionFromPer1k(r.cost_per_1k_input);
 				const outputCost = perMillionPricing
-					? (parseOptionalNumber(r.cost_per_million_output) ??
+					? (parseOptionalNumber(r.cost_per_million_output ?? undefined) ??
 						perMillionFromPer1k(r.cost_per_1k_output))
 					: perMillionFromPer1k(r.cost_per_1k_output);
 				const cacheWriteCost = perMillionPricing
-					? parseOptionalNumber(r.cost_per_million_cache_write)
+					? parseOptionalNumber(r.cost_per_million_cache_write ?? undefined)
 					: null;
 				const cacheHitCost = perMillionPricing
-					? parseOptionalNumber(r.cost_per_million_cache_hit)
+					? parseOptionalNumber(r.cost_per_million_cache_hit ?? undefined)
 					: null;
 				const pricing = [
 					`input: ${formatMillionCost(inputCost)}`,

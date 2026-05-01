@@ -24,7 +24,6 @@
  */
 
 import type { Pool, PoolClient } from "pg";
-import type { ConfigKey as RawConfigKey } from "./config-keys";
 
 export type ConfigClass = "secret" | "structural" | "registry" | "flag";
 

@@ -163,7 +163,7 @@ export async function evaluateDispatch(
   return {
     allow: true,
     reason: "allowed",
-    remaining_budget_cents: remainingBudgetCents,
+    remaining_budget_cents: remainingBudgetCents ?? undefined,
     audit_id: auditResult,
   };
 }

@@ -109,9 +109,10 @@ export class PgProposalHandlers {
 				terminalStatuses.forEach((s) => params.push(s));
 			}
 
-			if (args.type ?? args.proposal_type) {
+			const proposalType = args.type ?? args.proposal_type;
+			if (proposalType !== undefined) {
 				conditions.push(`type = $${params.length + 1}`);
-				params.push(args.type ?? args.proposal_type);
+				params.push(proposalType);
 			}
 
 			if (conditions.length) {
@@ -484,7 +485,7 @@ export class PgProposalHandlers {
 			}
 
 			const validMaturityValues = [Maturity.NEW, Maturity.ACTIVE, Maturity.MATURE, Maturity.OBSOLETE];
-			if (!validMaturityValues.includes(args.maturity)) {
+			if (!validMaturityValues.includes(args.maturity as typeof validMaturityValues[number])) {
 				return {
 					content: [
 						{
@@ -911,7 +912,7 @@ export class PgProposalHandlers {
 				md += `  authority: "${decision.authority}"\n`;
 				md += `  decided_at: ${decision.decided_at}\n`;
 			}
-			if (proposal.workflow_name) md += `workflow: ${proposal.workflow_name}\n`;
+			if ((proposal as Record<string, unknown>).workflow_name) md += `workflow: ${(proposal as Record<string, unknown>).workflow_name}\n`;
 			md += `---\n\n`;
 
 			// Narrative sections

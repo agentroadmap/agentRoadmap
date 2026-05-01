@@ -18,6 +18,13 @@ import { handleGates } from "./handlers/gates";
 import { handleNextState } from "./handlers/next-state";
 import { handleHistory } from "./handlers/history";
 
+function requireProjectId(ctx: { project_id?: number }): number {
+  if (requireProjectId(ctx) === undefined) {
+    throw Errors.usage("No project selected. Use --project or set HIVE_PROJECT.");
+  }
+  return requireProjectId(ctx);
+}
+
 export function register(program: Command): void {
   // Register schema
   registerDomain(workflowSchema);
@@ -39,7 +46,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleList(ctx.project_id, {
+        const result = await handleList(requireProjectId(ctx), {
           limit: options.limit,
           cursor: options.cursor,
         });
@@ -68,7 +75,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleShow(ctx.project_id, workflowId, {
+        const result = await handleShow(requireProjectId(ctx), workflowId, {
           include: options.include,
         });
         console.log(JSON.stringify(result, null, 2));
@@ -90,7 +97,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleGates(ctx.project_id, workflowId, {
+        const result = await handleGates(requireProjectId(ctx), workflowId, {
           state: options.state,
         });
         console.log(JSON.stringify(result, null, 2));
@@ -112,7 +119,7 @@ export function register(program: Command): void {
 
       try {
         const result = await handleNextState(
-          ctx.project_id,
+          requireProjectId(ctx),
           workflowId,
           currentState
         );
@@ -135,7 +142,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleHistory(ctx.project_id, proposalId, {
+        const result = await handleHistory(requireProjectId(ctx), proposalId, {
           limit: options.limit,
         });
         console.log(JSON.stringify(result, null, 2));

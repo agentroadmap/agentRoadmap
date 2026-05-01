@@ -1127,7 +1127,7 @@ export class PipelineCron {
 		}
 
 		if (this.spawnAgentFn) {
-			await this.processTransitionWithSpawnAgent(transition, plan);
+			await this.processTransitionWithSpawnAgent(transition, plan ?? undefined);
 			return;
 		}
 

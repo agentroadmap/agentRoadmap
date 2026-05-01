@@ -49,6 +49,13 @@ const proposalRecipe = {
   terminal_state: "Proposal claimed, lease active",
 };
 
+function requireProjectId(ctx: { project_id?: number }): number {
+  if (requireProjectId(ctx) === undefined) {
+    throw Errors.usage("No project selected. Use --project or set HIVE_PROJECT.");
+  }
+  return requireProjectId(ctx);
+}
+
 export function register(program: Command): void {
   // Register schema and recipe
   registerDomain(proposalSchema);
@@ -77,7 +84,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleCreate(ctx.project_id, mcpClient, {
+        const result = await handleCreate(requireProjectId(ctx), mcpClient, {
           type: options.type,
           title: options.title,
           summary: options.summary,
@@ -111,7 +118,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleGet(ctx.project_id, proposalId, {
+        const result = await handleGet(requireProjectId(ctx), proposalId, {
           include: options.include,
           format: options.format,
         });
@@ -136,7 +143,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleList(ctx.project_id, {
+        const result = await handleList(requireProjectId(ctx), {
           status: options.status,
           limit: options.limit,
           cursor: options.cursor,
@@ -160,7 +167,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleShow(ctx.project_id, proposalId, {
+        const result = await handleShow(requireProjectId(ctx), proposalId, {
           include: ["all"],
         });
         console.log(JSON.stringify(result, null, 2));
@@ -185,7 +192,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleEdit(ctx.project_id, proposalId, mcpClient, {
+        const result = await handleEdit(requireProjectId(ctx), proposalId, mcpClient, {
           title: options.title,
           status: options.status,
           idempotencyKey: options.idempotencyKey,
@@ -211,7 +218,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleClaim(ctx.project_id, proposalId, mcpClient, {
+        const result = await handleClaim(requireProjectId(ctx), proposalId, mcpClient, {
           duration: options.duration,
           idempotencyKey: options.idempotencyKey,
         });
@@ -238,7 +245,7 @@ export function register(program: Command): void {
 
       try {
         const result = await handleRelease(
-          ctx.project_id,
+          requireProjectId(ctx),
           proposalId,
           mcpClient,
           isTtyOutput(),
@@ -270,7 +277,7 @@ export function register(program: Command): void {
 
       try {
         const result = await handleTransition(
-          ctx.project_id,
+          requireProjectId(ctx),
           proposalId,
           nextState,
           mcpClient,
@@ -300,7 +307,7 @@ export function register(program: Command): void {
 
       try {
         const result = await handleMaturity(
-          ctx.project_id,
+          requireProjectId(ctx),
           proposalId,
           maturity,
           mcpClient,
@@ -329,7 +336,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleDepend(ctx.project_id, proposalId, mcpClient, {
+        const result = await handleDepend(requireProjectId(ctx), proposalId, mcpClient, {
           action: action as any,
           on: options.on,
           idempotencyKey: options.idempotencyKey,
@@ -361,7 +368,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleAc(ctx.project_id, mcpClient, isTtyOutput(), {
+        const result = await handleAc(requireProjectId(ctx), mcpClient, isTtyOutput(), {
           action: action as any,
           proposalId: options.proposalId,
           description: options.description,
@@ -393,7 +400,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleReview(ctx.project_id, proposalId, mcpClient, {
+        const result = await handleReview(requireProjectId(ctx), proposalId, mcpClient, {
           status: options.status,
           comment: options.comment,
           idempotencyKey: options.idempotencyKey,
@@ -420,7 +427,7 @@ export function register(program: Command): void {
       const mcpClient = getMcpClient(ctx.mcp_url);
 
       try {
-        const result = await handleDiscuss(ctx.project_id, proposalId, mcpClient, {
+        const result = await handleDiscuss(requireProjectId(ctx), proposalId, mcpClient, {
           message: options.message,
           stdin: options.stdin,
           idempotencyKey: options.idempotencyKey,
@@ -445,7 +452,7 @@ export function register(program: Command): void {
       const ctx = await resolveContext(options);
 
       try {
-        const result = await handleNext(ctx.project_id, {
+        const result = await handleNext(requireProjectId(ctx), {
           agent: options.agent,
           limit: options.limit ? parseInt(String(options.limit), 10) : undefined,
         });

@@ -424,8 +424,8 @@ export class GateEvaluatorAgent {
 	/**
 	 * Get default transition function from actual storage module
 	 */
-	private async getDefaultTransitionFn(): Promise<typeof import("../../postgres/proposal-storage.ts").transitionProposal> {
-		const { transitionProposal } = await import("../../postgres/proposal-storage.ts");
+	private async getDefaultTransitionFn(): Promise<typeof import("../../infra/postgres/proposal-storage-v2.ts").transitionProposal> {
+		const { transitionProposal } = await import("../../infra/postgres/proposal-storage-v2.ts");
 		return transitionProposal;
 	}
 

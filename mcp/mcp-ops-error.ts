@@ -8,7 +8,7 @@
  */
 
 import { Pool } from 'pg';
-import {
+import type {
   AgentError,
   ErrorEnvelope,
   ErrorLogEntry,

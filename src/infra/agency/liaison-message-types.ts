@@ -27,7 +27,7 @@ export const LiaisonMessageSchema = z.object({
     direction: LiaisonMessageDirectionSchema,
     kind: z.string(),
     correlation_id: z.string().uuid(),
-    payload: z.record(z.any()).default({}),
+    payload: z.record(z.string(), z.any()).default({}),
     signed_at: z.string().datetime(),
     signature: z.string(),
     acked_at: z.string().datetime().nullable().optional(),
@@ -124,21 +124,21 @@ export const AssistanceRequestPayloadSchema = z.object({
     briefing_id: z.string().uuid(),
     task_id: z.string().uuid(),
     error_signature: z.string(),
-    payload: z.record(z.any()),
+    payload: z.record(z.string(), z.any()),
 });
 export type AssistanceRequestPayload = z.infer<typeof AssistanceRequestPayloadSchema>;
 
 export const EscalatePayloadSchema = z.object({
     kind: z.string(),
     severity: z.string(),
-    payload: z.record(z.any()),
+    payload: z.record(z.string(), z.any()),
 });
 export type EscalatePayload = z.infer<typeof EscalatePayloadSchema>;
 
 // ─── Telemetry Plane: Liaison → Orchestrator ────────────────────────────────
 
 export const HeartbeatPayloadSchema = z.object({
-    capacity_envelope: z.record(z.any()),
+    capacity_envelope: z.record(z.string(), z.any()),
     in_flight_count: z.number().int(),
     last_error: z.string().nullable().optional(),
 });
@@ -153,7 +153,7 @@ export type ProgressNotePayload = z.infer<typeof ProgressNotePayloadSchema>;
 
 export const ClaimStatusPayloadSchema = z.object({
     claim_id: z.string().uuid(),
-    ac_progress: z.record(z.any()),
+    ac_progress: z.record(z.string(), z.any()),
     eta_minutes: z.number().int().nullable().optional(),
 });
 export type ClaimStatusPayload = z.infer<typeof ClaimStatusPayloadSchema>;
@@ -165,7 +165,7 @@ export type ProtocolPongPayload = z.infer<typeof ProtocolPongPayloadSchema>;
 
 // ─── P251: Poke/Pong Liveness ────────────────────────────────────────────────
 
-export const CapacityEnvelopeSchema = z.record(z.any());
+export const CapacityEnvelopeSchema = z.record(z.string(), z.any());
 export type CapacityEnvelope = z.infer<typeof CapacityEnvelopeSchema>;
 
 export const LiaisonPokePayloadSchema = z.object({

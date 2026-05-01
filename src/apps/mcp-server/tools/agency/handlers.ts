@@ -178,7 +178,11 @@ export async function handleSpawnSummaryEmit(
       summary: f.summary,
       proposal: f.proposal,
     })),
-    updated_quirks: input.updated_quirks || [],
+    updated_quirks: (input.updated_quirks || []).map((q) => ({
+      tool: q.tool,
+      canonical_args: q.canonical_args ?? {},
+      gotchas: q.gotchas ?? [],
+    })),
     tool_calls_made: input.tool_calls_made,
     tokens_used: input.tokens_used,
     duration_seconds: input.duration_seconds,

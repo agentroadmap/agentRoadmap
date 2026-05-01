@@ -64,7 +64,7 @@ type DecisionRow = {
 	authority: string;
 	rationale: string | null;
 	binding: boolean;
-	decided_at: string | Date;
+	decided_at: string;
 };
 type ReviewRow = {
 	reviewer_identity: string;
@@ -72,13 +72,13 @@ type ReviewRow = {
 	notes: string | null;
 	findings: string | null;
 	is_blocking: boolean;
-	reviewed_at: string | Date;
+	reviewed_at: string;
 };
 type DiscussionRow = {
 	author_identity: string;
 	context_prefix: string | null;
 	body: string;
-	created_at: string | Date;
+	created_at: string;
 };
 
 function getRoadmapWebUrl(): string {
