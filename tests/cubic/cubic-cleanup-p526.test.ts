@@ -4,6 +4,7 @@ import type { QueryResult, QueryResultRow } from "pg";
 import {
 	type CubicCleanupFs,
 	CubicCleanupService,
+	checkCubicCreateBudget,
 	type QueryRunner,
 } from "../../src/core/orchestration/cubic-cleanup.ts";
 
@@ -89,6 +90,131 @@ describe("P526 cubic cleanup automation", () => {
 		assert.equal(orphans[0].orphan_rule, 4);
 		assert.equal(orphans[0].reason, "active_registry_missing_worktree");
 		assert.ok(queries[0].includes("FROM roadmap.cubics"));
+	});
+
+	test("reapOrphanCubics deletes clean active cubics with no active MCP slot as rule 1", async () => {
+		const fakeFs = new FakeFs();
+		const worktreePath = "/tmp/agenthive-p526/rule-1";
+		fakeFs.existing.add(worktreePath);
+		const mcpSlotChecks: unknown[][] = [];
+		const deletes: string[] = [];
+		const auditRules: unknown[] = [];
+		const query: QueryRunner = async <T extends QueryResultRow>(
+			sql: string,
+			params?: unknown[],
+		): Promise<QueryResult<T>> => {
+			if (sql.includes("FROM roadmap.cubics c") && sql.includes("ORDER BY")) {
+				return result([
+					{
+						cubic_id: "cubic-no-slot",
+						status: "active",
+						phase: "build",
+						agent_identity: "agent-one",
+						worktree_path: worktreePath,
+						created_at: "2026-05-01T12:00:00.000Z",
+						activated_at: "2026-05-01T12:00:00.000Z",
+						completed_at: null,
+						last_activity_at: "2026-05-01T12:01:00.000Z",
+					},
+				] as unknown as T[]);
+			}
+			if (sql.includes("endpoint_name = $1")) {
+				mcpSlotChecks.push(params ?? []);
+				return result([{ exists: false }] as unknown as T[]);
+			}
+			if (sql.includes("UPDATE roadmap_proposal.proposal_lease")) {
+				return result([] as T[]);
+			}
+			if (sql.includes("DELETE FROM roadmap.cubics")) {
+				deletes.push(String(params?.[0]));
+				return result([] as T[]);
+			}
+			if (sql.includes("INSERT INTO roadmap.cubic_cleanup_audit")) {
+				auditRules.push(params?.[2]);
+				return result([] as T[]);
+			}
+			throw new Error(`Unexpected SQL: ${sql}`);
+		};
+
+		const service = new CubicCleanupService({
+			query,
+			fs: fakeFs,
+			now: () => new Date("2026-05-01T12:10:00.000Z"),
+		});
+
+		const report = await service.reapOrphanCubics({ actor: "reaper-test" });
+
+		assert.equal(report.deleted, 1);
+		assert.equal(report.results[0].orphan_rule, 1);
+		assert.equal(report.results[0].reason, "no_active_agent_slot");
+		assert.deepEqual(mcpSlotChecks, [["cubic-no-slot:agent-one"]]);
+		assert.deepEqual(fakeFs.worktreeRemoved, [worktreePath]);
+		assert.deepEqual(deletes, ["cubic-no-slot"]);
+		assert.deepEqual(auditRules, [1]);
+	});
+
+	test("reapOrphanCubics preserves dirty stale heartbeats with no active MCP reference as rule 2", async () => {
+		const fakeFs = new FakeFs();
+		const worktreePath = "/tmp/agenthive-p526/rule-2";
+		fakeFs.existing.add(worktreePath);
+		fakeFs.dirty.set(worktreePath, " M src/example.ts\n");
+		const auditActions: string[] = [];
+		const updates: string[] = [];
+		const query: QueryRunner = async <T extends QueryResultRow>(
+			sql: string,
+			params?: unknown[],
+		): Promise<QueryResult<T>> => {
+			if (sql.includes("FROM roadmap.cubics c") && sql.includes("ORDER BY")) {
+				return result([
+					{
+						cubic_id: "cubic-stale",
+						status: "active",
+						phase: "build",
+						agent_identity: "agent-one",
+						worktree_path: worktreePath,
+						created_at: "2026-05-01T12:00:00.000Z",
+						activated_at: "2026-05-01T12:00:00.000Z",
+						completed_at: null,
+						last_activity_at: "2026-05-01T12:00:00.000Z",
+					},
+				] as unknown as T[]);
+			}
+			if (sql.includes("metadata->>'current_cubic_id' = $1")) {
+				assert.deepEqual(params, ["cubic-stale"]);
+				return result([{ exists: false }] as unknown as T[]);
+			}
+			if (sql.includes("UPDATE roadmap_proposal.proposal_lease")) {
+				return result([{ proposal_id: 527 }] as unknown as T[]);
+			}
+			if (sql.includes("UPDATE roadmap.cubics")) {
+				updates.push(sql);
+				return result([] as T[]);
+			}
+			if (sql.includes("INSERT INTO roadmap.cubic_cleanup_audit")) {
+				auditActions.push(String(params?.[1]));
+				if (params?.[1] === "PRESERVED") assert.equal(params?.[2], 2);
+				return result([] as T[]);
+			}
+			throw new Error(`Unexpected SQL: ${sql}`);
+		};
+
+		const service = new CubicCleanupService({
+			query,
+			fs: fakeFs,
+			orphansRoot: "/tmp/agenthive-p526/orphans",
+			now: () => new Date("2026-05-01T12:31:00.000Z"),
+		});
+
+		const report = await service.reapOrphanCubics({ actor: "reaper-test" });
+
+		assert.equal(report.preserved, 1);
+		assert.equal(report.lease_releases, 1);
+		assert.equal(report.results[0].orphan_rule, 2);
+		assert.equal(report.results[0].reason, "stale_heartbeat_no_mcp_reference");
+		assert.equal(fakeFs.moved.length, 1);
+		assert.equal(fakeFs.moved[0].from, worktreePath);
+		assert.deepEqual(auditActions, ["LEASE_RELEASED", "PRESERVED"]);
+		assert.equal(updates.length, 1);
 	});
 
 	test("forceReapCubic preserves dirty worktrees and writes audit evidence", async () => {
@@ -214,5 +340,49 @@ describe("P526 cubic cleanup automation", () => {
 		assert.deepEqual(fakeFs.worktreeRemoved, [worktreePath]);
 		assert.deepEqual(deletes, ["cubic-clean"]);
 		assert.deepEqual(auditActions, ["DELETED"]);
+	});
+
+	test("checkCubicCreateBudget rejects over-quota hosts and allows after cleanup frees a slot", async () => {
+		const activeCounts = [2, 1];
+		const query: QueryRunner = async <T extends QueryResultRow>(
+			sql: string,
+			params?: unknown[],
+		): Promise<QueryResult<T>> => {
+			if (sql.includes("FROM roadmap.host_model_policy")) {
+				assert.deepEqual(params, ["bot", 10]);
+				return result([{ max_active: 2 }] as unknown as T[]);
+			}
+			if (sql.includes("FROM roadmap.cubics")) {
+				assert.deepEqual(params, ["bot", "/tmp/agenthive-p526/%"]);
+				return result([
+					{ active_count: activeCounts.shift() ?? 0 },
+				] as unknown as T[]);
+			}
+			throw new Error(`Unexpected SQL: ${sql}`);
+		};
+
+		const overQuota = await checkCubicCreateBudget({
+			query,
+			hostName: "bot",
+			worktreeRoot: "/tmp/agenthive-p526",
+		});
+		const afterCleanup = await checkCubicCreateBudget({
+			query,
+			hostName: "bot",
+			worktreeRoot: "/tmp/agenthive-p526",
+		});
+
+		assert.deepEqual(overQuota, {
+			hostName: "bot",
+			activeCount: 2,
+			maxActive: 2,
+			allowed: false,
+		});
+		assert.deepEqual(afterCleanup, {
+			hostName: "bot",
+			activeCount: 1,
+			maxActive: 2,
+			allowed: true,
+		});
 	});
 });

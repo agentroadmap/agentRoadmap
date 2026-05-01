@@ -14,6 +14,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { QueryResult, QueryResultRow } from "pg";
@@ -108,6 +109,22 @@ export interface CubicCleanupServiceOptions {
 	now?: () => Date;
 }
 
+export const DEFAULT_MAX_ACTIVE_CUBICS_PER_HOST = 10;
+
+export interface CubicBudgetStatus {
+	hostName: string;
+	activeCount: number;
+	maxActive: number;
+	allowed: boolean;
+}
+
+export interface CubicBudgetOptions {
+	query: QueryRunner;
+	hostName?: string;
+	worktreeRoot?: string;
+	defaultMaxActive?: number;
+}
+
 const defaultFs: CubicCleanupFs = {
 	exists: (path) => existsSync(path),
 	remove: (path) => rm(path, { recursive: true, force: true }),
@@ -138,6 +155,40 @@ const defaultFs: CubicCleanupFs = {
 		});
 	},
 };
+
+export function resolveCubicHostName(
+	env: Partial<Pick<NodeJS.ProcessEnv, "AGENTHIVE_HOST">> = process.env,
+	fallbackHost = hostname(),
+): string {
+	return env.AGENTHIVE_HOST?.trim() || fallbackHost;
+}
+
+export async function checkCubicCreateBudget(
+	options: CubicBudgetOptions,
+): Promise<CubicBudgetStatus> {
+	const hostName = options.hostName ?? resolveCubicHostName();
+	const worktreeRoot = options.worktreeRoot ?? "/data/code/worktree";
+	const defaultMaxActive =
+		options.defaultMaxActive ?? DEFAULT_MAX_ACTIVE_CUBICS_PER_HOST;
+
+	const maxActive = await readMaxActiveCubicsPerHost(
+		options.query,
+		hostName,
+		defaultMaxActive,
+	);
+	const activeCount = await countActiveCubicsForHost(
+		options.query,
+		hostName,
+		worktreeRoot,
+	);
+
+	return {
+		hostName,
+		activeCount,
+		maxActive,
+		allowed: activeCount < maxActive,
+	};
+}
 
 export class CubicCleanupService {
 	private readonly detector: CubicIdleDetector;
@@ -751,6 +802,52 @@ export class CubicCleanupService {
 		const stamp = this.now().toISOString().replace(/[:.]/g, "-");
 		return join(this.orphansRoot, `${cubicId}-${stamp}`);
 	}
+}
+
+async function readMaxActiveCubicsPerHost(
+	queryRunner: QueryRunner,
+	hostName: string,
+	defaultMaxActive: number,
+): Promise<number> {
+	const { rows } = await queryRunner<{ max_active: number | string }>(
+		`SELECT COALESCE(
+		          CASE
+		            WHEN metadata ? 'max_active_cubics_per_host'
+		             AND metadata->>'max_active_cubics_per_host' ~ '^[0-9]+$'
+		            THEN (metadata->>'max_active_cubics_per_host')::int
+		          END,
+		          $2::int
+		        ) AS max_active
+		   FROM roadmap.host_model_policy
+		  WHERE host_name = $1`,
+		[hostName, defaultMaxActive],
+	);
+	const configured = Number(rows[0]?.max_active ?? defaultMaxActive);
+	return Number.isFinite(configured)
+		? Math.max(0, Math.floor(configured))
+		: defaultMaxActive;
+}
+
+async function countActiveCubicsForHost(
+	queryRunner: QueryRunner,
+	hostName: string,
+	worktreeRoot: string,
+): Promise<number> {
+	const { rows } = await queryRunner<{ active_count: number | string }>(
+		`SELECT COUNT(*)::int AS active_count
+		   FROM roadmap.cubics
+		  WHERE status NOT IN ('completed', 'complete', 'expired', 'terminated', 'recycled', 'orphaned')
+		    AND COALESCE(
+		          metadata->>'host_name',
+		          CASE WHEN worktree_path LIKE $2 ESCAPE '\\' THEN $1 ELSE NULL END
+		        ) = $1`,
+		[hostName, `${escapeLike(worktreeRoot.replace(/\/+$/, ""))}/%`],
+	);
+	return Number(rows[0]?.active_count ?? 0);
+}
+
+function escapeLike(value: string): string {
+	return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function minutesBetween(from: Date, to: Date): number {

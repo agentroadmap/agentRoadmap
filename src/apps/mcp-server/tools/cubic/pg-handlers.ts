@@ -8,7 +8,10 @@
  * P462: Added agent identity sanitization to prevent path traversal and collisions.
  */
 
-import { CubicCleanupService } from "../../../../core/orchestration/cubic-cleanup.ts";
+import {
+	CubicCleanupService,
+	checkCubicCreateBudget,
+} from "../../../../core/orchestration/cubic-cleanup.ts";
 import { CubicIdleDetector } from "../../../../core/orchestration/cubic-idle-detector.ts";
 import { query } from "../../../../postgres/pool.ts";
 import {
@@ -36,7 +39,7 @@ export class PgCubicHandlers {
 	private readonly detector = new CubicIdleDetector();
 	private readonly cleanup = new CubicCleanupService();
 
-	constructor(private readonly core: McpServer) {}
+	constructor(readonly _core: McpServer) {}
 
 	async createCubic(args: {
 		name: string;
@@ -48,6 +51,31 @@ export class PgCubicHandlers {
 		try {
 			// P462: Sanitize cubic name to safe worktree path
 			const worktreePath = safeWorktreePath(WORKTREE_ROOT, args.name);
+			const budget = await checkCubicCreateBudget({
+				query,
+				worktreeRoot: WORKTREE_ROOT,
+			});
+			if (!budget.allowed) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									ok: false,
+									error: "BUDGET_EXCEEDED",
+									host: budget.hostName,
+									active: budget.activeCount,
+									max: budget.maxActive,
+									message: `Cubic budget exhausted (${budget.activeCount}/${budget.maxActive} active). Wait for cleanup.`,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
 
 			// P459: Phase-driven role allocation
 			const phase = args.phase ?? "design";
@@ -174,6 +202,7 @@ export class PgCubicHandlers {
 				assignedProposals: args.proposals ?? [],
 				phase,
 				phaseGate: "G1",
+				host_name: budget.hostName,
 				...(adHocIdentity ? { ad_hoc_identity: adHocIdentity } : {}),
 			});
 
@@ -326,7 +355,8 @@ export class PgCubicHandlers {
 								truncated,
 								limit,
 								filter: {
-									status: args.status ?? (includeTerminal ? "all" : "active+idle"),
+									status:
+										args.status ?? (includeTerminal ? "all" : "active+idle"),
 									agent: args.agent ?? null,
 									include_metadata: includeMetadata,
 								},
