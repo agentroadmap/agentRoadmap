@@ -219,6 +219,7 @@ async function applyRepair(limit: number): Promise<void> {
 }
 
 // Parse arguments
+// @ts-ignore - Bun runtime global
 const args = Bun.argv.slice(2);
 const applyMode = args.includes("--apply");
 const limitIdx = args.indexOf("--limit");

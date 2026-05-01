@@ -15,21 +15,21 @@ const report = await client.callTool({
   name: "spending_report",
   arguments: {}
 });
-console.log("Current spending report:", report.content?.[0]?.text);
+console.log("Current spending report:", (report.content as any)?.[0]?.text);
 
 // Try to get knowledge stats
 const stats = await client.callTool({
   name: "knowledge_get_stats",
   arguments: {}
 });
-console.log("\nKnowledge stats:", stats.content?.[0]?.text?.substring(0, 300));
+console.log("\nKnowledge stats:", (stats.content as any)?.[0]?.text?.substring(0, 300));
 
 // Check memory
 const mem = await client.callTool({
   name: "memory_list",
   arguments: {}
 });
-console.log("\nMemory:", mem.content?.[0]?.text?.substring(0, 300));
+console.log("\nMemory:", (mem.content as any)?.[0]?.text?.substring(0, 300));
 
 await client.close();
 console.log("\n=== Done ===");

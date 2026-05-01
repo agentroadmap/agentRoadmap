@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runScan } from "../../src/tools/scanner/engine.ts";
-import { Rule } from "../../src/tools/scanner/rules.ts";
+import { type Rule } from "../../src/tools/scanner/rules.ts";
 
 test("scanner engine - match pattern", async () => {
   const testRule: Rule = {

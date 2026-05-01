@@ -587,9 +587,9 @@ function inferGateForState(
 	if (t === "hotfix") {
 		switch (s) {
 			case "TRIAGE":
-				return { gate: "D1", toStage: "FIX" };
+				return { gate: "D1", toStage: "FIX" as any };
 			case "FIX":
-				return { gate: "D3", toStage: "DEPLOYED" };
+				return { gate: "D3", toStage: "DEPLOYED" as any };
 			default:
 				return null;
 		}
@@ -1028,7 +1028,7 @@ async function dispatchAgent(
 					allowed_tools: deriveAllowedTools(agentLabel ?? agent),
 					parent_agent: "orchestrator",
 					liaison_agent:
-						(await firstDispatchableAgency()) ?? null ?? undefined,
+						(await firstDispatchableAgency()) ?? undefined,
 					request_assistance_threshold: 3,
 					topic_keywords: [
 						`P${proposalId}`,
@@ -1224,7 +1224,7 @@ async function dispatchAgent(
 			const classified = classifyProviderError(fullError);
 			if (classified && activeProvider) {
 				try {
-					await setProviderCooldown(activeProvider, classified.type, fullError);
+					await setProviderCooldown(activeProvider, classified.type as any, fullError);
 				} catch {}
 			}
 		}
@@ -1977,7 +1977,7 @@ async function dispatchImplicitGate(
 		try {
 			const provider = activeProvider ?? (await resolveActiveRouteProvider());
 			if (provider) {
-				await setProviderCooldown(provider, classified.type, fullError);
+				await setProviderCooldown(provider, classified.type as any, fullError);
 			}
 		} catch {
 			// Provider resolution failed — skip cooldown

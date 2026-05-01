@@ -18,7 +18,7 @@ try {
       subscribe: true
     }
   });
-  console.log("msg_subscribe result:", result.content?.[0]?.text?.substring(0, 200));
+  console.log("msg_subscribe result:", (result.content as any)?.[0]?.text?.substring(0, 200));
 } catch (e) {
   console.log("msg_subscribe not available or table doesn't exist");
 }

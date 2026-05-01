@@ -1,5 +1,5 @@
-/**
 import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
+/**
  * AgentHive Orchestrator — Event-driven agent dispatcher with UNLIMITED resources.
  * 
  * Dispatches agents immediately when state machine calls.
@@ -59,7 +59,7 @@ async function dispatchAgent(agent: string, proposalId: string, task: string): P
       },
     });
     
-    const data = JSON.parse(created.content?.[0]?.text || "{}");
+    const data = JSON.parse((created.content as any)?.[0]?.text || "{}");
     if (!data.success || !data.cubic) {
       logger.error(`Failed to create cubic for ${agent}`);
       return;

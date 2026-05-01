@@ -3,9 +3,9 @@ import assert from 'node:assert';
 import { Pool } from 'pg';
 import {
   AgentError,
-  ErrorEnvelope,
-  ErrorLogEntry,
-  ErrorCatalogEntry,
+  type ErrorEnvelope,
+  type ErrorLogEntry,
+  type ErrorCatalogEntry,
   initAgentError,
 } from '../shared/runtime/agent-error';
 import { handleErrorAction, validateErrorActionArgs } from '../mcp/mcp-ops-error';

@@ -12,6 +12,7 @@ interface FakeRow {
 	fingerprint: string;
 	occurrence_count: number;
 	first_seen: Date;
+	last_seen: Date;
 	hotfix_proposal_id: string | null;
 	resolved_at: Date | null;
 	last_escalated_at: Date | null;
@@ -34,6 +35,7 @@ function makeFakePool(seed: Map<string, FakeRow> = new Map()) {
 					fingerprint,
 					occurrence_count: 1,
 					first_seen: new Date(),
+					last_seen: new Date(),
 					hotfix_proposal_id: hotfixId ? String(hotfixId) : null,
 					resolved_at: null,
 					last_escalated_at: null,
@@ -106,6 +108,7 @@ describe("runMonitorCycle", () => {
 			fingerprint: fp,
 			occurrence_count: 1,
 			first_seen: new Date(Date.now() - 5 * 60 * 1000), // 5 min ago
+			last_seen: new Date(),
 			hotfix_proposal_id: "999",
 			resolved_at: null,
 			last_escalated_at: null,
@@ -135,6 +138,7 @@ describe("runMonitorCycle", () => {
 			fingerprint: fp,
 			occurrence_count: 3,
 			first_seen: new Date(Date.now() - 10 * 60 * 1000),
+			last_seen: new Date(),
 			hotfix_proposal_id: "777",
 			resolved_at: null,
 			last_escalated_at: null,
@@ -165,6 +169,7 @@ describe("runMonitorCycle", () => {
 			fingerprint: fp,
 			occurrence_count: 1,
 			first_seen: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3h ago
+			last_seen: new Date(),
 			hotfix_proposal_id: "888",
 			resolved_at: null,
 			last_escalated_at: null,
@@ -193,6 +198,7 @@ describe("runMonitorCycle", () => {
 			fingerprint: fp,
 			occurrence_count: 6,
 			first_seen: new Date(Date.now() - 3 * 60 * 60 * 1000),
+			last_seen: new Date(),
 			hotfix_proposal_id: "555",
 			resolved_at: null,
 			last_escalated_at: new Date(Date.now() - 10 * 60 * 1000), // 10 min ago
@@ -221,6 +227,7 @@ describe("runMonitorCycle", () => {
 			fingerprint: fp,
 			occurrence_count: 5,
 			first_seen: new Date(Date.now() - 3 * 60 * 60 * 1000),
+			last_seen: new Date(),
 			hotfix_proposal_id: "444",
 			resolved_at: new Date(),
 			last_escalated_at: null,

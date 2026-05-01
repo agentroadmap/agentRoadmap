@@ -66,7 +66,7 @@ test("AC-3: dormant agency heartbeat → reactivated to active", async () => {
 	assert.equal(activeStatus?.status, "active", "DB status should reflect reactivation");
 
 	// Cleanup
-	await endLiaisonSession(session_id, "test-cleanup");
+	await endLiaisonSession(session_id, "test-cleanup" as any);
 	await query(`DELETE FROM roadmap.agency_liaison_session WHERE agency_id = $1`, [agency_id]);
 	await query(`DELETE FROM roadmap.agency WHERE agency_id = $1`, [agency_id]);
 });
@@ -94,7 +94,7 @@ test("AC-7: claim gateway helpers — registered agency without active session i
 	);
 
 	// Simulate liaison shutdown / crash — session is closed
-	await endLiaisonSession(session_id, "test-shutdown");
+	await endLiaisonSession(session_id, "test-shutdown" as any);
 
 	// After shutdown: registered but NO active session → gateway must reject
 	assert.equal(

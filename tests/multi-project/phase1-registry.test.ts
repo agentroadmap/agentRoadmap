@@ -55,7 +55,7 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 		const result = await listProjects({ include_archived: false });
 
 		// Parse the JSON response
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.ok(data.returned >= 3, `expected returned>=3, got ${data.returned}`);
@@ -71,7 +71,7 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 
 	it("Handler-level: set_project with valid slug succeeds", async () => {
 		const result = await setProject({ project: "audiobook" });
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);
@@ -82,7 +82,7 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 
 	it("Handler-level: set_project with numeric id succeeds", async () => {
 		const result = await setProject({ project: "1" });
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);
@@ -92,7 +92,7 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 
 	it("Negative: set_project with nonexistent project returns structured error", async () => {
 		const result = await setProject({ project: "nonexistent" });
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, false);
@@ -105,7 +105,7 @@ describe("P482 Phase 1: Multi-Project Registry", () => {
 			project: "ai-singer",
 			sessionId: "test-session-123",
 		});
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);

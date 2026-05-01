@@ -2,6 +2,7 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
+// @ts-ignore - agent-health module may not exist yet
 import { pingAgent } from "../../src/core/identity/agent-health/index.ts";
 import {
 	deregisterAgent,

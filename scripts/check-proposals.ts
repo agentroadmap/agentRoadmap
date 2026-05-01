@@ -14,7 +14,7 @@ async function main() {
     arguments: {}
   });
   
-  const text = result.content?.[0]?.text || "";
+  const text = (result.content as any)?.[0]?.text || "";
   console.log("Proposals (first 2000 chars):");
   console.log(text.substring(0, 2000));
   

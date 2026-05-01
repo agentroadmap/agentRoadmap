@@ -243,7 +243,7 @@ async function main() {
 
 	const module = await import("../src/apps/mcp-server/server.ts");
 	const createMcpServer =
-		module.createMcpServer ?? module.default?.createMcpServer;
+		module.createMcpServer ?? (module as any).default?.createMcpServer;
 	if (!createMcpServer) {
 		throw new Error("createMcpServer export not found.");
 	}
@@ -255,7 +255,7 @@ async function main() {
 				action: "get",
 				args: { id: proposal.displayId },
 			});
-			const getText = getResult.content?.[0]?.text ?? "";
+			const getText = (getResult.content as any)?.[0]?.text ?? "";
 			if (getText.startsWith("⚠️")) {
 				throw new Error(`${proposal.displayId}: ${getText}`);
 			}
@@ -285,7 +285,7 @@ async function main() {
 						author: "codex",
 					};
 			const result = await server.invokeTool("mcp_proposal", { action, args });
-			const text = result.content?.[0]?.text ?? JSON.stringify(result);
+			const text = (result.content as any)?.[0]?.text ?? JSON.stringify(result);
 			if (text.startsWith("⚠️")) {
 				throw new Error(`${proposal.displayId}: ${text}`);
 			}

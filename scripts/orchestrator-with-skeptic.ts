@@ -1,5 +1,5 @@
-/**
 import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
+/**
  * AgentHive Orchestrator — Event-driven agent dispatcher with SKEPTIC GATE.
  * 
  * The skeptic participates in EVERY gate decision:

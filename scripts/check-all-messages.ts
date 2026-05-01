@@ -22,7 +22,7 @@ async function main() {
         }
       });
       
-      const text = result.content?.[0]?.text || "";
+      const text = (result.content as any)?.[0]?.text || "";
       if (text && !text.includes("No messages")) {
         console.log(`\n${agent}:`);
         console.log(text.substring(0, 500));

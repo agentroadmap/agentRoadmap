@@ -40,9 +40,9 @@ async function main() {
           message_type: "task"
         }
       });
-      console.log("msg_send result:", result.content?.[0]?.text);
+      console.log("msg_send result:", (result.content as any)?.[0]?.text);
     } catch (error) {
-      console.log("msg_send error:", error.message);
+      console.log("msg_send error:", (error as any).message);
     }
     
     // Test chan_subscribe
@@ -56,9 +56,9 @@ async function main() {
           subscribe: true
         }
       });
-      console.log("chan_subscribe result:", result.content?.[0]?.text);
+      console.log("chan_subscribe result:", (result.content as any)?.[0]?.text);
     } catch (error) {
-      console.log("chan_subscribe error:", error.message);
+      console.log("chan_subscribe error:", (error as any).message);
     }
     
     await client.close();

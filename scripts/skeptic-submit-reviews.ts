@@ -143,7 +143,7 @@ for (const r of reviews) {
         notes: r.notes
       }
     });
-    console.log(`P${r.id}: ${res.content?.[0]?.text}`);
+    console.log(`P${r.id}: ${(res.content as any)?.[0]?.text}`);
   } catch (e) {
     console.log(`P${r.id} error: ${e}`);
   }

@@ -62,7 +62,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Test Create Project A",
 		});
 
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);
@@ -127,7 +127,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Duplicate Project",
 		});
 
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, false);
@@ -142,7 +142,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Invalid Project",
 		});
 
-		const text = result.content[0]?.text || "";
+		const text = (result.content[0] as any)?.text || "";
 		// errorResult format: ⚠️ message: error
 		assert.ok(text.includes("Invalid slug"));
 	});
@@ -153,7 +153,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Invalid Project",
 		});
 
-		const text = result.content[0]?.text || "";
+		const text = (result.content[0] as any)?.text || "";
 		assert.ok(text.includes("Invalid slug"));
 	});
 
@@ -163,7 +163,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Invalid Project",
 		});
 
-		const text = result.content[0]?.text || "";
+		const text = (result.content[0] as any)?.text || "";
 		assert.ok(text.includes("Invalid slug"));
 	});
 
@@ -173,7 +173,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Too Short",
 		});
 
-		const text = result.content[0]?.text || "";
+		const text = (result.content[0] as any)?.text || "";
 		assert.ok(text.includes("Invalid slug"));
 	});
 
@@ -183,7 +183,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Invalid Project",
 		});
 
-		const text = result.content[0]?.text || "";
+		const text = (result.content[0] as any)?.text || "";
 		assert.ok(text.includes("Invalid slug"));
 	});
 
@@ -193,7 +193,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			name: "Test Create Project B",
 		});
 
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);
@@ -215,7 +215,7 @@ describe("P483 Phase 1: Project Lifecycle (Creation)", () => {
 			worktree_root: customRoot,
 		});
 
-		const text = result.content[0]?.text || "{}";
+		const text = (result.content[0] as any)?.text || "{}";
 		const data = JSON.parse(text);
 
 		assert.equal(data.ok, true);

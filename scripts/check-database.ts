@@ -1,4 +1,4 @@
-import { query } from "./src/infra/postgres/pool.ts";
+import { query } from "../src/infra/postgres/pool.ts";
 
 async function main() {
   // Check schemas

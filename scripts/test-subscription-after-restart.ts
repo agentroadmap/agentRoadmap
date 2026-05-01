@@ -35,7 +35,7 @@ async function main() {
       }
     });
     
-    console.log("Subscribe result:", subscribeResult.content?.[0]?.text);
+    console.log("Subscribe result:", (subscribeResult.content as any)?.[0]?.text);
     
     // Test chan_subscriptions
     console.log("\n2. Testing chan_subscriptions...");
@@ -46,7 +46,7 @@ async function main() {
       }
     });
     
-    console.log("Subscriptions:", listResult.content?.[0]?.text);
+    console.log("Subscriptions:", (listResult.content as any)?.[0]?.text);
     
     // Test sending a message to trigger notification
     console.log("\n3. Testing message send to subscribed agent...");
@@ -60,7 +60,7 @@ async function main() {
       }
     });
     
-    console.log("Send result:", sendResult.content?.[0]?.text);
+    console.log("Send result:", (sendResult.content as any)?.[0]?.text);
     
     // Test blocking read with wait_ms
     console.log("\n4. Testing blocking read with wait_ms...");
@@ -72,7 +72,7 @@ async function main() {
       }
     });
     
-    console.log("Read result:", readResult.content?.[0]?.text);
+    console.log("Read result:", (readResult.content as any)?.[0]?.text);
     
   } catch (error) {
     console.log("Error:", error);

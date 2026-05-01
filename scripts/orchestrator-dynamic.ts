@@ -1,5 +1,5 @@
-/**
 import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
+/**
  * AgentHive Orchestrator — Event-driven agent dispatcher with dynamic agent deployment.
  * 
  * When state machine calls:
@@ -64,7 +64,7 @@ async function dispatchAgent(agent: string, proposalId: string, task: string): P
     
     // Find or create cubic for this agent
     const existing = await client.callTool({ name: "cubic_list", arguments: {} });
-    const data = JSON.parse(existing.content?.[0]?.text || "{}");
+    const data = JSON.parse((existing.content as any)?.[0]?.text || "{}");
     
     let cubicId: string | null = null;
     
@@ -86,7 +86,7 @@ async function dispatchAgent(agent: string, proposalId: string, task: string): P
           proposals: [proposalId],
         },
       });
-      const createdData = JSON.parse(created.content?.[0]?.text || "{}");
+      const createdData = JSON.parse((created.content as any)?.[0]?.text || "{}");
       if (createdData.success && createdData.cubic) {
         cubicId = createdData.cubic.id;
       }

@@ -126,7 +126,7 @@ describe('Board API SQL Injection & Input Validation', () => {
 
   describe('AC3: Input Validation & Try-Catch', () => {
     test('should validate proposal ID is not empty', () => {
-      const id = '';
+      const id: string = '';
       // This is the validation pattern used in board-api
       if (!id || id.length === 0) {
         assert.ok(true, 'Empty ID is correctly rejected');
@@ -136,7 +136,7 @@ describe('Board API SQL Injection & Input Validation', () => {
     });
 
     test('should validate channel name is not empty', () => {
-      const channel = '';
+      const channel: string = '';
       // This is the validation pattern used in board-api
       if (!channel || channel.length === 0) {
         assert.ok(true, 'Empty channel is correctly rejected');

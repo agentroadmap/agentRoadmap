@@ -20,14 +20,14 @@ const logResult = await client.callTool({
     task_type: "migration-test"
   }
 });
-console.log("Spending log result:", logResult.content?.[0]?.text?.substring(0, 200));
+console.log("Spending log result:", (logResult.content as any)?.[0]?.text?.substring(0, 200));
 
 // Check spending report
 const report = await client.callTool({
   name: "spending_report",
   arguments: {}
 });
-console.log("\nSpending report:", report.content?.[0]?.text?.substring(0, 500));
+console.log("\nSpending report:", (report.content as any)?.[0]?.text?.substring(0, 500));
 
 await client.close();
 console.log("\n=== Migration check complete ===");

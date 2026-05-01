@@ -60,7 +60,7 @@ const spawnAdapter =
 		: undefined;
 
 const cron = new PipelineCron({
-	...(spawnAdapter ? { spawnAgentFn: spawnAdapter } : {}),
+	...(spawnAdapter ? { spawnAgentFn: spawnAdapter as any } : {}),
 	useOfferDispatch,
 });
 
@@ -69,7 +69,7 @@ const cron = new PipelineCron({
 const offerProvider = useOfferDispatch
 	? new OfferProvider({
 			agentIdentity,
-			spawnFn: spawnAdapter,
+			spawnFn: spawnAdapter as any,
 			connectListener: async () => getPool().connect(),
 			leaseTtlSeconds: Number(process.env.AGENTHIVE_LEASE_TTL_SECONDS ?? "30"),
 			renewIntervalMs: Number(process.env.AGENTHIVE_RENEW_INTERVAL_MS ?? "10000"),

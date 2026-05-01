@@ -23,15 +23,15 @@ async function main() {
       }
     });
     
-    console.log("Result:", result.content?.[0]?.text);
+    console.log("Result:", (result.content as any)?.[0]?.text);
     
-    if (result.content?.[0]?.text?.includes("does not exist")) {
+    if ((result.content as any)?.[0]?.text?.includes("does not exist")) {
       console.log("\nTable doesn't exist. Need to apply migration manually.");
       console.log("Run: psql -h 127.0.0.1 -U admin -d agenthive -f database/ddl/016-channel-subscriptions.sql");
     }
     
   } catch (error) {
-    console.log("Error:", error.message);
+    console.log("Error:", (error as any).message);
   }
 
   await client.close();

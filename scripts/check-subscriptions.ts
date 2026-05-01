@@ -16,7 +16,7 @@ async function main() {
       arguments: {}
     });
     
-    console.log("Subscriptions:", result.content?.[0]?.text);
+    console.log("Subscriptions:", (result.content as any)?.[0]?.text);
   } catch (error) {
     console.log("Error listing subscriptions:", error);
   }
@@ -34,7 +34,7 @@ async function main() {
       }
     });
     
-    console.log("Subscribe result:", subscribeResult.content?.[0]?.text);
+    console.log("Subscribe result:", (subscribeResult.content as any)?.[0]?.text);
   } catch (error) {
     console.log("Error subscribing:", error);
   }
@@ -48,7 +48,7 @@ async function main() {
       arguments: {}
     });
     
-    console.log("Subscriptions:", result2.content?.[0]?.text);
+    console.log("Subscriptions:", (result2.content as any)?.[0]?.text);
   } catch (error) {
     console.log("Error listing subscriptions:", error);
   }

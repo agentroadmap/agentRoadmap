@@ -267,7 +267,6 @@ describe("P609 — gate-role-resolver", () => {
 			}, "getGateRoleRegistry must not reject on DB failure");
 
 			// The returned registry must still resolve via BUILTIN_FALLBACK.
-			// @ts-expect-error registry assigned in doesNotReject callback
 			const profile = registry!.resolve("feature", "D2");
 			assert.equal(
 				profile.source,

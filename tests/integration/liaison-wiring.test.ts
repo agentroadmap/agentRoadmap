@@ -48,9 +48,9 @@ test("Liaison Registration → Agency enters DB with session", async () => {
 
 	// Verify in DB via getAgencyStatus (does not expose provider)
 	const status = await getAgencyStatus(agency_id);
-	assert.equal(status.agency_id, agency_id);
-	assert.equal(status.display_name, "test-agency-1");
-	assert.equal(status.status, "active");
+	assert.equal(status!.agency_id, agency_id);
+	assert.equal(status!.display_name, "test-agency-1");
+	assert.equal(status!.status, "active");
 
 	// provider is not in getAgencyStatus() return type — verify via direct query
 	const { rows: [agencyRow] } = await query(
@@ -99,7 +99,7 @@ test("Heartbeat updates last_heartbeat_at", async (t) => {
 	assert.ok(afterRow.last_heartbeat_at, "last_heartbeat_at should be set after heartbeat");
 
 	const after = await getAgencyStatus(agency_id);
-	assert.ok(after.silence_seconds <= 1, "silence_seconds should be ~0");
+	assert.ok(after!.silence_seconds <= 1, "silence_seconds should be ~0");
 });
 
 test("ListDispatchableAgencies filters by silence threshold", async (t) => {
@@ -138,7 +138,7 @@ test("Liaison Message: storeMessage → getUnackedMessages → acknowledgeMessag
 	});
 
 	// Store a message
-	const { message_id, sequence } = await storeMessage({
+	const { message_id, sequence } = await storeMessage(({
 		agency_id,
 		direction: "orchestrator->liaison",
 		kind: "offer_dispatch",
@@ -147,7 +147,7 @@ test("Liaison Message: storeMessage → getUnackedMessages → acknowledgeMessag
 			proposal_id: 999,
 			task: "Test task",
 		},
-	});
+	} as any));
 
 	assert.ok(message_id, "message_id should be returned");
 	assert.equal(sequence, 0, "first message should have sequence 0");
@@ -180,33 +180,33 @@ test("Multiple messages maintain sequence order", async (t) => {
 	});
 
 	// Store 3 messages
-	const msg1 = await storeMessage({
+	const msg1 = await storeMessage(({
 		agency_id,
 		direction: "orchestrator->liaison",
 		kind: "offer_dispatch",
 		payload: { dispatch_id: "d1" },
-	});
+	} as any));
 
-	const msg2 = await storeMessage({
+	const msg2 = await storeMessage(({
 		agency_id,
 		direction: "orchestrator->liaison",
 		kind: "offer_dispatch",
 		payload: { dispatch_id: "d2" },
-	});
+	} as any));
 
-	const msg3 = await storeMessage({
+	const msg3 = await storeMessage(({
 		agency_id,
 		direction: "orchestrator->liaison",
 		kind: "offer_dispatch",
 		payload: { dispatch_id: "d3" },
-	});
+	} as any));
 
 	assert.equal(msg1.sequence, 0);
 	assert.equal(msg2.sequence, 1);
 	assert.equal(msg3.sequence, 2);
 
 	// Retrieve in order
-	const unacked = await getUnackedMessages(agency_id, 10);
+	const unacked = await getUnackedMessages(agency_id, BigInt(10));
 	assert.equal(unacked.length, 3);
 	assert.equal(Number(unacked[0].sequence), 0);
 	assert.equal(Number(unacked[1].sequence), 1);
@@ -270,7 +270,7 @@ test("Dormancy detection: checkAndMarkDormant", async (t) => {
 
 	// Verify status changed
 	const status = await getAgencyStatus(agency_id);
-	assert.equal(status.status, "dormant");
+	assert.equal(status!.status, "dormant");
 });
 
 test("Integration: Register → Heartbeat → Message → Acknowledge → Shutdown", async (t) => {
@@ -288,7 +288,7 @@ test("Integration: Register → Heartbeat → Message → Acknowledge → Shutdo
 	assert.ok(hb.success);
 
 	// Store message (simulating orchestrator dispatch)
-	const { message_id } = await storeMessage({
+	const { message_id } = await storeMessage(({
 		agency_id,
 		direction: "orchestrator->liaison",
 		kind: "offer_dispatch",
@@ -297,7 +297,7 @@ test("Integration: Register → Heartbeat → Message → Acknowledge → Shutdo
 			proposal_id: 123,
 			task: "Test integration task",
 		},
-	});
+	} as any));
 
 	// Get unacked
 	const unacked = await getUnackedMessages(agency_id);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { loadRules, ScannerConfig, saveBaseline, loadBaseline, diffBaseline } from "../src/tools/scanner/rules.ts";
+import { loadRules, type ScannerConfig, saveBaseline, loadBaseline, diffBaseline } from "../src/tools/scanner/rules.ts";
 import { runScan } from "../src/tools/scanner/engine.ts";
 import { writeOutput, shouldFail } from "../src/tools/scanner/output.ts";
 import { createAllowlistTemplate } from "../src/tools/scanner/allowlist.ts";
@@ -17,7 +17,7 @@ program
 program
   .argument("[paths...]", "Paths to scan (default: all)")
   .option("--rules <dir>", "Rule directory", "src/tools/scanner/rules")
-  .option("--rule <id>", "Run only this rule (repeatable)", (val, prev) => [...(prev || []), val])
+  .option("--rule <id>", "Run only this rule (repeatable)", (val, prev) => [...((prev as string[]) || []), val])
   .option("--rule-tag <tag>", "Run only rules with this tag (repeatable)")
   .option("--min-confidence <lvl>", "Minimum confidence (high|medium|low)", "medium")
   .option("--min-severity <lvl>", "Minimum severity (critical|high|medium|low)", "low")

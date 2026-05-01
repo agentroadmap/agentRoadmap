@@ -41,13 +41,13 @@ async function startNotificationListener(
 	registry: ToolAgentRegistry,
 ): Promise<void> {
 	const pool = getPool();
-	listenerClient = await pool.connect();
+	listenerClient = await pool.connect() as any;
 
 	for (const channel of NOTIFY_CHANNELS) {
-		await listenerClient.query(`LISTEN ${channel}`);
+		await listenerClient!.query(`LISTEN ${channel}`);
 	}
 
-	listenerClient.on(
+	listenerClient!.on(
 		"notification",
 		async (msg: { channel: string; payload?: string }) => {
 			try {

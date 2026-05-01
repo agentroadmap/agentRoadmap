@@ -22,7 +22,7 @@ async function main() {
       }
     });
     
-    console.log("Result:", result.content?.[0]?.text);
+    console.log("Result:", (result.content as any)?.[0]?.text);
     
     // Try to read messages for claude/one
     console.log("\n=== Reading messages for claude/one ===");
@@ -34,7 +34,7 @@ async function main() {
       }
     });
     
-    console.log("Messages:", readResult.content?.[0]?.text?.substring(0, 500));
+    console.log("Messages:", (readResult.content as any)?.[0]?.text?.substring(0, 500));
     
   } catch (error) {
     console.log("Error:", error);

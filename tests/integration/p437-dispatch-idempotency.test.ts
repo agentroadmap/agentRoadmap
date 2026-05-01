@@ -10,7 +10,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { afterAll, beforeAll, describe, it } from "bun:test";
+import { afterEach as afterAll, beforeEach as beforeAll, describe, it } from "node:test";
 import { query, closePool } from "../../src/infra/postgres/pool.ts";
 import { postWorkOffer } from "../../src/core/pipeline/post-work-offer.ts";
 

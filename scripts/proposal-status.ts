@@ -14,7 +14,7 @@ async function main() {
     arguments: {}
   });
   
-  const text = result.content?.[0]?.text || "";
+  const text = (result.content as any)?.[0]?.text || "";
   
   // Count by status
   const statusCounts: Record<string, number> = {};

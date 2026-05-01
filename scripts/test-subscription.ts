@@ -22,7 +22,7 @@ async function main() {
       }
     });
     
-    console.log("Subscribe result:", subscribeResult.content?.[0]?.text);
+    console.log("Subscribe result:", (subscribeResult.content as any)?.[0]?.text);
     
     // List subscriptions
     console.log("\n2. Listing subscriptions...");
@@ -33,7 +33,7 @@ async function main() {
       }
     });
     
-    console.log("Subscriptions:", listResult.content?.[0]?.text);
+    console.log("Subscriptions:", (listResult.content as any)?.[0]?.text);
     
     // Send a message to trigger notification
     console.log("\n3. Sending message to test push notification...");
@@ -47,7 +47,7 @@ async function main() {
       }
     });
     
-    console.log("Send result:", sendResult.content?.[0]?.text);
+    console.log("Send result:", (sendResult.content as any)?.[0]?.text);
     
     // Try to read with wait_ms to test blocking read
     console.log("\n4. Testing blocking read with wait_ms...");
@@ -59,7 +59,7 @@ async function main() {
       }
     });
     
-    console.log("Read result:", readResult.content?.[0]?.text);
+    console.log("Read result:", (readResult.content as any)?.[0]?.text);
     
   } catch (error) {
     console.log("Error:", error);

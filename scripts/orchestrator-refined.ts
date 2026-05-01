@@ -1,5 +1,5 @@
-/**
 import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
+/**
  * AgentHive Orchestrator — Refined squad-based dispatch
  * 
  * Implements Gemini's recommendations for 100-agent fleet:

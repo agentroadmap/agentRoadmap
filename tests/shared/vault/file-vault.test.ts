@@ -418,10 +418,10 @@ describe("FileVaultAdapter", () => {
 			try {
 				await fs.mkdir(vaultRoot, { mode: 0o700, recursive: true });
 
-				const invalidRefs = [
-					`vault://hcv/path/to/secret` as const, // Wrong scheme
-					`vault://project/test/dsn` as const, // Wrong scheme
-					`file://project/test/dsn` as const, // Wrong prefix
+				const invalidRefs: any[] = [
+					`vault://hcv/path/to/secret`, // Wrong scheme
+					`vault://project/test/dsn`, // Wrong scheme
+					`file://project/test/dsn`, // Wrong prefix
 				];
 
 				for (const ref of invalidRefs) {

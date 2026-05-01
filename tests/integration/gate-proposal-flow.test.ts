@@ -25,7 +25,7 @@ describe("P206: Gate Proposal Flow Integration", () => {
 	let testProposalId: number;
 
 	// Mock query function for integration tests
-	const mockQueries = new Map<string, any[]>();
+	const mockQueries = new Map<string, any>();
 	let proposalCounter = 1000;
 
 	const mockQuery = async (sql: string, params: any[] = []) => {

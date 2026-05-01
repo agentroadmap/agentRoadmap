@@ -16,7 +16,7 @@ async function main() {
     name: "chan_list",
     arguments: {}
   });
-  console.log("Channels:", channelsResult.content?.[0]?.text?.substring(0, 500));
+  console.log("Channels:", (channelsResult.content as any)?.[0]?.text?.substring(0, 500));
   
   // Try to send a test message
   console.log("\n2. Sending test message to claude/one...");
@@ -30,7 +30,7 @@ async function main() {
         message_type: "task"
       }
     });
-    console.log("Send result:", sendResult.content?.[0]?.text);
+    console.log("Send result:", (sendResult.content as any)?.[0]?.text);
   } catch (error) {
     console.log("Send error:", error);
   }
@@ -45,7 +45,7 @@ async function main() {
         limit: 10
       }
     });
-    console.log("Messages:", readResult.content?.[0]?.text?.substring(0, 500));
+    console.log("Messages:", (readResult.content as any)?.[0]?.text?.substring(0, 500));
   } catch (error) {
     console.log("Read error:", error);
   }

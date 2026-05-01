@@ -39,7 +39,7 @@ describe("Hermes route compatibility", () => {
 				baseUrlEnv: "OPENAI_BASE_URL",
 				spawnToolsets:
 					"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
-			}),
+			} as any),
 		);
 	});
 
@@ -61,7 +61,7 @@ describe("Hermes route compatibility", () => {
 				baseUrlEnv: "OPENAI_BASE_URL",
 				spawnToolsets:
 					"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
-			}),
+			} as any),
 		);
 	});
 
@@ -92,7 +92,7 @@ describe("Hermes route compatibility", () => {
 					baseUrlEnv: "OPENAI_BASE_URL",
 					spawnToolsets:
 						"web,browser,terminal,file,code_execution,vision,image_gen,tts,skills,todo,memory,session_search,clarify,cronjob,messaging",
-				},
+				} as any,
 				agentEnv: {
 					DATABASE_URL: "postgresql://example",
 					NOUS_API_KEY: "nous-secret",

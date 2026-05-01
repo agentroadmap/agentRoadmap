@@ -1,5 +1,5 @@
-/**
 import { getMcpUrl } from "../src/shared/runtime/endpoints.js";
+/**
  * AgentHive Daily Efficiency View & Enhanced Metrics
  * 
  * Creates daily efficiency view and combined metrics
@@ -24,7 +24,7 @@ export async function createEfficiencyViews() {
     name: "spending_report",
     arguments: {}
   });
-  console.log("Current spending data:", report.content?.[0]?.text?.substring(0, 200));
+  console.log("Current spending data:", (report.content as any)?.[0]?.text?.substring(0, 200));
   
   // Log some test data to seed the metrics
   console.log("\nSeeding test data...");
@@ -51,7 +51,7 @@ export async function createEfficiencyViews() {
       });
       console.log(`  Logged ${test.agent}: ${test.tokens} tokens`);
     } catch (e) {
-      console.log(`  Error logging ${test.agent}:`, e.message?.substring(0, 50));
+      console.log(`  Error logging ${test.agent}:`, (e as any).message?.substring(0, 50));
     }
   }
   
@@ -60,7 +60,7 @@ export async function createEfficiencyViews() {
     name: "spending_report",
     arguments: {}
   });
-  console.log("\nUpdated spending data:", updatedReport.content?.[0]?.text?.substring(0, 500));
+  console.log("\nUpdated spending data:", (updatedReport.content as any)?.[0]?.text?.substring(0, 500));
   
   await client.close();
 }

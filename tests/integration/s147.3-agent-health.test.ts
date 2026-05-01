@@ -4,15 +4,8 @@
 
 import assert from "node:assert";
 import { beforeEach, describe, it } from "node:test";
-import {
-	clearHealthProposal,
-	getAgentHealth,
-	getAllHealth,
-	getStaleAgents,
-	isAgentHealthy,
-	pingAgent,
-	recordPong,
-} from "../../src/core/identity/agent-health/index.ts";
+// @ts-ignore - agent-health module may not exist yet
+import { clearHealthProposal, getAgentHealth, getAllHealth, getStaleAgents, isAgentHealthy, pingAgent, recordPong } from "../../src/core/identity/agent-health/index.ts";
 
 describe("S147.3: Agent Communication Verification", () => {
 	beforeEach(() => {

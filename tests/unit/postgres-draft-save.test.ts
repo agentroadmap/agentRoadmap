@@ -20,22 +20,14 @@ function buildProposal(overrides: Partial<Proposal> = {}): Proposal {
 describe("Core.updateProposalFromInput postgres draft handling", () => {
 	test("allows no-op saves for proposals already in the DRAFT stage", async () => {
 		const proposal = buildProposal();
-		const core = new Core(process.cwd(), { enableWatchers: false }) as Core & {
-			loadProposalById: (proposalId: string) => Promise<Proposal | null>;
-			isPostgresProposalBackend: () => Promise<boolean>;
-			applyProposalUpdateInput: (
-				proposal: Proposal,
-				input: ProposalUpdateInput,
-			) => Promise<{ proposal: Proposal; mutated: boolean }>;
-			updateProposal: (proposal: Proposal) => Promise<void>;
-		};
+		const core = new Core(process.cwd(), { enableWatchers: false }) as any;
 
 		let persisted = false;
 
 		core.loadProposalById = async (proposalId: string) =>
 			proposalId === proposal.id ? proposal : null;
 		core.isPostgresProposalBackend = async () => true;
-		core.applyProposalUpdateInput = async (currentProposal, input) => {
+		core.applyProposalUpdateInput = async (currentProposal: any, input: any) => {
 			currentProposal.acceptanceCriteriaItems = input.acceptanceCriteria ?? [];
 			return { proposal: currentProposal, mutated: true };
 		};
@@ -57,10 +49,7 @@ describe("Core.updateProposalFromInput postgres draft handling", () => {
 
 	test("still rejects demotion to filesystem draft from another Postgres stage", async () => {
 		const proposal = buildProposal({ status: "REVIEW" });
-		const core = new Core(process.cwd(), { enableWatchers: false }) as Core & {
-			loadProposalById: (proposalId: string) => Promise<Proposal | null>;
-			isPostgresProposalBackend: () => Promise<boolean>;
-		};
+		const core = new Core(process.cwd(), { enableWatchers: false }) as any;
 
 		core.loadProposalById = async (proposalId: string) =>
 			proposalId === proposal.id ? proposal : null;
