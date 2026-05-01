@@ -291,6 +291,7 @@ const opsRoutes: RouteMap = {
 	workflow_load: "workflow_load",
 	workflow_load_builtin: "workflow_load_builtin",
 	workflow_list: "workflow_list",
+	workflow_visualize: "workflow_visualize",
 	federation_stats: "federation_stats",
 	federation_list_hosts: "federation_list_hosts",
 	federation_list_join_requests: "federation_list_join_requests",
