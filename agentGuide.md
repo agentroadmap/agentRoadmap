@@ -15,4 +15,4 @@
 | Definitions for Agents | Section 16 |
 | Model-to-Workflow Phase Mapping | Section 12 |
 
-**Read `CONVENTIONS.md` for all conventions, workflow, governance, and agent rules.**
+**Read `CONVENTIONS.md` for all conventions, workflow vocabulary, governance, and agent rules.**

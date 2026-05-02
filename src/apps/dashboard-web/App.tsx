@@ -6,6 +6,7 @@ import type {
 	Channel as SharedChannel,
 } from "../../shared/types";
 import AchievementsView from "./components/AchievementsView";
+import ActivityFeed from "./components/ActivityFeed";
 import AgentsPage from "./components/AgentsPage";
 import AppNav from "./components/AppNav";
 import BoardPage from "./components/BoardPage";
@@ -25,17 +26,17 @@ import SettingsPage from "./components/SettingsPage";
 import StatisticsPage from "./components/StatisticsPage";
 import TeamsPage from "./components/TeamsPage";
 import {
-	buildProposalSelectionAliases,
-	mergeProposalDetailState,
-	proposalMatchesSelection,
-	type ProposalWithSelectionAliases,
-} from "./lib/proposal-detail-selection";
-import {
 	useWebSocket,
 	type Agent as WebSocketAgent,
 	type Channel as WebSocketChannel,
 	type Proposal as WebSocketProposal,
 } from "./hooks/useWebSocket";
+import {
+	buildProposalSelectionAliases,
+	mergeProposalDetailState,
+	type ProposalWithSelectionAliases,
+	proposalMatchesSelection,
+} from "./lib/proposal-detail-selection";
 
 const STATUSES = ["DRAFT", "REVIEW", "DEVELOP", "MERGE", "COMPLETE"];
 
@@ -44,9 +45,7 @@ function toSharedProposal(proposal: WebSocketProposal): Proposal {
 		? proposal.tags
 				.split(",")
 				.map((label) => label.trim())
-				.filter(
-					(label) => label.length > 0 && label !== "[object Object]",
-				)
+				.filter((label) => label.length > 0 && label !== "[object Object]")
 		: [];
 	return {
 		id: proposal.displayId || proposal.id,
@@ -54,7 +53,7 @@ function toSharedProposal(proposal: WebSocketProposal): Proposal {
 		status: proposal.status,
 		assignee: [],
 		createdDate: proposal.createdAt,
-		updatedDate: proposal.updatedAt,
+		updatedDate: proposal.updatedAt || proposal.createdAt,
 		labels,
 		dependencies: proposal.parentId ? [proposal.parentId] : [],
 		summary: proposal.summary ?? proposal.bodyMarkdown ?? undefined,
@@ -135,7 +134,7 @@ export default function App() {
 			proposalMatchesSelection(
 				proposal as ProposalWithSelectionAliases,
 				activeProposal,
-			)
+			),
 		);
 		return match
 			? mergeProposalDetailState(
@@ -200,6 +199,11 @@ export default function App() {
 								agents={agents}
 								channels={channels}
 							/>
+						</Route>
+						<Route path="/activity">
+							<div className="h-full p-4 sm:p-6">
+								<ActivityFeed />
+							</div>
 						</Route>
 						<Route path="/dispatch">
 							<DispatchPage />

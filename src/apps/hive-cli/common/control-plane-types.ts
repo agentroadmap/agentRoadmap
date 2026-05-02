@@ -169,6 +169,97 @@ export interface LeaseRow {
 }
 
 /**
+ * A model catalog row joined with route availability summary.
+ */
+export interface ModelRow {
+  model_id: string;
+  model_name: string;
+  name: string;
+  provider: string;
+  status: "active" | "inactive";
+  is_active: boolean;
+  max_tokens: number | null;
+  context_window: number | null;
+  capabilities: Record<string, unknown> | string[] | null;
+  rating: number | null;
+  cost_per_million_input: number | null;
+  cost_per_million_output: number | null;
+  cost_per_million_cache_write: number | null;
+  cost_per_million_cache_hit: number | null;
+  route_count: number;
+  enabled_route_count: number;
+  agent_providers: string[];
+  route_providers: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A runnable model route from `roadmap.model_routes`.
+ */
+export interface RouteRow {
+  route_id: string;
+  id: string;
+  model_id: string;
+  model_name: string;
+  route_provider: string;
+  provider: string;
+  agent_provider: string;
+  plan_type: string | null;
+  priority: number;
+  enabled: boolean;
+  is_enabled: boolean;
+  is_default: boolean;
+  notes: string | null;
+  base_url: string | null;
+  api_spec: string | null;
+  agent_cli: string | null;
+  fallback_cli: string | null;
+  cli_path: string | null;
+  api_key_env: string | null;
+  api_key_fallback_env: string | null;
+  base_url_env: string | null;
+  spawn_toolsets: string | null;
+  spawn_delegate: boolean | null;
+  tier: string | null;
+  confidence_threshold: number | null;
+  capabilities: string[] | null;
+  objective_rating: number | null;
+  cost_per_million_input: number | null;
+  cost_per_million_output: number | null;
+  cost_per_million_cache_write: number | null;
+  cost_per_million_cache_hit: number | null;
+  created_at: string;
+}
+
+/**
+ * A route-provider summary derived from runnable routes and registered workers.
+ */
+export interface ProviderRow {
+  provider_id: string;
+  name: string;
+  status: "active" | "inactive";
+  route_count: number;
+  enabled_route_count: number;
+  model_count: number;
+  agent_providers: string[];
+  active_worker_count: number;
+  credentials_active: boolean;
+  credential_env_vars: string[];
+}
+
+export interface RouteTestResult {
+  route_id: string;
+  status: "ok" | "warning" | "failed";
+  enabled: boolean;
+  host_allowed: boolean | null;
+  credentials_active: boolean;
+  missing_env: string[];
+  latency_ms: number;
+  message: string;
+}
+
+/**
  * Paginated result wrapper for list operations.
  *
  * Implements cursor-based pagination for large result sets.

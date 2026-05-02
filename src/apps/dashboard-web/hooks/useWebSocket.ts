@@ -22,6 +22,8 @@ export interface Proposal {
 	displayId: string;
 	websocketId?: string;
 	parentId: string | null;
+	parentProposalId?: string | null;
+	parentProposalTitle?: string | null;
 	proposalType: string;
 	category: string;
 	domainId: string;
@@ -29,6 +31,7 @@ export interface Proposal {
 	status: string;
 	priority: string;
 	bodyMarkdown: string | null;
+	rawContent?: string | null;
 	summary?: string | null;
 	motivation?: string | null;
 	design?: string | null;
@@ -39,7 +42,11 @@ export interface Proposal {
 	implementationPlan?: string | null;
 	implementationNotes?: string | null;
 	finalSummary?: string | null;
-	acceptanceCriteriaItems?: Array<{ index: number; text: string; checked: boolean }>;
+	acceptanceCriteriaItems?: Array<{
+		index: number;
+		text: string;
+		checked: boolean;
+	}>;
 	requiredCapabilities?: string[];
 	needsCapabilities?: string[];
 	liveActivity?: {
@@ -51,6 +58,7 @@ export interface Proposal {
 		activeModel?: string;
 		heartbeatAgeSeconds?: number;
 		lastEventType?: string;
+		lastEventAt?: string;
 	};
 	maturityLevel: number | null;
 	maturity?: string;
@@ -124,14 +132,14 @@ function asArrayOf<T>(
 	return Array.isArray(value) ? value.filter(guard) : [];
 }
 
-export function useWebSocket(
-	url?: string,
-): UseWebSocketReturn {
+export function useWebSocket(url?: string): UseWebSocketReturn {
 	// Derive WebSocket URL from current page location if not specified
 	// This ensures WS connects to the same host/port as the HTTP server
-	const wsUrl = url ?? (typeof window !== "undefined"
-		? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
-		: "ws://localhost:6420");
+	const wsUrl =
+		url ??
+		(typeof window !== "undefined"
+			? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+			: "ws://localhost:6420");
 	const [connected, setConnected] = useState(false);
 	const [proposals, setProposals] = useState<Proposal[]>([]);
 	const [agents, setAgents] = useState<Agent[]>([]);
@@ -313,7 +321,7 @@ export function useWebSocket(
 			console.error("[WS] Error:", err);
 			ws.close();
 		};
-	}, [url]);
+	}, [wsUrl]);
 
 	useEffect(() => {
 		connect();

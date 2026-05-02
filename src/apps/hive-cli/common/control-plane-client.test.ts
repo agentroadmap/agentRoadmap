@@ -272,6 +272,114 @@ describe("ControlPlaneClient", () => {
     assert.ok(template.name, "template should have name");
   });
 
+  test("listModels returns model catalog rows with route summary", async () => {
+    const models = await client.listModels();
+
+    assert.ok(Array.isArray(models), "listModels should return an array");
+    assert.ok(models.length > 0, "should have at least one model");
+
+    const model = models[0];
+    assert.ok(model.model_id, "model should have model_id");
+    assert.ok(model.model_name, "model should have model_name");
+    assert.ok(model.provider, "model should have provider");
+    assert.ok(
+      model.status === "active" || model.status === "inactive",
+      "model should expose active/inactive status"
+    );
+    assert.ok(
+      Array.isArray(model.agent_providers),
+      "model should expose agent provider summary"
+    );
+  });
+
+  test("getModel returns a catalog row by model id", async () => {
+    const models = await client.listModels();
+    assert.ok(models.length > 0, "setup: need at least one model");
+
+    const expected = models[0];
+    const model = await client.getModel(expected.model_id);
+
+    assert.ok(model, `getModel should find model "${expected.model_id}"`);
+    assert.strictEqual(model.model_id, expected.model_id);
+  });
+
+  test("getModelCosts returns pricing rows", async () => {
+    const costs = await client.getModelCosts();
+
+    assert.ok(Array.isArray(costs), "getModelCosts should return an array");
+    assert.ok(costs.length > 0, "should have at least one priced model");
+    assert.ok(
+      costs.some(
+        (model) =>
+          model.cost_per_million_input !== null ||
+          model.cost_per_million_output !== null
+      ),
+      "at least one model should include per-million pricing"
+    );
+  });
+
+  test("listRoutes returns runnable route rows", async () => {
+    const routes = await client.listRoutes();
+
+    assert.ok(Array.isArray(routes), "listRoutes should return an array");
+    assert.ok(routes.length > 0, "should have at least one route");
+
+    const route = routes[0];
+    assert.ok(route.route_id, "route should have route_id");
+    assert.ok(route.model_name, "route should have model_name");
+    assert.ok(route.route_provider, "route should have route_provider");
+    assert.ok(route.agent_provider, "route should have agent_provider");
+    assert.strictEqual(typeof route.enabled, "boolean");
+  });
+
+  test("getRoute and testRoute inspect one route", async () => {
+    const routes = await client.listRoutes();
+    assert.ok(routes.length > 0, "setup: need at least one route");
+
+    const expected = routes[0];
+    const route = await client.getRoute(expected.route_id);
+    assert.ok(route, `getRoute should find route "${expected.route_id}"`);
+    assert.strictEqual(route.route_id, expected.route_id);
+
+    const readiness = await client.testRoute(expected.route_id);
+    assert.ok(readiness, "testRoute should return readiness for existing route");
+    assert.strictEqual(readiness.route_id, expected.route_id);
+    assert.ok(
+      ["ok", "warning", "failed"].includes(readiness.status),
+      "readiness should have stable status"
+    );
+  });
+
+  test("listProviders returns route-provider summaries", async () => {
+    const providers = await client.listProviders();
+
+    assert.ok(Array.isArray(providers), "listProviders should return an array");
+    assert.ok(providers.length > 0, "should have at least one provider");
+
+    const provider = providers[0];
+    assert.ok(provider.provider_id, "provider should have provider_id");
+    assert.ok(provider.name, "provider should have name");
+    assert.ok(
+      provider.status === "active" || provider.status === "inactive",
+      "provider should expose active/inactive status"
+    );
+    assert.ok(Array.isArray(provider.agent_providers));
+  });
+
+  test("getProvider returns a provider summary by id", async () => {
+    const providers = await client.listProviders();
+    assert.ok(providers.length > 0, "setup: need at least one provider");
+
+    const expected = providers[0];
+    const provider = await client.getProvider(expected.provider_id);
+
+    assert.ok(
+      provider,
+      `getProvider should find provider "${expected.provider_id}"`
+    );
+    assert.strictEqual(provider.provider_id, expected.provider_id);
+  });
+
   test("getWorkflowTemplate by name returns correct template", async () => {
     const templates = await client.listWorkflowTemplates();
     assert.ok(
@@ -316,7 +424,7 @@ describe("ControlPlaneClient", () => {
     // Actually, the error would come from the DB itself, which is hard to mock.
     // Instead, we'll verify that HiveError is thrown with the correct code.
 
-    const client = new ControlPlaneClient();
+    const _client = new ControlPlaneClient();
 
     // This test is somewhat artificial since we'd need to mock the pool,
     // but we can at least verify the error handling structure works.

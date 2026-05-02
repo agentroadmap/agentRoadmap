@@ -10,6 +10,7 @@
  */
 
 import yaml from "js-yaml";
+import { smdlToMermaid } from "../../../../core/workflow/smdl-to-mermaid.ts";
 import { query } from "../../../../postgres/pool.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -340,7 +341,8 @@ const BUILTIN_SMDLS: SMDLWorkflow[] = [
 			{
 				name: "NON_ISSUE",
 				order: 98,
-				description: "Closed because the reported problem is not an actual issue",
+				description:
+					"Closed because the reported problem is not an actual issue",
 			},
 		],
 		transitions: [
@@ -625,7 +627,7 @@ async function loadBuiltinWorkflows(): Promise<CallToolResult> {
 			content: [
 				{
 					type: "text",
-				text: `✅ Loaded ${BUILTIN_SMDLS.length} builtin SMDL workflows:\n\n${results.join("\n")}\n\nNo code changes needed — define new workflows via YAML.`,
+					text: `✅ Loaded ${BUILTIN_SMDLS.length} builtin SMDL workflows:\n\n${results.join("\n")}\n\nNo code changes needed — define new workflows via YAML.`,
 				},
 			],
 		};
@@ -661,6 +663,35 @@ async function listWorkflows(): Promise<CallToolResult> {
 	}
 }
 
+async function workflowVisualize(args: {
+	yaml?: string;
+}): Promise<CallToolResult> {
+	try {
+		if (!args.yaml) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "⚠️ Provide `yaml` parameter with SMDL YAML content.",
+					},
+				],
+			};
+		}
+
+		const mermaid = smdlToMermaid(args.yaml);
+		return {
+			content: [
+				{
+					type: "text",
+					text: `\`\`\`mermaid\n${mermaid}\`\`\``,
+				},
+			],
+		};
+	} catch (err) {
+		return errorResult("Failed to visualize SMDL workflow", err);
+	}
+}
+
 // ─── Register MCP Tools ─────────────────────────────────────────────────────
 
 export class SMDLWorkflowHandlers {
@@ -685,7 +716,7 @@ export class SMDLWorkflowHandlers {
 				},
 				required: ["yaml"],
 			},
-			handler: (args: any) => workflowLoad(args),
+			handler: (args: unknown) => workflowLoad(args as { yaml?: string }),
 		});
 
 		this.server.addTool({
@@ -704,9 +735,26 @@ export class SMDLWorkflowHandlers {
 			handler: () => listWorkflows(),
 		});
 
+		this.server.addTool({
+			name: "workflow_visualize",
+			description:
+				"Convert an SMDL YAML workflow definition into Mermaid stateDiagram-v2",
+			inputSchema: {
+				type: "object",
+				properties: {
+					yaml: {
+						type: "string",
+						description: "SMDL YAML workflow definition",
+					},
+				},
+				required: ["yaml"],
+			},
+			handler: (args: unknown) => workflowVisualize(args as { yaml?: string }),
+		});
+
 		// eslint-disable-next-line no-console
 		console.error(
-			"[MCP] Registered SMDL workflow tools (load YAML, load builtins, list)",
+			"[MCP] Registered SMDL workflow tools (load YAML, load builtins, list, visualize)",
 		);
 	}
 }

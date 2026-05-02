@@ -835,22 +835,21 @@ export class Core {
 			...(activity
 				? (() => {
 						const live: NonNullable<Proposal["liveActivity"]> = {};
-						if (activity.lease_holder)
-							live.leaseHolder = activity.lease_holder;
+						if (activity.lease_holder) live.leaseHolder = activity.lease_holder;
 						if (activity.gate_dispatch_agent)
 							live.gateDispatchAgent = activity.gate_dispatch_agent;
 						if (activity.gate_dispatch_role)
 							live.gateDispatchRole = activity.gate_dispatch_role;
 						if (activity.gate_dispatch_status)
 							live.gateDispatchStatus = activity.gate_dispatch_status;
-						if (activity.active_cubic)
-							live.activeCubic = activity.active_cubic;
-						if (activity.active_model)
-							live.activeModel = activity.active_model;
+						if (activity.active_cubic) live.activeCubic = activity.active_cubic;
+						if (activity.active_model) live.activeModel = activity.active_model;
 						if (typeof activity.heartbeat_age_seconds === "number")
 							live.heartbeatAgeSeconds = activity.heartbeat_age_seconds;
 						if (activity.last_event_type)
 							live.lastEventType = activity.last_event_type;
+						if (activity.last_event_at)
+							live.lastEventAt = new Date(activity.last_event_at).toISOString();
 						return Object.keys(live).length > 0 ? { liveActivity: live } : {};
 					})()
 				: {}),
@@ -1129,7 +1128,9 @@ export class Core {
 			.map((item) => item.entry);
 	}
 
-	private extractEventActor(payload: Record<string, unknown>): string | undefined {
+	private extractEventActor(
+		payload: Record<string, unknown>,
+	): string | undefined {
 		const actor =
 			typeof payload.agent === "string"
 				? payload.agent
@@ -1152,7 +1153,9 @@ export class Core {
 
 		switch (eventType) {
 			case "proposal_created":
-				return text(payload.status) ? `status ${String(payload.status)}` : undefined;
+				return text(payload.status)
+					? `status ${String(payload.status)}`
+					: undefined;
 			case "lease_claimed":
 				return text(payload.expires_at)
 					? `expires ${String(payload.expires_at)}`
@@ -1160,13 +1163,13 @@ export class Core {
 			case "lease_released":
 				return text(payload.release_reason);
 			default:
-				return text(payload.reason) ?? text(payload.notes) ?? text(payload.message);
+				return (
+					text(payload.reason) ?? text(payload.notes) ?? text(payload.message)
+				);
 		}
 	}
 
-	private describeProposalEvent(
-		eventType: string,
-	): string {
+	private describeProposalEvent(eventType: string): string {
 		switch (eventType) {
 			case "proposal_created":
 				return "created proposal";
@@ -1226,15 +1229,15 @@ export class Core {
 		}
 		const [summary, dependencies, acceptanceCriteria, activityLog, activity] =
 			await Promise.all([
-			pg.getProposalSummary(row.id),
-			pg.listDependencies([row.id]),
-			pg.listAcceptanceCriteria(row.id),
-			this.loadPgProposalActivity(row.id),
-			pg
-				.listProposalActivity({ status: row.status, type: row.type })
-				.then((rows) => rows.find((r) => r.proposal_id === row.id) ?? null)
-				.catch(() => null),
-		]);
+				pg.getProposalSummary(row.id),
+				pg.listDependencies([row.id]),
+				pg.listAcceptanceCriteria(row.id),
+				this.loadPgProposalActivity(row.id),
+				pg
+					.listProposalActivity({ status: row.status, type: row.type })
+					.then((rows) => rows.find((r) => r.proposal_id === row.id) ?? null)
+					.catch(() => null),
+			]);
 		return await this.hydratePgProposalRow(row, {
 			summary,
 			dependencies,
@@ -2898,9 +2901,13 @@ export class Core {
 		applyStringField(input.alternatives, proposal.alternatives, (next) => {
 			proposal.alternatives = next;
 		});
-		applyStringField(input.dependency_note, proposal.dependency_note, (next) => {
-			proposal.dependency_note = next;
-		});
+		applyStringField(
+			input.dependency_note,
+			proposal.dependency_note,
+			(next) => {
+				proposal.dependency_note = next;
+			},
+		);
 
 		applyStringField(input.domainId, proposal.domainId, (next) => {
 			proposal.domainId = next;
