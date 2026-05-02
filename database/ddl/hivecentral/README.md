@@ -2,25 +2,30 @@
 
 Target schema files for the v3 redesign control-plane database. These run **only** against `hiveCentral`, never against `agenthive` (which becomes the first project tenant DB after Wave 4) or any other tenant DB.
 
+**15 schemas. Apply in dependency order (see below).**
+
 ## Layout
 
 ```
 000-roles.sql         Per-service Postgres roles (run first, on the postgres DB)
-001-core.sql          P592 — installation, host, os_user, runtime_flag, service_heartbeat
-002-identity.sql      P593 — principal, did_document, principal_key, audit_action  [pending]
-003-agency.sql        P594 — agency_provider, agency, agency_session, liaison_message catalog  [pending]
-004-model.sql         P595 — model, model_route, host_model_policy  [pending]
-005-credential.sql    P596 — vault_provider, credential, credential_grant, rotation_log  [pending]
-006-workforce.sql     P597 — agent, agent_skill, agent_capability  [pending]
-007-template.sql      P598 — workflow_template (immutable versioned)  [pending]
-008-tooling.sql       P599 — tool, tool_grant  [pending]
-009-sandbox.sql       P600 — sandbox_definition, boundary_policy, mount_grant  [pending]
-010-project.sql       P601 — project, project_db, project_host, project_repo, project_*_grant  [pending]
-011-dependency.sql    P602 — cross_project_dependency, dependency_kind_catalog  [pending]
-012-messaging.sql     P603 — a2a_topic, a2a_message, a2a_subscription, a2a_dlq, a2a_message_archive  [pending]
-013-observability.sql P604 — trace_span, agent_execution_span, lifecycle_event, routing_outcome, explainability  [pending]
-014-governance.sql    P605 — decision_log (hash-chained), policy_version, compliance_check, event_log  [pending]
-015-efficiency.sql    P606 — efficiency_metric, cost_ledger_summary, dispatch_metric_summary  [pending]
+001-core.sql          P592 — core: installation, host, os_user, runtime_flag, service_heartbeat
+002-identity.sql      P593 — control_identity: principal, did_document, principal_key, audit_action
+004-model.sql         P595 — control_model: model, model_route, host_model_policy
+005-credential.sql    P596 — control_credential: vault_provider, credential, credential_grant, rotation_log
+006-workforce.sql     P597 — workforce: agent, agent_skill, agent_capability
+010-project.sql       P601 — control_project: project, project_db, project_host, project_repo, project_*_grant
+010b-project-ext.sql         control_project ext: project_worktree, project_member, project_budget_policy,
+                              project_capacity_config (P744), project_route_policy (P747 D1), project_sandbox_grant
+009-sandbox.sql       P600 — sandbox: sandbox_definition, boundary_policy, egress_rule, mount_grant
+003-agency.sql        P594 — agency: agency_provider, agency, agency_session, liaison_message, agency_route_policy (P747 D2)
+007-template.sql      P598 — template: workflow_template (immutable), state_name, gate_definition, agent_role_profile, proposal_template
+008-tooling.sql       P599 — tooling: tool, mcp_tool, cli_tool, tool_grant
+011-dependency.sql    P602 — dependency: cross_project_dependency, dependency_kind_catalog
+012-messaging.sql     P603 — messaging: a2a_topic, a2a_message, a2a_subscription, a2a_dlq, a2a_message_archive
+013-observability.sql P604 — observability: trace_span, agent_execution_span, proposal_lifecycle_event,
+                              model_routing_outcome (P747 D6), decision_explainability
+014-governance.sql    P605 — governance: policy_version (immutable), decision_log (hash-chained), compliance_check, event_log
+015-efficiency.sql    P606 — efficiency: efficiency_metric, cost_ledger_summary, dispatch_metric_summary, route_token_budget (P747 D4)
 ```
 
 ## Catalog hygiene fields (uniform across every central catalog)
@@ -72,13 +77,49 @@ Notes:
 - `agenthive_agency` holds SELECT on `os_user` so it can look up the OS user a process runs as.
 - `agenthive_a2a` needs SELECT on `runtime_flag` to pick up per-project config and INSERT/UPDATE on `service_heartbeat` to publish its own heartbeat.
 
+## Prerequisites
+
+Before applying any DDL to `hiveCentral`, the following PostgreSQL extensions must be installed:
+
+- **pg_partman 5.x** — monthly auto-partitioning for all append-only time-series tables.
+  Install inside the PostgreSQL container: `apt-get install postgresql-16-partman`
+  Then in `hiveCentral`:
+  ```sql
+  CREATE SCHEMA IF NOT EXISTS partman;
+  CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+  ```
+- **pgcrypto 1.3** — SHA-256 hash chain in `governance.decision_log`.
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS pgcrypto;
+  ```
+
 ## Apply order
 
-Minimum PostgreSQL version: **14** (required for `CREATE OR REPLACE TRIGGER` syntax used in
-`001-core.sql`). For PostgreSQL ≤ 13 targets, use `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`
-instead.
+Minimum PostgreSQL version: **16** (declarative partitioning + pg_partman 5.x).
 
-These files run during P501 against a freshly created `hiveCentral` database:
+Apply in strict dependency order — each file depends on schemas created by earlier files:
+
+```
+Step  File                    Schema created
+----  ----------------------  --------------
+ 1    000-roles.sql           (roles — run against postgres DB, not hiveCentral)
+ 2    001-core.sql            core
+ 3    002-identity.sql        control_identity
+ 4    004-model.sql           control_model
+ 5    005-credential.sql      control_credential
+ 6    006-workforce.sql       workforce
+ 7    010-project.sql         control_project
+ 8    009-sandbox.sql         sandbox
+ 9    010b-project-ext.sql    (extends control_project; adds FK to sandbox)
+10    003-agency.sql          agency
+11    007-template.sql        template
+12    008-tooling.sql         tooling
+13    011-dependency.sql      dependency
+14    012-messaging.sql       messaging
+15    013-observability.sql   observability
+16    014-governance.sql      governance
+17    015-efficiency.sql      efficiency
+```
 
 ```bash
 # As superuser, on the postgres DB — passwords passed via PGOPTIONS GUC custom parameters:
@@ -94,10 +135,23 @@ PGOPTIONS='-c agenthive.admin_password=<vault> \
 # substitution variable :admin_password, not the GUC agenthive.admin_password
 # read by current_setting(). Using -v produces a runtime error.
 
-# Then on hiveCentral DB itself:
+# Then on hiveCentral DB itself (steps 2–17 in order):
 psql -d hiveCentral -f 001-core.sql
 psql -d hiveCentral -f 002-identity.sql
-# ... etc
+psql -d hiveCentral -f 004-model.sql
+psql -d hiveCentral -f 005-credential.sql
+psql -d hiveCentral -f 006-workforce.sql
+psql -d hiveCentral -f 010-project.sql
+psql -d hiveCentral -f 009-sandbox.sql
+psql -d hiveCentral -f 010b-project-ext.sql
+psql -d hiveCentral -f 003-agency.sql
+psql -d hiveCentral -f 007-template.sql
+psql -d hiveCentral -f 008-tooling.sql
+psql -d hiveCentral -f 011-dependency.sql
+psql -d hiveCentral -f 012-messaging.sql
+psql -d hiveCentral -f 013-observability.sql
+psql -d hiveCentral -f 014-governance.sql
+psql -d hiveCentral -f 015-efficiency.sql
 ```
 
 The P501 runbook (`docs/migration/p501-runbook.md`) drives this sequence.

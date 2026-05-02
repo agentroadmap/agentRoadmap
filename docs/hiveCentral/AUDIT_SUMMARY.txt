@@ -1,0 +1,364 @@
+================================================================================
+STRATEGIC AUDIT: 251-PROPOSAL PIPELINE — hiveCentral + Umbrella Alignment
+================================================================================
+
+EXECUTIVE SUMMARY
+─────────────────────────────────────────────────────────────────────────────
+
+Total Proposals: 422 (251 non-terminal in active pipeline)
+  • 158 DEVELOP — active work, waiting for foundation decisions
+  • 85 DRAFT — design phase, blocked on architecture review
+  • 3 REVIEW — ready to merge (subject to QA)
+  • 98 OBSOLETE — marked obsolete; cleanup opportunity
+  • 150 NEW — recent intake; prioritize after foundation
+
+CRITICAL BLOCKER: Foundation Architecture (P744–P747) NOT MERGED
+  ⚠️  P745 (hiveCentral schema) is DRAFT — 12+ proposals blocked
+  ⚠️  P744–P747 (Umbrella A–D) not finalized — 31 proposals can't proceed
+  ⚠️  98 obsolete proposals stuck in limbo — safety review needed
+
+Current State: FOUNDATION LOCK (cannot proceed downstream)
+
+
+CATEGORIZATION: 251 PROPOSALS MAPPED TO PHASES
+─────────────────────────────────────────────────────────────────────────────
+
+FOUNDATION LAYER (7 Architecture Proposals)
+  ID    | Title                                    | Status   | Blocker
+  ──────┼──────────────────────────────────────────┼──────────┼────────
+  P744  | Umbrella A — Centralized Orchestrator    | DEVELOP  | YES
+  P745  | Umbrella B — hiveCentral vNext Schema    | DRAFT    | YES (!!!)
+  P746  | Umbrella C — Agency Offline Detection    | DEVELOP  | YES
+  P747  | Umbrella D — Model Routing Restriction   | DRAFT    | YES
+  P706  | Unify state vocabulary (Hotfix → 3-stage)| DEVELOP  | YES
+  P798  | Subscription model architecture          | DEVELOP  | MEDIUM
+  P688  | AC2-verify: test architecture type       | DEVELOP  | NO
+
+  ACTION: Codex must finalize + merge ALL 7 by EOW1
+  GATE:   0 → 7 MERGE (unblocks 25+ downstream proposals)
+
+
+CONTROL-PLANE (12 Proposals — Depend on P745 + P820 Schema)
+  ID    | Title                                    | Status   | Blocked By
+  ──────┼──────────────────────────────────────────┼──────────┼──────────
+  P820  | hiveCentral vNext control-plane model    | DRAFT    | P745
+  P788  | CLI operator domains                     | DEVELOP  | P820
+  P766  | Operator pause/resume/retire (liaison)   | DEVELOP  | P746
+  P705  | Operator visibility dashboard            | DEVELOP  | P820
+  P659  | Operator-as-Gate-Agent write proxy       | DEVELOP  | P745
+  P591  | Control-plane disaster recovery          | DEVELOP  | P745 + P758
+  P589  | Operator auditing + compliance log       | DEVELOP  | P820
+  P586  | Control-plane metrics + SLI dashboard    | DEVELOP  | P820
+  P561  | Operator escalation matrix               | DEVELOP  | P605
+  P507  | Audit trail for operator actions         | DEVELOP  | P820
+  P421  | Control-plane HA design                  | DEVELOP  | P745
+  P405  | Control-plane DR failover                | DEVELOP  | P745
+
+  ACTION: Claude reviews P745 + P820 schemas (Week 2)
+  GATE:   P820 schema approved (unblocks P788, P705, P659, etc.)
+
+
+TENANT-DB (6 Proposals — Depend on P745 + P758 Schema)
+  ID    | Title                                    | Status   | Blocked By
+  ──────┼──────────────────────────────────────────┼──────────┼──────────
+  P768  | Agency route policy schema + seed        | DEVELOP  | P745
+  P767  | Project route policy schema + seed       | DEVELOP  | P745
+  P764  | Tenant-aware agency capacity             | DEVELOP  | P765 + P768
+  P760  | Project capacity config schema + seed    | DEVELOP  | P745
+  P759  | Code rewire: getPool() → router          | DEVELOP  | P758
+  P758  | Tenant-DB provisioning + registry        | DEVELOP  | P745
+  P601  | Tenant lifecycle control                 | DEVELOP  | P758
+
+  ACTION: Claude designs tenant schema; Codex implements provisioning (Week 3)
+  GATE:   P758 done (unblocks P759 high-risk rewire)
+
+
+DISPATCH/ROUTING (31 Proposals — A/B/C/D Workstreams)
+
+  A-WORKSTREAM: Orchestrator Core (7 proposals)
+    P754, P753, P752, P751, P750, P749, P748
+    ACTION: Implement Week 3 (after P744 merge)
+    EFFORT: 21 person-days
+
+  B-WORKSTREAM: Provisioning (6 proposals, 3 obsolete)
+    P760, P759, P758 | P757, P756, P755 (OBSOLETE)
+    ACTION: Implement Week 3 (after P745 merge)
+    EFFORT: 15 person-days
+
+  C-WORKSTREAM: Agency Resilience (6 proposals)
+    P766, P765, P764, P763, P761 | P762 (DROPPED)
+    ACTION: Implement Week 3 (after P746 merge)
+    EFFORT: 12 person-days
+
+  D-WORKSTREAM: Model Routing (7 proposals)
+    P773, P772, P771, P770, P769, P768, P767
+    ACTION: Implement Week 4 (after P747 merge)
+    EFFORT: 18 person-days
+
+  TOTAL: 31 active + 4 dropped/obsolete = 35 routing-related
+
+
+FEATURE LAYER (30+ Proposals — Secondary Priority)
+
+  Pricing & Cost (4 proposals)
+    P249 (cost consolidation), P248, P246, P236
+    BLOCKED BY: P745 (model_metadata schema)
+    ACTION: Design RFC Week 2; implement Week 4+
+
+  Board & Workflow (8 proposals)
+    P776, P777, P775, P774, P802, P238
+    BLOCKED BY: P706 (state vocabulary)
+    ACTION: Design Week 2; implement Week 4+ (P774 first)
+
+  Governance (6 proposals)
+    P780, P779, P778, P606, P181–P188
+    BLOCKED BY: P605 (governance schema — already merged), P706
+    ACTION: Design Week 2; implement Week 4+
+
+  TOTAL: 30+ proposals; can start scoping now, delay implementation until foundations locked
+
+
+OBSOLETE PROPOSALS (98 Marked Obsolete)
+
+  Count:  98 proposals (all statuses mixed: DEVELOP, DRAFT, etc.)
+  Samples from first batch:
+    • P787 (DEVELOP/obsolete): Runtime endpoint resolution done in P449
+    • P762 (DRAFT/obsolete): Heartbeat cron replaced by P746
+    • P757 (DEVELOP/obsolete): migrate control-plane (superseded by P758)
+    • P756 (DEVELOP/obsolete): hiveCentral bootstrap (superseded by P758)
+    • P755 (DEVELOP/obsolete): control-plane classification (superseded by P745)
+
+  ACTION: Safety review (sample 15); batch transition to CANCELED (Week 5)
+  RISK:   Safety review identifies hidden dependencies
+
+
+================================================================================
+CRITICAL PATH SEQUENCING (5-WEEK ROADMAP)
+================================================================================
+
+┌─ WEEK 1: FOUNDATION ARCHITECTURE LOCK ────────────────────────────────┐
+│                                                                        │
+│ Owner: Codex (5 business days)                                        │
+│                                                                        │
+│ Tasks:                                                                 │
+│  ✓ P744 design finalized + merge ① Centralized Orchestrator          │
+│  ✓ P745 schema finalized + merge ② hiveCentral data model           │
+│  ✓ P746 design finalized + merge ③ Agency Offline Detection         │
+│  ✓ P747 design finalized + merge ④ Model Routing Restriction        │
+│  ✓ P706 design finalized + merge ⑤ State Vocabulary                 │
+│                                                                        │
+│ Gate: 5/5 proposals at MERGE status                                   │
+│ Unlock: 25+ downstream proposals (A/B/C/D workstreams)              │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌─ WEEK 2: CODEX–CLAUDE HANDOFF & SCHEMA COORDINATION ──────────────────┐
+│                                                                        │
+│ Owners: Codex + Claude (parallel, 5 business days)                   │
+│                                                                        │
+│ Codex Tasks:                                                          │
+│  • Document P744–P747 changes (simplified orchestration vs old)      │
+│  • Identify proposals that become obsolete post-P745                 │
+│  • Code review + merge prep                                          │
+│                                                                        │
+│ Claude Tasks:                                                         │
+│  • Review P745 + P820 schemas (control-plane vs tenant split)       │
+│  • Design tenant-DB schema (tables, ACLs, isolation)                 │
+│  • Identify model_metadata changes needed (P249 pricing)            │
+│  • Flag any rework needed for P758 (provisioning flow)              │
+│                                                                        │
+│ Gate: P745 + P820 schemas approved + documented                      │
+│ Unlock: Adaptation work begins (A/B/C workstreams)                  │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌─ WEEK 3: PARALLEL ADAPTATION (A/B/C WORKSTREAMS) ─────────────────────┐
+│                                                                        │
+│ Owner: Codex (parallel, 5 business days)                             │
+│ Effort: ~48 person-days (7+6+6 proposals × 2.5 days each)          │
+│                                                                        │
+│ A-WORKSTREAM (Orchestrator Core: P748–P754)                          │
+│   ✓ P748: queue-role profile schema                                  │
+│   ✓ P749–P751: queue context, role selection, readiness             │
+│   ✓ P750, P752–P754: lease, wake-ups, cleanup                       │
+│   👉 Ready for REVIEW by EOW3                                        │
+│                                                                        │
+│ B-WORKSTREAM (Provisioning: P758–P760)                               │
+│   ✓ P758: tenant-DB provisioning + registry                         │
+│   ✓ P760: project capacity config schema                            │
+│   ✓ P759 audit: identify getPool callers (prep for Phase 1)         │
+│   👉 Ready for REVIEW by EOW3                                        │
+│                                                                        │
+│ C-WORKSTREAM (Agency Resilience: P761–P766)                          │
+│   ✓ P761: agency liveness state (TypeScript)                        │
+│   ✓ P763: spawn-failure counter → resolver                          │
+│   ✓ P765–P766: auto-recovery + operator surface                     │
+│   👉 Ready for REVIEW by EOW3                                        │
+│                                                                        │
+│ Gate: All 16 proposals at REVIEW status; code review passed         │
+│ Unlock: D-workstream implementation; feature layer RFCs              │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌─ WEEK 4: D-WORKSTREAM + FEATURE LAYER SCOPING ────────────────────────┐
+│                                                                        │
+│ Owner: Codex (routing) + Claude (features, 5 business days)          │
+│ Effort: 18 person-days (D-workstream) + 12 person-days (design)    │
+│                                                                        │
+│ D-WORKSTREAM (Model Routing: P767–P773)                              │
+│   ✓ P768–P770: route policies, token budgets                        │
+│   ✓ P771–P772: extend resolveModelRoute(), audit log                │
+│   ✓ P773: fallback chain (throttle → next eligible)                 │
+│   👉 Ready for REVIEW by EOW4                                        │
+│                                                                        │
+│ FEATURE LAYER (Scoping/Design)                                       │
+│   ✓ P249: pricing schema RFC + design                               │
+│   ✓ P774–P776: board layout RFC + design                            │
+│   ✓ P788: operator surfaces (depends on P820)                       │
+│   ✓ P779–P780: governance updates (depends on P706)                 │
+│   ✓ P759 Phase 1: low-risk getPool rewires (start)                  │
+│                                                                        │
+│ Gate: D-workstream at REVIEW; feature RFCs approved                  │
+│ Unlock: Feature implementation (Week 5+)                             │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌─ WEEK 5: FEATURE IMPLEMENTATION + CLEANUP ────────────────────────────┐
+│                                                                        │
+│ Owners: Codex + Claude (parallel, 5 business days)                   │
+│ Effort: ~30 person-days (feature impl) + 8 person-days (cleanup)    │
+│                                                                        │
+│ FEATURE IMPLEMENTATION                                                │
+│   ✓ P774: state vocabulary migration (Hotfix → 3-stage)             │
+│   ✓ P249: pricing cost schema implementation                        │
+│   ✓ P788–P705: operator surfaces (depends on P820 finalized)        │
+│   ✓ P759 Phase 2: high-risk getPool rewires (staged rollout)        │
+│   ✓ P248, P236, P776–P780: batch feature work (30+ proposals)      │
+│                                                                        │
+│ OBSOLETE CLEANUP                                                      │
+│   ✓ Manual sample review: 15 of 98 obsolete proposals               │
+│   ✓ Confirm no hidden dependencies                                   │
+│   ✓ Batch transition: 98 → CANCELED with obsoleted_reason           │
+│   ✓ Update CONVENTIONS.md §7 (proposal maturity states)             │
+│                                                                        │
+│ Gate: All 251 proposals have defined phase; obsolete cleaned         │
+│ Status: PIPELINE READY for execution phase                           │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+
+SUCCESS CRITERIA
+─────────────────────────────────────────────────────────────────────────
+
+✓ Week 1 Gate:    7 architecture proposals MERGE (foundation locked)
+✓ Week 2 Gate:    Schema coordination complete; Codex–Claude alignment
+✓ Week 3 Gate:    16 A/B/C proposals REVIEW; ready for merge
+✓ Week 4 Gate:    7 D-workstream REVIEW; feature RFCs approved
+✓ Week 5 Gate:    All 251 proposals phased; 98 obsolete → CANCELED
+
+Timeline:  5 weeks
+Total Work: ~140 person-days (Codex 75, Claude 35, QA 30)
+Risk:      CRITICAL (foundation lock must unblock by EOW1)
+
+
+RECOMMENDATIONS
+─────────────────────────────────────────────────────────────────────────
+
+CODEX (Primary Owner)
+
+1. [WEEK 1] Finalize + merge P744–P747 umbrella architecture
+   • Any design changes that affect downstream (P748–P773)?
+   • Document how simplified orchestration reduces complexity vs legacy
+
+2. [WEEK 1] Finalize + merge P706 state vocabulary
+   • Gate: all board/workflow changes (P774–P780) must align
+
+3. [WEEK 2–3] Implement A/B/C workstreams (25 proposals)
+   • Parallel execution across orchestrator, provisioning, resilience
+
+4. [WEEK 4] Implement D-workstream (7 proposals)
+   • Coordinate with routing finalization
+
+5. [WEEK 5] Coordinate obsolete cleanup (98 → CANCELED)
+   • Safety review samples; batch transition; audit trail
+
+CLAUDE (Secondary Owner)
+
+1. [WEEK 2] Review P745 + P820 schemas
+   • Control-plane table migration (agenthive → hiveCentral)
+   • Tenant-DB schema design (per-project isolation)
+
+2. [WEEK 2] Design tenant provisioning flow
+   • Project creation → new DB provisioning
+   • getPool routing topology (which DB for each call)
+
+3. [WEEK 4] Coordinate feature layer
+   • Pricing schema dependencies (P249)
+   • Board/governance alignment (P706, P774–P780)
+
+4. [WEEK 5] Support P259 (getPool rewire) Phase 2 review
+   • High-risk code changes + staged rollout validation
+
+
+RISK REGISTER
+─────────────────────────────────────────────────────────────────────────
+
+Risk                        Impact          Probability    Mitigation
+─────────────────────────   ──────────────  ──────────────────────────
+P745 schema changes late    Cascading       MEDIUM         Lock schema EOW1
+                           rework (12 PP)                  Freeze updates
+
+P759 (getPool rewire)       Production      HIGH           Phase 1 (safe)
+high-risk changes          instability                     Phase 2 (staged)
+
+P747 complexity            D-workstream     MEDIUM         Start design W2
+underestimated            slips beyond W4                  Parallel arc
+
+Obsolete cleanup safety    Accidentally     MEDIUM         Manual review
+missed                     CANCELED live                   (15 sample)
+
+Feature layer assumes      Rework post     MEDIUM          Delay impl until
+old schema                 P745 merge                      P745 locked
+
+
+KEY INSIGHTS
+─────────────────────────────────────────────────────────────────────────
+
+1. FOUNDATION LOCK = BLOCKER
+   7 architecture proposals (P744–P747, P706, P798, P688) must be merged
+   by EOW1. Without this, 25+ downstream proposals cannot unblock.
+
+2. SCHEMA MISALIGNMENT = RISK
+   P745 (hiveCentral schema) is DRAFT, not finalized. 12+ control-plane
+   + tenant-DB proposals blocked. Claude review critical for Week 2.
+
+3. OBSOLETE DRIFT = CLEANUP OPPORTUNITY
+   98 proposals stuck in obsolete limbo. Safety review + batch cleanup
+   (Week 5) will reduce noise + enable focus on active work.
+
+4. PARALLEL EXECUTION = EFFICIENCY GAIN
+   A/B/C workstreams (25 proposals) can proceed in parallel after
+   foundation lock. Estimated 3 weeks for completion.
+
+5. FEATURE LAYER = SECONDARY PRIORITY
+   30+ proposals can begin design/scoping now but implementation must
+   wait for P745 schema lock + P706 vocabulary finalization.
+
+
+NEXT STEPS
+─────────────────────────────────────────────────────────────────────────
+
+1. Codex: Initiate Week 1 foundation sprint (P744–P747 design + merge)
+2. Schedule Codex–Claude sync for Week 2 schema handoff
+3. Distribute this audit to architecture review team
+4. Weekly sync meetings to track progress vs sequencing plan
+5. Monthly refresh of risk register + milestone status
+
+================================================================================
+END OF AUDIT SUMMARY
+================================================================================
+
+Report Generated: 2026-05-02
+Prepared by: Strategic Assessment Team
+Distribution: Codex, Claude, Architecture Review Team
+Review Cycle: Weekly (track vs plan); Monthly refresh

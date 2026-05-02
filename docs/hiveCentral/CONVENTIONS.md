@@ -1,0 +1,961 @@
+# AgentHive Conventions and Onboarding
+
+This document is the **canonical, single source of truth** for all agent-facing conventions in AgentHive. If any other instruction file (AGENTS.md, CLAUDE.md, agentGuide.md, copilot-instructions.md) conflicts with this document, **this document wins**.
+
+## 0. Precedence and Instruction File Map
+
+| File | Role |
+| :--- | :--- |
+| **CONVENTIONS.md** (this file) | Canonical source. All shared rules: workflow, MCP, DB, Git, governance. |
+| AGENTS.md | Thin shim for Codex/similar tools. Points here for details. |
+| CLAUDE.md | Thin shim for Claude Code. Claude-specific memory + pointer here. |
+| agentGuide.md | Retired. Content merged into this file. Pointer only. |
+| .github/copilot-instructions.md | Redirect to `docs/reference/schema-migration-guide.md`. |
+
+If you are reading AGENTS.md, CLAUDE.md, or agentGuide.md, follow their pointer to this file for the full context.
+
+## 1. Start Here
+
+Read these files first, in order:
+
+1. `README.md` - project vision and the current proposal lifecycle.
+2. This file (CONVENTIONS.md) — the canonical source for all conventions.
+3. `roadmap.yaml` - active runtime configuration, especially the Postgres provider and `roadmap` schema.
+4. `docs/pillars/1-proposal/new-data-model-guide.md` - current v2 data model rules.
+5. `database/ddl/` and `database/dml/` - canonical schema and initialization artifacts.
+6. `docs/governance/agent-onboarding.md` — who you are, the constitution, proposal workflow, skeptic protocol, rights, and obligations.
+
+Note: `agentGuide.md` has been retired; its content (overseer role, governance, escalation) now lives in sections 10-16.
+
+If your task touches the proposal workflow, also read `docs/pillars/1-proposal/data-model-change.md`.
+
+## 2. File Precedence and Current Operating Reality
+
+### File Precedence
+
+See §0 above for the full instruction file map and precedence rules. **CONVENTIONS.md is always canonical.**
+
+### Current Operating Reality
+
+AgentHive is not a greenfield repo. Work against the system that exists today.
+
+| Surface | Current convention |
+| --- | --- |
+| Runtime database | PostgreSQL. **Two-tier topology** (target): `hiveCentral` for control plane, one DB per project tenant (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). Today still single-DB `agenthive`; see §6.0. |
+| MCP service | `agenthive-mcp.service` on `127.0.0.1:6421` |
+| Runtime config | `roadmap.yaml` |
+| Main proposal storage code | `src/infra/postgres/proposal-storage-v2.ts` |
+| MCP proposal tools | `src/apps/mcp-server/tools/proposals/` |
+| MCP RFC workflow tools | `src/apps/mcp-server/tools/rfc/` |
+| Core roadmap query layer | `src/core/roadmap.ts` |
+
+Important live facts:
+
+- The database contains both `public.*` and `roadmap.*` tables for some objects. **Always schema-qualify SQL with `roadmap.`**. Do not rely on `search_path`.
+- The live proposal model is in a **phased migration**. `roadmap.proposal` currently keeps both:
+  - legacy `maturity` JSONB
+  - new `maturity_state` TEXT
+- Do not drop compatibility columns or old views unless your task explicitly completes the runtime migration and verifies every dependent code path.
+- Live data may still contain legacy-cased stage values such as `REVIEW` and `DEVELOP`. Avoid brittle case-sensitive assumptions in SQL and code.
+
+## 3. Where Things Live
+
+### Tracked vs untracked, at a glance
+
+**TRACKED — every commit is reviewed; do not litter:**
+
+| Area | Purpose | What belongs here |
+| --- | --- | --- |
+| `src/core/` | proposal logic, workflow logic, roadmap query layer | TypeScript modules that are imported by other modules |
+| `src/infra/` | Postgres pool, storage adapters, DB-facing helpers | infrastructure adapters; nothing domain-specific |
+| `src/apps/mcp-server/` | MCP server, tool registration, handlers | MCP tool wrappers and the SSE/HTTP server |
+| `src/apps/cli.ts`, `src/apps/agenthive-cli.ts` | CLI entrypoints | CLI command wiring; thin |
+| `src/apps/dashboard-web/`, `src/apps/ui/` | board/web UI | TUI/web view components |
+| `src/shared/` | shared types, constants, utilities | code imported from both core and apps |
+| `database/ddl/` | schema DDL and numbered rollout SQL | schema-qualified, idempotent, numbered files |
+| `database/dml/` | initialization data and seed-like artifacts | reference data, seeds |
+| `database/migrations/` | newer numbered migrations | one logical migration per file |
+| `docs/architecture/` | canonical architecture documents | durable design docs that survive multiple proposals |
+| `docs/governance/` | constitution, decisions log, agent onboarding | durable governance |
+| `docs/pillars/` | pillar/proposal architecture docs | per-pillar canonical docs |
+| `docs/reference/` | reference material (schema migration, glossary, etc.) | durable reference |
+| `docs/glossary.md` | shared vocabulary | one file; update in place |
+| `scripts/` | runtime, board, systemd, helper scripts | committed scripts that other code depends on |
+| `tests/` | automated tests | test code only |
+
+**UNTRACKED — write here freely; do not commit:**
+
+| Area | Purpose |
+| --- | --- |
+| `tmp/<session>/` | per-session scratch (logs, dumps, intermediate notes); auto-reaped |
+| `tmp/` (root, no subdir) | one-off scratch; falls under same auto-reap rule |
+| `<sibling-worktree>/` | per-agent git worktree resolved from CWD; is your sandbox |
+
+`.gitignore` enforces these. If a tool wants to commit something under `tmp/`, that means the artifact is not actually scratch and should be moved into a tracked location with a real home.
+
+## 4. Daily Working Rules
+
+- Use a dedicated Git worktree for your task, typically under a sibling worktree directory resolved from CWD.
+- Keep changes surgical. Do not opportunistically refactor unrelated code while fixing something else.
+- Prefer existing patterns and helpers over inventing parallel abstractions.
+- Keep TypeScript and SQL changes aligned. If schema changes, check the storage layer, MCP handlers, CLI, and views that consume it.
+- If you notice an improvement, consolidation opportunity, concept unification, or a current or potential issue, create or update a proposal instead of leaving it as chat-only context.
+- Never commit credentials, copied env files, or secrets from `.env`, `/etc/agenthive/env`, or local shell history.
+- Do not claim a deployment, migration, or verification step that you did not actually perform.
+- Gate cubic agents MUST call prop_transition (records gate_decision_log + flips status) and set_maturity after a verdict. The P611 reconciler is the safety net — omitting these is a protocol violation, not an acceptable shortcut.
+
+## 4a. Folder Discipline (mandatory for every cubic agent)
+
+AgentHive is shared infrastructure. Multiple agencies, projects, and providers share this repo. Every file you write is a vote on what belongs in the repo forever. Be ruthless about where things go.
+
+### What goes where — a decision tree
+
+When you are about to write a file, ask in this order:
+
+1. **Is it code another module imports?** → `src/...` in the right subtree. Never under `docs/`, never under `scripts/`, never under `tmp/`.
+2. **Is it canonical, durable design or governance?** (multi-month relevance, multiple agents will read it) → `docs/architecture/`, `docs/governance/`, `docs/reference/`, or a pillar folder. Pair with a tracked MCP proposal that owns the lifecycle.
+3. **Is it about a specific proposal?** → it goes in MCP, not in a markdown file. Use `prop_update`, `add_acceptance_criteria`, `add_discussion`, or `submit_review`. Markdown design notes paired with an MCP proposal live under `docs/architecture/<topic>/<slug>.md` (no `Pxxx-` prefix in the filename) and reference the MCP `display_id` in their frontmatter.
+4. **Is it a one-off output you need during this session?** (a SQL dump, a log capture, a parser experiment, a temporary report) → `tmp/<your-session-id>/`. Never `docs/tmp/`. Never repo root. Never `docs/` at all.
+5. **Is it a "ship verification" or "gate decision" or "handoff" note?** → these are MCP-tracked artifacts. Use `add_discussion` on the proposal with a `context_prefix` like `ship-verification:` or `gate-decision:` or `handoff:`. Do not create `docs/ship-reports/`, `docs/handoff/`, `docs/tmp/gate-decisions-*.md` files. Those folders are deprecated.
+6. **Is it a research note or RFC draft you want to keep?** → it should be either an MCP proposal (`prop_create` with `type=feature` or `component`, status `DRAFT`) or a durable doc under `docs/research/<topic>.md` linked from a proposal. If it would not survive a code review, it does not belong in `docs/`.
+
+### Hard rules
+
+- **Never write to `docs/tmp/`.** That folder is being retired (P452). Use `tmp/<session>/` instead.
+- **Never write to `docs/ship/`, `docs/ships/`, `docs/shipping/`, `docs/ship-reports/`.** Ship verifications go into MCP via `add_discussion` with `context_prefix=ship-verification:`.
+- **Never write to repo root** outside the existing top-level files. New top-level files require a proposal.
+- **Never create `docs/handoff/<date>.md` files.** Handoffs go into MCP discussions on the proposal you are handing off, plus optional team-memory or ZK notes.
+- **Never create `docs/<Pxxx>-<anything>.md`.** The MCP record at `roadmap_proposal.proposal` row Pxxx is canonical. Design notes paired with a proposal live under `docs/architecture/<topic>/<slug>.md` with the assigned MCP ID in frontmatter — not in the filename.
+- **Never copy `docs/proposals/` from before 2026-04-25.** Those legacy stubs collided with live MCP IDs and have been moved to `docs/architecture/control-plane/` with stripped prefixes. Don't recreate the pattern.
+- **Do not commit anything under `tmp/`.** The folder is gitignored and reaped on a schedule. If a file under `tmp/` is worth keeping, find it a real home in a tracked folder under a real proposal.
+
+### When you write a markdown file under `docs/`
+
+It must have:
+
+1. A clear topic-driven filename (no `Pxxx-` prefix, no date stamp, no agent name). Slug-style: `multi-project-rollout-plan.md`.
+2. A short frontmatter block at the top:
+   ```markdown
+   > **Type:** design note | governance | reference  
+   > **MCP-tracked:** P### (or N/A if cross-cutting)  
+   > **Source-of-truth:** Postgres `roadmap_proposal.proposal` row P### (or "this file" for cross-cutting governance)
+   ```
+3. A clear first paragraph stating what problem this doc solves and who reads it.
+4. No personal session context, no `# 2026-04-25 hermes-andy figured out…`, no narrative about how the doc came to exist. Future readers don't care.
+
+### When in doubt
+
+Ask via MCP `msg_send` to a senior agent or to the orchestrator before creating a new top-level folder, a new `docs/` subdirectory, or a new file under `docs/` whose topic is not already represented. The bar is high because every new tracked file is permanent.
+
+## 5. Proposal and RFC Workflow Through MCP
+
+AgentHive work is proposal-driven. Participate through MCP, not through chat-only side channels.
+
+### Precedence
+- Proposal type decides the workflow.
+- Workflow decides the allowed states.
+- Maturity applies inside every state.
+
+### Proposal Types
+
+| Type | Category | Workflow | Description |
+| :--- | :--- | :--- | :--- |
+| **product** | Type A (Design) | Standard RFC | Top-level product vision, pillars, constraints |
+| **component** | Type A (Design) | Standard RFC | Major subsystem or architectural pillar |
+| **feature** | Type B (Impl) | Standard RFC | Concrete capability to build |
+| **issue** | Type B (Impl) | Standard RFC | Problem in the product requiring code changes |
+| **hotfix** | Type C (Ops) | Hotfix | Localized operational fix to running instance |
+
+### Standard RFC Workflow (product, component, feature, issue)
+
+| State | Phase | Description |
+| :--- | :--- | :--- |
+| **DRAFT** | Architecture | Initial idea. If too broad or incoherent, **split it** into smaller proposals. |
+| **REVIEW** | Gating | Gating review for feasibility, coherence, and architectural fit. |
+| **DEVELOP** | Building | Building, coding and testing. |
+| **MERGE** | Integration | Merging branch to `main`. Focus on compatibility and stability. |
+| **COMPLETE** | Stable | Temporary stable state until the next evolution cycle begins. |
+
+### Hotfix Workflow (hotfix)
+
+The hotfix workflow uses the same 3-stage structure, drawn from `roadmap.workflow_stage_definition`:
+
+| State | Phase | Description |
+| :--- | :--- | :--- |
+| **TRIAGE** | Confirm | Confirm the problem exists and is a localized operational fix |
+| **DEPLOY** | Apply | Specialist/ops claims and applies the fix (often higher privilege) |
+| **CLOSED** | Verified | Fix applied and verified working |
+
+**Terminal states:** CLOSED, WONT_FIX, NON_ISSUE  
+**Escape:** ESCALATE → creates a new issue proposal (Standard RFC)
+
+> **Legacy note:** Older data may reference FIX, DEPLOYED, ESCALATE, REJECTED, DISCARDED, REPLACED from pre-P774 hotfix vocabulary. These are migration artifacts; do not introduce them in new code.
+
+### Unified Vocabulary Table
+
+Both workflows share the same maturity axis and are stored in `roadmap.workflow_stage_definition`. No code path may hardcode a list of workflow stages — always load from the stage registry (`src/core/workflow/stage-registry.ts`).
+
+| Attribute | RFC value | Hotfix value | Source |
+| :--- | :--- | :--- | :--- |
+| Status values | DRAFT, REVIEW, DEVELOP, MERGE, COMPLETE | TRIAGE, DEPLOY, CLOSED | `roadmap.workflow_stage_definition` |
+| Maturity values | new, active, mature, obsolete | same | `roadmap_proposal.proposal.maturity` |
+| Terminal closure | COMPLETE/mature | CLOSED/mature | stage `is_terminal = true` |
+| Obsolete reason | `obsoleted_reason TEXT` free-text | same | `roadmap_proposal.proposal.obsoleted_reason` |
+
+### Boards are workflow-aware
+
+Board columns are rendered from `roadmap.workflow_stage_definition` for the active workflow. A workflow filter is always required. No code path may hardcode a list of stages — columns must derive from the stage registry at runtime.
+
+### Maturity Levels
+
+| Maturity | Description |
+| :--- | :--- |
+| **new** | Just entered the state. Waiting for an agent to claim or lease it, or for dependencies to clear. Every workflow state entry resets maturity to `new`, including entry into `COMPLETE`. |
+| **active** | Under lease and being worked on with fast iteration. |
+| **mature** | Work in this state is complete enough to request a gate decision to advance. In RFC, `mature` on `DRAFT/REVIEW/DEVELOP/MERGE` is the gate-ready signal; `COMPLETE/mature` is terminal metadata and does not queue another gate advance. |
+| **obsolete** | No longer relevant because the structure or direction has changed. Set `obsoleted_reason` to explain why. |
+
+### Proposal-first rule of thumb
+
+AgentHive is self-evolving. When you identify any of the following, the default action is to create a proposal or add the concern to an existing proposal:
+
+- an improvement idea
+- consolidation of duplicate logic or structure
+- unifying terminology, workflow, schema, or concepts
+- a current defect or architectural mismatch
+- a likely future issue, migration risk, or scaling concern
+
+Do not wait for a human to ask twice if the need is clear. The proposal system, team workflow, and pipeline exist so the platform can evolve intentionally rather than through scattered ad-hoc edits.
+
+### Core proposal tools
+
+| Tool | Use |
+| --- | --- |
+| `prop_list` | list proposals by status or type |
+| `prop_get` | load the full current proposal |
+| `prop_create` | create a new proposal; **type is required** |
+| `prop_update` | update proposal content |
+| `prop_set_maturity` | set `new`, `active`, `mature`, or `obsolete` |
+| `prop_transition` | move between workflow stages |
+
+### RFC workflow tools
+
+| Tool | Use |
+| --- | --- |
+| `get_valid_transitions` | inspect allowed transitions |
+| `transition_proposal` | RFC-state transition surface |
+| `add_acceptance_criteria`, `list_ac`, `verify_ac` | manage and verify AC |
+| `add_dependency`, `get_dependencies` | manage proposal DAG edges |
+| `submit_review`, `list_reviews` | review workflow |
+| `add_discussion` | durable threaded discussion on a proposal |
+
+### Lease and collaboration tools
+
+| Tool | Use |
+| --- | --- |
+| `lease_acquire` | claim work before long-running execution |
+| `lease_renew` | renew an active lease |
+| `msg_send`, `msg_read`, `chan_list` | inter-agent coordination |
+
+### Expected MCP flow
+
+1. Discover or load the proposal with `prop_list` or `prop_get`.
+2. Acquire a lease before doing substantial work.
+3. Keep maturity truthful:
+   - `new` = waiting or freshly entered state
+   - `active` = being worked
+   - `mature` = ready for a gate or decision
+   - `obsolete` = no longer relevant
+4. Use `prop_transition` only when the proposal is actually ready to move stages.
+5. Put AC, dependency, review, and discussion updates into MCP so they survive handoff.
+
+Notes:
+
+- The default lifecycle is `Draft -> Review -> Develop -> Merge -> Complete`.
+- Proposal type determines workflow selection. Do not invent ad-hoc types. Check existing usage or `roadmap.proposal_type_config` before creating new proposals.
+
+## 6. Database Conventions
+
+### 6.0a Provider/agency identity is DB-sourced (P743)
+
+Provider, agency, and route-provider identity strings (`route_provider`, `agent_provider`, `agency_identity`) **must originate from DB tables**, not source-code literals. Adding, renaming, or removing a provider must be a row change in:
+
+- `roadmap.model_routes` — `agent_provider`, `route_provider`, `agent_cli`
+- `roadmap_workforce.provider_registry` — `agency_identity`
+- `roadmap.host_model_policy` — `allowed_providers`, `forbidden_providers`
+
+**Hardcoded literals like `"hermes"`, `"claude"`, `"codex"`, `"copilot"` as provider identity in `src/` or `scripts/` are forbidden.** Code that needs a provider list reads it from `model_routes` (cached per process). Code that needs a default reads it from env (`AGENTHIVE_DEFAULT_PROVIDER`) or `model_routes`; if neither yields a value, throw rather than default to a literal.
+
+**Exempt: CLI binary names.** When a string is the on-disk name of an executable (argv[0], shebang, or build-time type union over the small set of installed binaries — `claude`, `codex`, `hermes`, `gemini`, `copilot`), that's a deployment fact, not a provider concept. The `CliName` union in `src/core/runtime/cli-builders.ts`, the `case "hermes":` arms in `agent-spawner.ts`, and `route.cliPath ?? "<binary>"` defaults are allowed.
+
+**Why:** today's loop debugging surfaced multiple drifts where DB and code disagreed on the canonical identity (workflow_name='RFC 5-Stage' vs template name 'Standard RFC'; provider fallback to "hermes" silently routing to an unconfigured provider). DB-as-source-of-truth makes provider changes a one-row edit.
+
+### 6.0 Database Topology (target architecture)
+
+AgentHive runs on a **two-tier Postgres topology**:
+
+1. **`hiveCentral`** — the **control-plane database**. Single, shared, contains everything that is global to the platform:
+   - Proposal lifecycle (`roadmap_proposal.proposal`, `roadmap.workflows`, `roadmap.workflow_templates`, gate decisions, reviews, dependencies, discussions)
+   - Agent registry (`roadmap.agent_registry`, teams, cubics, leases)
+   - Runtime configuration (`roadmap.runtime_flag`, `roadmap.host_model_policy`, model registry)
+   - Project registry (`roadmap.project` — one row per tenant DB; carries the **DSN** for the tenant DB, not project tenant data)
+   - Knowledge, federation, escalation, spending, identity/auth (P472), observability surfaces
+   - All DDL labeled "control" in `database/ddl/control/` and migrations in `scripts/migrations/control/`
+
+2. **Project tenant DBs** — one Postgres database **per project**, fully isolated. Names are project-chosen (`agenthive`, `monkeyKing-audio`, `georgia-singer`, …). Each contains:
+   - Project-specific application data (audio assets, song metadata, project documents, project-scoped notes)
+   - Project-private workflows that don't escalate to the platform
+   - Per-project credentials, backups, replicas, and geographic placement
+   - All DDL labeled "tenant" in `database/ddl/tenant/` and migrations in `scripts/migrations/tenant/`
+
+**The keystone invariant:** `roadmap_proposal.proposal.project_id` (in `hiveCentral`) is a **foreign key into `roadmap.project.project_id`**, which **points at a tenant DB connection record** — it is **NOT** a tenancy discriminator on rows that share a database with other tenants. Two projects never share a table inside a single DB.
+
+**Default placement: one Postgres instance, multiple databases on it.** Today all databases (`hiveCentral` + project DBs) live on the same `127.0.0.1:5432` Postgres server. The two-tier topology is **logical** (database + role boundary), so isolation does not require physical separation. Moving a tenant to its own host later is a normal operational decision — the architecture supports it but does not require it.
+
+**Default naming, configurable per installation:** the control database is `hiveCentral` by default and each project database is named after its project slug. The control-DB name is configurable via `databases.control.name` in `roadmap.yaml` (or the `PGDATABASE` env override during bootstrap), so operators may pick a different name (e.g. `hiveCtl`, `agenthive_meta`) at install time. Post-deploy renaming via `ALTER DATABASE … RENAME TO` plus a coordinated config update is supported. **No code references the literal name** — every service reads it from env / `roadmap.yaml` — so renaming is a config + restart, not a code change.
+
+**Why two databases on one instance (not single-DB-with-project_id):**
+- **Blast radius:** a runaway query against tenant data cannot lock control-plane tables (different DB = different lock space, different connection, different role).
+- **Backup/RTO:** each database gets its own `pg_dump` schedule and retention; control-plane has its own.
+- **Credentials:** each database has its own role with grants only on its own schemas; tenant role cannot reach control-plane data.
+- **Tenancy by accident:** prevents the multi-tenant-without-isolation failure mode.
+- **Placement flexibility:** because isolation is database-level, moving any single database to its own Postgres host later is a self-contained migration that doesn't re-architect the control plane (P517 covers the operational pattern). Default placement is one instance; multi-instance is available when justified.
+
+**Connection resolution at runtime:**
+- All control-plane queries connect to `hiveCentral` (DSN in `databases.control` of `roadmap.yaml`, env-overridable per §config-resolver).
+- A handler that needs project tenant data resolves the DSN via `config.getProjectDb(slug_or_id)`, which queries `hiveCentral.roadmap.project` and returns the tenant DSN.
+- Connection pools are keyed per-DB; never reuse a `hiveCentral` pool for tenant queries.
+
+**Today's reality (transition state):**
+- The live database is still single-DB `agenthive` — control-plane and the agenthive-tenant data share one Postgres instance.
+- P429 is the keystone migration that extracts `hiveCentral` and recasts `agenthive` as the first project tenant DB.
+- P487 defines the per-project DB schema bootstrap and registry connection model.
+- Until P429 lands, `project_id = 1` is implicit and refers to the agenthive tenant inside the same DB. Do not seed projects with `project_id > 1` outside test fixtures.
+
+**Schema-qualification rules under the new topology:**
+- Inside `hiveCentral`: continue to schema-qualify with `roadmap.` and `roadmap_proposal.`
+- Inside a tenant DB: project-chosen schemas (e.g., `audio.`, `song.`); never use `roadmap.` in a tenant DB.
+- Cross-DB joins are forbidden. If a handler needs both, it issues two queries and joins in code.
+
+### 6.1 DDL belongs in `database/ddl/`
+
+Use `database/ddl/` for schema structure:
+
+- tables
+- views
+- indexes
+- triggers
+- functions
+- constraints
+- schema-level rollout SQL
+
+Current canonical references:
+
+- `database/ddl/roadmap-ddl-v2.sql`
+- `database/ddl/roadmap-ddl-v2-additions.sql`
+- numbered rollout files such as `002-...sql`, `003-...sql`, `012-...sql`
+
+DDL rules:
+
+1. **Schema-qualify everything with `roadmap.`**
+2. Prefer numbered files named `NNN-short-description.sql` for incremental rollout work.
+3. Keep one logical migration per file or per tightly-coupled batch.
+4. Add comments for prerequisites, assumptions, and compatibility risks when they are not obvious.
+5. Separate structural DDL from seed data. Do not hide reference data inside schema files unless the data is inseparable from the DDL.
+6. Treat deployed numbered migrations as immutable. Fix forward with a new file instead of rewriting history.
+7. Validate against the current live schema shape when possible; do not assume an empty database.
+
+### 6.2 DML belongs in `database/dml/`
+
+Use `database/dml/` for deterministic data initialization and seed artifacts.
+
+Current canonical reference:
+
+- `database/dml/init.yaml`
+
+DML rules:
+
+1. Put reference data, bootstrap rows, and initialization content in DML, not in application startup code.
+2. Keep DML deterministic and idempotent when possible.
+3. If a DDL rollout depends on a data backfill, document the order clearly and keep the backfill with the rollout plan.
+4. Update DML when workflow names, proposal types, or other shared lookup values change.
+
+### 6.3 Database changes are proposal-gated work
+
+Database changes have system-wide impact. In AgentHive, they are not "just SQL tasks" and they must not bypass the proposal workflow.
+
+Any meaningful schema change should have a proposal that captures:
+
+- why the database change is needed
+- which tables, views, functions, triggers, and runtime code paths are affected
+- whether the change is backward compatible
+- deployment order
+- verification queries
+- rollback or fix-forward expectations
+
+For non-trivial DB work, create dependent proposals instead of one vague "change the schema" task. A good pattern is:
+
+1. **Parent proposal:** problem statement, design, rollout strategy, and acceptance criteria.
+2. **DB deployment proposal:** the DDL/DML work to be applied by a DB-capable agent or human.
+3. **Application proposal:** code changes required to read and write the new schema safely.
+4. **Cleanup proposal:** remove compatibility shims, legacy columns, or transitional logic only after production has stabilized.
+
+Use MCP to encode those dependencies. Do not coordinate a risky DB rollout only in chat or only in Git.
+
+### 6.4 Coordinated rollout pattern
+
+AgentHive should minimize the amount of time the system is in a broken or half-migrated state. The preferred rollout is compatibility-first:
+
+1. Ship code that can tolerate both the old and new schema whenever feasible.
+2. Deploy the DB change through the dedicated DB deployment proposal.
+3. Switch runtime behavior to use the new schema path.
+4. Verify through MCP, app, and database checks.
+5. Remove old compatibility paths in a later cleanup proposal.
+
+If compatibility-first is impossible, the proposal must explicitly define:
+
+- who deploys the DB change
+- who performs the immediate code follow-up
+- the expected coordination window
+- what validation must happen before the rollout is considered complete
+
+AgentHive is actively migrating toward the v2 Postgres-native model. When changing schema:
+
+- preserve backward compatibility until runtime code is updated
+- check storage adapters, MCP handlers, views, and scripts together
+- do not remove legacy columns just because a new column exists
+- avoid migrations that only work if data is absent
+
+Example: `proposal.maturity` and `proposal.maturity_state` currently coexist for compatibility. A new agent must not remove the legacy column unless the runtime has already been migrated away from it and the cleanup proposal has been completed.
+
+### 6.5 If you do **not** have database deployment access
+
+You may still do valuable database work, but your job is to prepare and route the change correctly rather than treating authorship as deployment.
+
+The right pattern is:
+
+1. Draft the DDL/DML change in `database/ddl/` or `database/dml/`.
+2. Update any related docs that explain the model or rollout assumptions.
+3. Create or update the parent proposal and dependent rollout proposals in MCP.
+4. Update runtime code only if it remains backward compatible, or clearly mark that deployment order matters.
+5. Hand off a precise deployment bundle to a DB-capable agent or human.
+6. After deployment, ensure the follow-up application proposal is picked up immediately so the live system does not stay mismatched for long.
+
+A good handoff includes:
+
+- files to apply, in order
+- whether they are DDL or DML
+- which proposal owns the deployment step
+- which proposal owns the code-follow-up step
+- prerequisites and known incompatibilities
+- exact verification queries
+- expected runtime impacts
+- whether the app or MCP service must be restarted after deployment
+
+If you lack access, **never** say "deployed" or "verified on live DB". Say "prepared", "proposed", "waiting on DB deploy", or "validated on a clone" instead.
+
+### 6.6 `roadmap_proposal.gate_role` — deprecate-then-replace operator pattern
+
+The `gate_role` table uses a **partial unique index** on `(proposal_type, gate) WHERE lifecycle_status = 'active'`. This means at most one row per `(proposal_type, gate)` pair may have `lifecycle_status = 'active'` at a time, but deprecated or retired rows are allowed to coexist.
+
+**Why the index is partial (not table-level UNIQUE):** a table-level UNIQUE would make it impossible to INSERT the replacement row before removing the old one. The partial index allows the safe "deprecate-then-replace" swap described below.
+
+**Operator pattern — swapping an active gate_role row without hitting the constraint:**
+
+```sql
+BEGIN;
+
+-- Step 1: retire the current active row (removes it from the partial unique index).
+UPDATE roadmap_proposal.gate_role
+   SET lifecycle_status = 'deprecated',
+       deprecated_at    = now(),
+       notes            = 'replaced by row <new-id> — <reason>'
+ WHERE proposal_type = '<type>'
+   AND gate          = '<gate>'
+   AND lifecycle_status = 'active';
+
+-- Step 2: insert the replacement row as active.
+INSERT INTO roadmap_proposal.gate_role
+  (proposal_type, gate, role, persona, output_contract,
+   model_preference, tool_allow_list, fallback_role,
+   lifecycle_status, notes)
+VALUES
+  ('<type>', '<gate>', '<role>', '<persona>', '<output_contract>',
+   NULL, NULL, NULL,
+   'active', '<reason for change>');
+
+COMMIT;
+```
+
+**Rules:**
+- Always deprecate before inserting. If you INSERT first and the active row still exists, the partial unique index fires a constraint violation.
+- The `deprecated_at` column records when the old row left service. The `notes` column on the old row should reference the replacement (cross-reference by ID or description).
+- Never `DELETE` active rows directly — old rows carry audit value and are referenced by `gate_role_history`. Use `lifecycle_status = 'retired'` only for rows that were deprecated and have been superseded for a full deployment cycle.
+- The NOTIFY trigger (`fn_gate_role_notify`) fires on both the UPDATE and the INSERT, invalidating the resolver's TTL cache automatically.
+- The audit trigger (`fn_gate_role_audit`) captures the `old_persona`, `old_output_contract`, and `old_lifecycle_status` into `gate_role_history` on every UPDATE. No manual audit insertion is required.
+
+## 7. Git and Worktree Best Practices
+
+AgentHive is multi-agent. Git discipline is part of system safety.
+
+### Branching and worktrees
+
+- Use one worktree per active agent/task.
+- Use a branch name that identifies the agent and topic, for example `xiaomi/schema-rollout` or `codex/workflow-defaults`.
+- Do not work inside another agent's worktree unless explicitly coordinating.
+
+### Commits
+
+- Commit coherent units of work early.
+- Keep commit messages specific to the changed files or proposal.
+- Prefer multiple small commits over one mega-commit when the work naturally separates.
+- If you change behavior, update the related docs in the same branch.
+
+### Shared-history rules
+
+- Do not rewrite shared history.
+- Do not force-push a branch another agent may be using.
+- Do not amend someone else's commit.
+- Rebase only your own unpublished work.
+- If a branch has already been merged or consumed by another agent, fix forward with new commits.
+
+### Conflict handling
+
+- Read both sides before resolving conflicts.
+- Never delete unknown changes just to get a clean merge.
+- If the repo root contains local changes and the live service runs from that root, remember that a restart may pick up those changes immediately.
+
+### Safety
+
+- Do not use destructive Git commands to discard work you did not create.
+- If you encounter unexpected changes, assume they may be intentional until proven otherwise.
+
+## 8. Validation and Deployment Expectations
+
+- For code changes, run the relevant existing tests, build steps, or targeted checks already provided by the repo.
+- For DB changes, prefer validating against a clone of the live schema before touching production.
+- For MCP changes, verify through the live service when feasible, not only with unit-level reasoning.
+- Report the exact scope of what you verified:
+  - code only
+  - clone DB validation
+  - live DB deployment
+  - live MCP smoke test
+
+Precision matters more than confidence theater.
+
+### 8d. Project scope (P477 AC-2)
+
+The web control plane is multi-project: every operator action belongs to one of the rows in `roadmap.project`. Scope flows through one HTTP header.
+
+- **Header**: `X-Project-Id: <project_id>` (or query param `?project_id=`).
+- **Server resolution**: `RoadmapServer.resolveProjectScope(req)` validates the requested id against `roadmap.project WHERE status='active'`. Garbage / unknown / archived ids fall back to the lowest-id active project so the UI can never lock itself out.
+- **Default**: when no header is sent, the lowest-id active project is used. That keeps existing CLI tooling working without changes.
+- **Echo**: `/api/control-plane/overview` returns `{project: {project_id, slug, name}}` so the UI can detect divergence (e.g. localStorage stale across browser tabs) and re-render.
+
+Read endpoints that honor scope today:
+
+| Endpoint | Scope mechanism |
+|---|---|
+| `/api/control-plane/overview` | `cubics`, `message_ledger` filter by `project_id`; `agent_health` / `agent_runs` joined through `agent_registry`. `model_routes` stays global (infra-level config). |
+| `/api/agents` | `agent_registry.project_id = <scope>` |
+| `/api/agents/:id` | Returns 404 if the agent's `agent_registry.project_id` doesn't match the request scope (cross-project read denied). |
+| `/api/dispatches` | `squad_dispatch.project_id = <scope>`; `?all=1` bypass returns rows from every project (debug only). Echoes `{project: {project_id, slug, name}}`. |
+| `/api/projects` | The switcher itself — always returns the full active list. |
+| WebSocket `subscribe` | Payload may carry `project_id`; the server stores it per-socket in `wsProjectScope`. Re-sending `subscribe` with a new id triggers a fresh snapshot push without reconnect. |
+
+Endpoints **not yet** scoped (transitional — control-plane / filesystem):
+
+| Endpoint | Why unscoped today |
+|---|---|
+| `/api/proposals` (REST), `proposal_snapshot` / `proposal_insert` / `proposal_update` (WS) | `roadmap.proposal` has no `project_id` column; it lives in the control plane. Scoping moves to tenant-DB resolution once P429/P482-P485 lands. The WS subscribe still records the operator's project so the wiring is in place; the broadcast already short-circuits the scope check when payloads carry `project_id`. |
+| `/api/channels`, `/api/messages`, `/api/pulse` | Filesystem-backed (markdown messages dir, `pulse.log`); naturally scoped per project worktree. Will gain `project_id` filtering only if we migrate to `roadmap.message_ledger`. |
+| `/api/routes` | Global infra config — model routes are shared across projects by design. |
+
+When wiring a new endpoint that touches a scoped table, always either:
+- filter via `WHERE project_id = $scope` if the table carries the column, or
+- join through `agent_registry` / `cubics` / `squad_dispatch` to inherit a scope, or
+- explicitly mark the endpoint as "global" / "control-plane" and document it in the table above.
+
+Frontend uses `useProjectScope()` from `src/apps/dashboard-web/hooks/useProjectScope.ts`. The hook returns a `scopedFetch` wrapper that adds the header automatically; **don't** call `window.fetch` from a component if the URL is project-scoped — use the scoped fetcher so the user's selection is respected. Non-React code (e.g. `lib/api.ts` `fetchWithRetry`) reads the same id from `lib/project-scope-storage.ts` and stamps `X-Project-Id` on every request. The current selection persists in `localStorage["roadmap.project_scope.v1"]` and propagates intra-tab via the `roadmap:project-scope-changed` CustomEvent (cross-tab via the storage event). The WebSocket hook listens to the same event and pushes a fresh `subscribe` payload through the open socket on scope change — never reconnects, to avoid snapshot floods.
+
+### 8c. Control-plane stop actions (P477 AC-4)
+
+Operator-initiated stops are exposed as four privileged endpoints, all behind `requireOperator` (§8b). Each writes the actor + reason into the target row so the audit trail outlives the `operator_audit_log`.
+
+| Endpoint | Action name | Effect |
+|---|---|---|
+| `POST /api/agents/:identity/stop` | `agent.stop` | Soft-cancels every `agent_runs` row for that identity where `status='running'`. Sets `status='cancelled'`, `cancelled_by/at/reason`. Workers honor this on next heartbeat — the server does **not** kill processes directly. |
+| `POST /api/cubics/:cubic_id/stop` | `cubic.stop` | Flips an active cubic to `expired`, clears `lock_holder/lock_phase/locked_at`, sets `stopped_by/at/reason`. Idempotent — already-terminal cubics return `{success: true, already_terminal: true}`. |
+| `POST /api/proposals/:id/state-machine/halt` | `state-machine.halt` | Sets `proposal.gate_scanner_paused = true`. Gate-scanner / orchestrator must skip paused proposals; the partial index `idx_proposal_gate_paused` keeps the lookup cheap. |
+| `POST /api/proposals/:id/state-machine/resume` | `state-machine.resume` | Clears the pause. Separate action so a narrower operator can be granted halt-only or resume-only. |
+
+Body is JSON `{reason}` (optional, free text, capped at 200 chars in the audit summary). The operator name in the resulting trail is taken from the bearer token, never from the request body — same anti-spoof rule as `agent.message`.
+
+When wiring new code that observes these stop signals: read `agent_runs.status='cancelled'` (workers), `cubics.status='expired'` (orchestrator), or `proposal.gate_scanner_paused = true` (gate scanner). Don't introduce side-channels.
+
+### 8b. Control-plane operator authorization (P477 AC-7)
+
+Privileged web actions (operator → agent reminder, future stop actions, multi-project mutations) go through one gate: `requireOperator(req, { action, ... })` in `src/apps/server/operator-auth.ts`. Read endpoints stay unauthenticated; only mutating calls are gated.
+
+The model:
+
+- Bearer-token authentication via `Authorization: Bearer …` (or `X-Operator-Token`).
+- Tokens are SHA-256 hashed before storage in `roadmap.operator_token` — plaintext lives only in the issuance response.
+- Per-token `allowed_actions text[]`; `'*'` means full operator powers, otherwise list specific actions like `agent.message`, `audit.read`, `cubic.stop`, `agent.stop`.
+- **Default posture is fail-closed**: with zero rows in `operator_token`, every gated call returns `503 unconfigured`. Adding the table without inserting a token does **not** silently expose endpoints.
+- Every gated call writes a row into `roadmap.operator_audit_log` regardless of decision (`allow / deny / anonymous / unconfigured`). The audit log is the source of truth when reviewing operator actions; never delete it.
+
+Decision → HTTP status:
+
+| decision | status | meaning |
+|---|---|---|
+| allow | 200 | token valid, action in allowed_actions |
+| deny | 401 | token unknown |
+| deny | 403 | token valid but action not allowed / revoked / expired |
+| anonymous | 401 | no Authorization header but tokens exist |
+| unconfigured | 503 | `operator_token` is empty — bootstrap a token first |
+
+Bootstrapping the first token (the API endpoint to issue tokens is itself gated):
+
+```sh
+npm run operator:issue -- --name=ops-1 --allowed='*'
+npm run operator:list
+npm run operator:revoke -- --id=3 --reason="rotation"
+```
+
+The issued plaintext token is printed once; store it in your password manager. Lost tokens cannot be recovered — issue a new one and revoke the old.
+
+When wiring a new privileged endpoint, never bypass the gate: always call
+
+```ts
+const auth = await requireOperator(req, { action: "<dotted.action>", targetKind, targetIdentity, requestSummary });
+if (auth.rejected) return auth.rejected;
+// proceed; auth.outcome.operatorName is the canonical operator id —
+// prefer it over anything in the request body to prevent spoofing.
+```
+
+### 8a. Web bundle builds (P477 AC-6)
+
+The dashboard-web bundle (`src/web/main.js`) is the file `roadmap browser` actually serves. **Never hand-rebuild it with bare `bun build` from inside a worktree** — worktree `node_modules/wouter` is a symlink into AgentHive's tree, and bun resolves wouter's `import "react"` up to a *different* React copy than the app's. Two Reacts in one bundle = `useContext()` blows up at runtime with "Cannot read properties of null".
+
+Use the canonical script instead:
+
+```sh
+npm run build:web         # tailwind + bundle, deploys src/web/main.{js,css}
+npm run build:web -- --js-only   # skip tailwind (faster iteration)
+npm run build:web:watch          # bun --watch on the bundle
+```
+
+The script (`scripts/build-web.cjs`):
+
+- chdirs to the AgentHive repo root before bundling, regardless of where it's invoked from;
+- builds into `.build-web-staging/` then atomically renames into `src/web/`, so a partial bundle can never reach the browser;
+- fails the build if it detects `AgentHive/node_modules/react` references in the bundle (the dual-React fingerprint).
+
+`npm run build` now runs `build:web --js-only` as its last step, so a top-level build is enough; CSS is already produced by the tailwind step earlier in the chain.
+
+After a build, the served bundle's mtime should bump; hard-refresh the browser (Ctrl+Shift+R) — react-tooltip, wouter, and the tailwind chunks all get cached aggressively.
+
+## 9. Quick Checklist for New Agents
+
+Before you start:
+
+1. Read the proposal and relevant docs.
+2. Confirm whether the task is code, DDL, DML, MCP workflow, or a combination.
+3. If the task changes the database, confirm the parent proposal and the dependent rollout proposals.
+4. Claim the work through MCP if the task is proposal-backed.
+5. Check whether your change touches live-schema compatibility.
+6. Use the correct worktree and branch.
+7. If you discovered a broader improvement or risk while scoping the task, capture it in a proposal before you forget it.
+8. Decide where every output you'll produce belongs (§4a). If you don't know, ask before writing.
+
+### Hardcoding red flags — do not introduce, fix when you find
+
+AgentHive is shared infrastructure. The following patterns block parallel multi-tenant operation. If you are about to write one, stop and use the registered alternative. If you find one, file an issue (or extend P448–P451) and fix it surgically.
+
+| Antipattern | Why it hurts | Use instead |
+| --- | --- | --- |
+| `"/data/code/AgentHive"`, `"/data/code/worktree"` literal | Switching agency host costs a multi-file edit (P448) | `getProjectRoot()` / `getWorktreeRoot()` from `src/shared/runtime/paths.ts` |
+| `"xiaomi"` as PGUSER fallback, `/home/xiaomi/...` paths | Fails on every other user; provider switch destroys env (P448) | `getDbUser()` / `getOsUser()` — fail fast if env unset |
+| `"http://127.0.0.1:6421/sse"`, `"http://localhost:6420"` | Two AgentHive instances on one host collide; cross-host blocked (P449) | `getMcpUrl()` / `getDaemonUrl()` from `src/shared/runtime/endpoints.ts` |
+| Hardcoded model name (`"claude-sonnet-4-6"`, `"xiaomi/mimo-v2-pro"`) | Bypasses `model_routes`; cross-platform leakage (P235, P450) | `resolveModelRoute(provider, modelHint)` from agent-spawner — never a literal |
+| Bare workflow state literal (`'DRAFT'`, `'COMPLETE'`, `'TRIAGE'`) | Per-project workflows can't override; SMDL drift (P410, P451) | `States.rfc.draft`, `isTerminal(template, stage)` from `src/core/workflow/state-names.ts` (per P453) |
+| Bare maturity literal (`'mature'`, `'obsolete'`) | Same problem (P451) | `Maturity.MATURE` etc. from same module |
+| Hardcoded agency name (`"hermes/agency-xiaomi"`, `"claude-bob"`) | One agent identity baked into routing decisions | Pass `agentIdentity` through the call chain; resolve from registry |
+| Schema-unqualified SQL (`FROM proposal` without `roadmap.`) | Lives in `public.*` ambiguity, breaks with control-plane rename | Always `FROM roadmap_proposal.proposal` (or future `control_*`) |
+
+When the registered alternative does not yet exist (e.g., the new `paths.ts` and `endpoints.ts` modules per P448/P449 are still draft), capture a `// TODO(P###):` comment naming the proposal that will replace the literal — do not silently re-add the antipattern.
+
+Before you finish:
+
+1. Update code, docs, and SQL together if they are coupled.
+2. Verify with the appropriate existing checks.
+3. If the task touched the database, ensure the rollout proposal chain and handoff state are updated in MCP.
+4. If you lack DB access, prepare a deployable handoff instead of pretending to deploy.
+5. Leave a clean, specific Git history.
+6. Record durable workflow state in MCP, not only in chat.
+7. If the work revealed a follow-up improvement or cleanup opportunity, create the next proposal instead of leaving a hidden TODO behind.
+
+## 10. Agent Responsibilities & Rules
+
+* **The Leasing Model:** Use the MCP to **Claim/Lease** a proposal before starting work (Enhance, Review, Develop, or Merge).
+* **The RFC Standard:** For a proposal to advance, it must be **Coherent**, **Economically/Architecturally optimized**, and have **Structurally defined Acceptance Criteria (AC)** with clear functions/tests.
+* **Issue Reporting:** If an error or blocker is encountered, use the MCP to **log an issue immediately**. Do not attempt to bypass fundamental architectural constraints without a formal issue log.
+* **The "Cubic" Context:** When spawning agents in a "Cubic" environment, ensure they are passed the relevant MCP context for their specific task.
+
+### 10a. Settings every spawned cubic agent inherits
+
+Every dispatch from the orchestrator (architect, researcher, skeptic-alpha,
+skeptic-beta, architecture-reviewer, gate-reviewer, developer, merge-agent,
+…) starts cold and re-reads CONVENTIONS.md. The non-negotiable settings
+below MUST be observable behavior of the spawned agent — if your run
+violates one, the orchestrator will not advance you, and your dispatch
+lease will be released without a decision.
+
+#### MCP canonical actions (use these names, not raw tool names)
+
+The consolidated MCP router accepts both the canonical short-action names
+AND raw-tool-name aliases (e.g. `prop_get`, `prop_list`). Prefer the
+canonical short names for clarity:
+
+| Domain  | Action          | Args                                                   |
+| ------- | --------------- | ------------------------------------------------------ |
+| proposal| `get`           | `id` OR `proposal_id` (string OR number — both accepted) |
+| proposal| `detail`        | same as get; returns YAML+Markdown projection          |
+| proposal| `list`          | optional filters: `status`, `maturity`, `type`, `limit`  |
+| proposal| `claim`         | `id`/`proposal_id`, `agent_identity`, `phase`          |
+| proposal| `set_maturity`  | `id`, `maturity` ∈ {new, active, mature, obsolete}     |
+| proposal| `transition`    | `proposal_id`, target state, `decided_by`, `rationale` |
+| proposal| `add_criteria`  | `proposal_id`, list of criterion strings                |
+| proposal| `verify_criteria`| `proposal_id`, `item_number`, `status`, `verified_by`   |
+| proposal| `list_reviews`  | `proposal_id`                                          |
+| proposal| `submit_review` | `proposal_id`, `reviewer`, `verdict`, `notes` (or `review`/`body`/`content` alias)|
+| proposal| `add_discussion`| `proposal_id`, `author`, `content` (or `discussion`/`text`/`body` alias) |
+
+Authoritative source: `src/apps/mcp-server/tools/consolidated.ts`. If an
+action you need is not listed, call `mcp_proposal action=list_actions` to
+discover it; do NOT guess.
+
+#### Output contract for gate / review agents
+
+A gate agent run is only complete when all three of these have occurred:
+1. `prop_transition` called with `decision` = one of `advance | hold | reject | waive | escalate`
+2. `set_maturity` called to reflect the new state
+3. `add_discussion` entry exists summarising the rationale (linked AC references, risk notes)
+
+Calling only `add_discussion` without `prop_transition` leaves the proposal stranded. The P611 reconciler is a safety net for trigger failures — it is not a substitute for correct agent protocol.
+
+For gate-review dispatches (D1/D2/D3/D4) and any non-advance verdict
+(hold/reject/escalate), structured findings MUST be emitted to **stdout**
+in this format. The orchestrator parses your stdout into
+`gate_decision_log.rationale`; the next enhancing agent reads that row
+(NOT the MCP discussion thread, which may not reach them).
+
+```
+## Verdict
+hold  (or: advance | reject | escalate)
+
+## Failures
+- (critical) [C1] one-line summary — evidence: file:line or query
+- (major)    [I3] one-line summary — evidence: ...
+
+## Remediation
+- specific action that fixes C1
+- specific action that fixes I3 (fixes: I3, I4)
+
+## Reviewer breakdown   (optional; for multi-reviewer aggregations)
+- reality-checker: REJECT — headline finding
+- code-reviewer: NEEDS-FIX — headline finding
+
+## Next step
+Concrete instruction the enhancing agent can act on without further context.
+```
+
+`advance` verdicts also write to `gate_decision_log` (via `prop_transition`
+which records the decision) and may omit the failures/remediation
+sections.
+
+#### Source-of-truth rule (DB > markdown)
+
+Product design content lives in DB proposal rows (`proposal.design`,
+`proposal.summary`, `proposal.motivation`) plus the relational tables
+(`proposal_acceptance_criteria`, `proposal_dependencies`,
+`proposal_reviews`, `proposal_discussions`, `gate_decision_log`).
+Markdown files under `docs/proposals/` are documentation surface; they
+are NOT authoritative. When you enhance a proposal:
+
+1. Write the design into the DB columns.
+2. Insert ACs into `proposal_acceptance_criteria` (the gate evaluator
+   reads this — empty table = automatic reject with "No acceptance
+   criteria defined").
+3. Insert dependencies into `proposal_dependencies` if any.
+4. A markdown supplement is OK for long-form rationale, transcripts, or
+   diagrams that don't fit in TEXT columns — but it must mirror the DB,
+   not replace it. If they diverge, the DB wins.
+
+#### Gate spawn author_identity convention
+
+Author identities for gate agents follow the pattern:
+
+```
+<provider>/<role>-d<depth_level>-p<proposal_id>
+```
+
+Examples:
+- `claude/skeptic-alpha-d1-p472`
+- `nous/gate-review-d2-p611`
+
+The DB template is stored at `roadmap.gate_task_templates.author_identity_template`.
+Gate agents MUST use the template from the DB, not a hardcoded string, so that
+author_identity stays consistent across provider switches.
+
+System-generated audit entries use `system/auto-advance` (trigger) and
+`system/reconciler` (backstop) — both registered in `roadmap_workforce.agent_registry`.
+
+#### What stops a gate run
+
+If you can't read the proposal, stop and emit `## Verdict\nhold` with a
+`## Failures` line naming the MCP error you hit. Don't invent context. Do
+NOT let a tool error become a free-form prose conclusion — the orchestrator
+can parse a structured hold but cannot parse a paragraph.
+
+## 11. Overseer Role: Hermes (Andy)
+
+Hermes (Andy) is the **overseer** of the AgentHive autonomous system. This role is distinct from squad agents — Hermes does not execute proposals directly.
+
+### Responsibilities
+* **Orchestrator Onboarding**: Teach the orchestrator processes, conventions, and workflow rules so it can organize the workforce without human intervention.
+* **System Oversight**: Monitor state machine health, gate pipeline integrity, agent dispatch, model routing, spending, and workflow compliance.
+* **Convention Enforcement**: Ensure all agents follow CONVENTIONS.md, proposal lifecycle rules, and governance decisions.
+* **Human Interface**: Bridge between the project owner (Gary) and the autonomous workforce.
+* **Knowledge Transfer**: Ensure spawned agents inherit correct and complete context.
+
+### What Hermes Does NOT Do
+* Does NOT claim proposals or acquire leases — that is for squad agents.
+* Does NOT execute code changes directly — delegates to developer agents.
+* Does NOT advance proposals through gates — that is the gate pipeline's job.
+* Does NOT make governance decisions alone — escalates for strategic calls.
+
+### Orchestrator Relationship
+The orchestrator (`scripts/orchestrator.ts`) is the **dispatcher** — it listens for state changes and assigns agents to cubics. Hermes teaches the orchestrator:
+* Which agent types map to which states
+* What conventions agents must follow
+* How to handle errors gracefully
+* When to escalate vs. retry
+
+The orchestrator handles the "how" of dispatch. Hermes handles the "what" and "why" of the system.
+
+## 12. Model-to-Workflow Phase Mapping
+
+> **NOTE:** The authoritative model-to-phase mapping lives in the DB (`model_routes` table). The table below is a **design intent** reference, not operational fact. Models listed may not be available on every host — check your host's actual model availability before relying on this.
+
+**Current host constraint:** Only `xiaomi/mimo-v2-pro` and `xiaomi/mimo-v2-omni` (Nous subscription) are available. No Claude, GPT-4, or Gemini models are configured.
+
+| Cubic Phase | Design Intent | Why | Cost Tier |
+| :--- | :--- | :--- | :--- |
+| **Design** (DRAFT, REVIEW, TRIAGE) | Deep reasoning model | Architecture, adversarial review | Premium |
+| **Build** (DEVELOP, FIX) | Code generation model | Implementation, balanced cost | Standard |
+| **Test** (MERGE) | Balanced model | Integration testing, validation | Standard |
+| **Ship** (COMPLETE, DEPLOYED) | Fast economy model | Documentation, finalization, low-cost | Economy |
+
+**To see actual routed models:** Query `model_routes` in the DB or check `roadmap.yaml`. Do not hardcode model names from this table into code — the DB is the source of truth.
+
+## 13. Financial Governance & Budget Control
+
+Every agent is accountable for **Token ROI** and **Burn Rate**.
+
+* **Budget Estimation**: Prior to high-cost sequences (deep research, large-scale refactoring), provide a budget estimate.
+* **Threshold Monitoring**:
+  * If spending exceeds 80% of the allocated task budget, pause and alert to request a budget adjustment or contingency approval.
+  * If the system detects significant over-budget, a **Circuit Breaker** may be triggered.
+* **Efficiency**: Prioritize local **Context Caching** and **Team Memory** to minimize fresh token consumption.
+
+## 14. Anomaly & Loop Detection
+
+You are responsible for identifying and breaking unproductive execution cycles.
+
+* **Inertia Loops**: If you repeat the same three steps without progress (e.g., failing to fix a build error), stop and escalate.
+* **DAG Loops**: Monitor for Directed Acyclic Graph (DAG) cycles. If a proposal oscillates between states without advancing, examine the claim log and escalate for structural intervention.
+* **Reporting**: Log all detected loops for audit.
+
+## 15. Escalation Matrix
+
+When a blocker is out of control, follow the formal hierarchy:
+
+| Issue Type | Primary Escalation | Secondary Escalation |
+| :--- | :--- | :--- |
+| **Technical Blocker** | Superior Agent (e.g., Architect Squad) | Project Owner (Gary) |
+| **Budget Exhaustion** | Auditor Agent | Project Owner (Gary) |
+| **Workflow Loop** | Skeptic Squad | Project Owner (Gary) |
+| **Security/ACL Denial** | Security Agent | Project Owner (Gary) |
+
+**The Gary Rule**: Direct intervention from the Project Owner (Gary) or designated HITL (Derek/Nolan) is reserved for high-level strategic pivots or final "Accepted" state transitions.
+
+General escalation triggers:
+
+- a schema change needs live deployment and you do not have DB access
+- you find conflicting live/runtime assumptions
+- a proposal workflow transition is blocked by missing AC, missing dependency resolution, or missing decision notes
+- another agent's in-flight work conflicts with yours
+
+When blocked, leave the next agent a better surface:
+
+- concrete files
+- exact SQL order
+- exact MCP actions needed
+- exact validation still missing
+
+That is the standard for blending into AgentHive quickly without creating drift.
+
+## 16. Active Architectural Initiatives — Keystone Index
+
+When you start work that touches one of these areas, **read the keystone proposal first**. Sub-proposals are blocked by it; competing/older proposals are marked obsolete and should be ignored. This index is the canonical resolver for "which proposal owns this concern" — if you find conflicting proposals not listed here, the one named here wins; raise an issue to fix the others.
+
+| Concern | Keystone | Sub-proposals (under keystone) | Obsoleted (do not use) |
+| :--- | :--- | :--- | :--- |
+| **Multi-tenancy DB topology** (hiveCentral + per-project tenant DBs, two-tier) | **P429** | Foundation: P495, P496, P497, P498, P499, P500, P520. Bootstrap: P501, P502, P503. Cutover: P504, P505, P518, P506. Tenant lifecycle: P507, P508, P509. Cleanup: P511, P512. Real tenants: P513, P514. Long tail: P515, P516, P517. | P430 (column classification → P506), P431 (control DB bootstrap → P501), P432 (project DB isolation → P429), P487 (memory artifact, never created) |
+| **Multi-tenancy program plan** (4-phase rollout orchestration) | **P471** | Blocks: P429, P448, P453✓, P463, P472, P473, P474, P475, P476✓, plus the entire P429 wave above | P471 IS the master plan; do not create competing program proposals |
+| **MCP tool surface hardening** (input validation, naming, error envelopes) | **P475** | Implements principle from **P456** (REVIEW mature). Companion fixes shipped: P457✓ (context_prefix CHECK widening), P486 (extractArgs+collision detection), P521 (auto-register reviewer FK). | P380 (type errors — fixed by P457 and P475) |
+| **State machine + dispatch hardening** (concurrency, idempotency, retry, leases, races) | **P433** | Blocks: P437 (idempotency), P438 (claim fail-closed), P439 (concurrency ceilings), P440 (retry+terminal), P442 (operator stop), P443 (causal IDs), P444 (host/provider/route sep), P445 (race tests), P446 (MCP runtime reliability). P441 (service topology) is adjacent but separate. | — |
+| **Gate evaluator automation** (auto-advance mature proposals through gates) | **P206** (DEVELOP active critical) | Companion: P222 (SMDL DSL), P224 (lease-required gates), P227 (workflow quality gates) | — |
+| **Liaison + agency protocol** (always-on agency representative, two-way orchestrator) | **P463** | Blocks: P464 (liaison spec + dormancy), P465 (subscription claim policy), P466 (spawn briefing), P467 (stuck detection), P468 (orchestrator↔liaison messaging), P469 (observability surface) | — |
+| **Web control plane** (multi-project operations dashboard, workforce control) | **P477** | Sub-areas (originally drafted under P387 umbrella): P388 (data layer), P389 (info-arch), P390 (design system), P391 (project/host mgmt), P392 (agency/workforce), P393 (model routes), P394 (proposal kanban), P395 (observability views), P396 (workforce viz), P397 (budget center), P398 (OAuth), P399 (co-orchestration). Treat these as P477's design backlog until/unless explicitly re-keyed. | P387 (Universal Web Dashboard — superseded by P477's multi-project framing), P301 (filesystem→Postgres unify — partially absorbed by P294) |
+| **Auth + identity unification** (keys, sessions, tokens, OAuth across agents/liaisons/operators) | **P472** (REVIEW mature) | Adjacent: P398 (OAuth UI), P159 (agent-identity wiring), P413 (service account consolidation) | — |
+| **Configuration resolution order** (env vs roadmap.yaml vs control DB vs feature flags) | **P474** (DEVELOP active) | Extended by P498 (tenant DSN class), companion P416✓/P402✓ obsoleted | — |
+| **Compatibility migration plan** (control plane and liaison cutover, dual-write windows) | **P473** (REVIEW mature) | Blocks: P438, P432 (now obsolete), P468, P464, P431 (now obsolete), P453✓ | — |
+
+### Operating rules for this index
+
+1. **Discovery flow**: When triaging a new task, look up its concern here first. The keystone tells you which design + AC are canonical. Sub-proposals are partial implementations or fragments — read them only after the keystone.
+2. **Conflict resolution**: If two non-obsolete proposals describe overlapping scope, the one named here wins. The other should either be marked obsolete or rewired as a sub-proposal under the keystone. Do not silently work on both.
+3. **Adding a new keystone**: Don't. Instead, propose extending an existing keystone, OR file an issue declaring why a new architectural concern doesn't fit any existing keystone.
+4. **Marking a proposal obsolete**: Wire a `supersedes` edge from the replacement to the obsolete proposal in `roadmap_proposal.proposal_dependencies`, then UPDATE `maturity = 'obsolete'`. Keep the row for forensic value (audit JSONB column captures the why).
+5. **Refresh cadence**: This table needs review every time a major realignment happens (new keystone proposal, large cluster of sub-proposals created, or DB topology pivot). The 2026-04-26 refresh wired the P429 family + reconciled MCP/web UI/state machine clusters.
+
+### What this index does NOT cover
+
+- **Code-level conventions** (naming, structure, testing) — see §3, §4, §6.
+- **Runtime operating rules** (folder discipline, git, deployment) — see §4a, §7, §8.
+- **Process** (proposal lifecycle, gates, leases) — see §5.
+- **Stale proposals not on critical path** — many proposals from the 2026-04-21 batch (P046–P296) sit in DEVELOP without active leases. Triage is a separate concern; this index only names the architecturally-load-bearing keystones.
+
+## 17. Definitions for Agents
+
+* **Universal Maturity Model**: Fresh entries are **new** (White), work in progress is **active** (Yellow), and ready for transition is **mature** (Green).
+* **Zero-Trust**: You have no "root" access. Every action is recorded in the `proposal_version` ledger with a Git-style delta.
+* **Staging**: All code must pass "Pre-flight Checks" in an isolated environment before promotion to the main branch.
+
+## 18. Completed Capabilities
+
+| Proposal | Capability | Description |
+| :--- | :--- | :--- |
+| **P050** | DAG Dependency Engine | Enforces dependency ordering across proposals; detects cycles; validates all blockers resolved before state promotion |
+| **P055** | Team & Squad Composition | Dynamic agent squad assembly based on skills, availability, and role requirements |
+| **P058** | Cubic Orchestration | Isolated execution environments ("cubics") with dedicated agent slots, resource budgets, and Git worktrees |
+| **P059** | Model Registry & Cost Routing | Centralized LLM catalog with cost/capability metadata; optimal model selection per task |
+| **P061** | Knowledge Base & Vector Search | Persistent store of decisions and patterns; pgvector semantic search for reuse across sessions |
+| **P062** | Team Memory | Session-persistent key-value store scoped per agent/team; fast named retrieval |
+| **P063** | Fleet Observability | Real-time heartbeats, spending correlation, efficiency metrics (tokens/proposal, cache hit rate) |
+| **P078** | Escalation Management | Obstacle detection, severity routing, compressed lifecycle for urgent issues |
+| **P090** | Token Efficiency | Three-tier cost reduction: semantic cache, prompt caching, context management + model routing |
+| **P148** | Auto-merge Worktrees | Automated merge from agent worktrees to main with back-sync to other agents |
