@@ -206,4 +206,9 @@
 {"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/src/apps/mcp-server/tools/workflow/smdl-mcp.ts","line":441,"col":11,"severity":"high","confidence":"high","proposal":"P779"}
 {"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/src/apps/mcp-server/tools/workflow/smdl-mcp.ts","line":442,"col":9,"severity":"high","confidence":"high","proposal":"P779"}
 {"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/src/apps/mcp-server/tools/workflow/smdl-mcp.ts","line":447,"col":11,"severity":"high","confidence":"high","proposal":"P779"}
-{"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/src/apps/mcp-server/tools/workflow/smdl-mcp.ts","line":448,"col":9,"severity":"high","confidence":"high","proposal":"P779"}
+{"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/src/apps/mcp-server/tools/workflow/smdl-mcp.ts","line":448,"col":9,"severity":"high","confidence":"high","proposal":"P779"}{"rule":"workflow-states.bare-rfc-stage","file":"/data/code/AgentHive/scripts/debug-transition.ts","line":40,"col":19,"severity":"high","confidence":"high","proposal":"P451"}
+{"rule":"workflow-states.bare-rfc-stage","file":"/data/code/AgentHive/scripts/check-list-order.ts","line":17,"col":46,"severity":"high","confidence":"high","proposal":"P451"}
+{"rule":"workflow-states.bare-hotfix-stage","file":"/data/code/AgentHive/scripts/check-list-order.ts","line":17,"col":17,"severity":"high","confidence":"high","proposal":"P779"}
+{"rule":"workflow-states.bare-rfc-stage","file":"/data/code/AgentHive/scripts/bootstrap-state-machine.ts","line":48,"col":21,"severity":"high","confidence":"high","proposal":"P451"}
+{"rule":"workflow-states.bare-rfc-stage","file":"/data/code/AgentHive/scripts/bootstrap-state-machine.ts","line":112,"col":18,"severity":"high","confidence":"high","proposal":"P451"}
+{"rule":"workflow-states.bare-rfc-stage","file":"/data/code/AgentHive/scripts/bootstrap-state-machine.ts","line":154,"col":30,"severity":"high","confidence":"high","proposal":"P451"}
