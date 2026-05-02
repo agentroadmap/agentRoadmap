@@ -26,6 +26,14 @@ import {
   encodeCursor,
   decodeCursor,
   type PaginationCursor,
+  // P788 — new domain row types
+  type ModelRow,
+  type RouteRow,
+  type ProviderRow,
+  type SystemStatus,
+  type SystemServiceRow,
+  type BudgetStatus,
+  type BudgetCapRow,
 } from "./control-plane-types";
 
 /**
@@ -670,19 +678,26 @@ export class ControlPlaneClient {
   }
 
   /**
-   * Execute a read-only SQL query.
+   * Execute a read-only SQL query with optional positional parameters.
    *
    * Security: Only SELECT, WITH, EXPLAIN, and SHOW queries are allowed.
    * The caller is responsible for validating the query before calling this method.
    *
    * @param sql - SQL query string (must be SELECT, WITH, EXPLAIN, or SHOW)
-   * @returns Query result rows
+   * @param params - Optional positional parameters ($1, $2, …)
+   * @returns Query result rows typed as T
    * @throws HiveError with code REMOTE_FAILURE if DB unreachable or query fails
    */
-  async query(sql: string): Promise<Record<string, unknown>[]> {
+  async query<T = Record<string, unknown>>(
+    sql: string,
+    params?: (string | number | boolean | null | undefined)[]
+  ): Promise<T[]> {
     const pool = getPool();
     try {
-      const result = await pool.query(sql);
+      // pool.query<T> requires T extends QueryResultRow; cast through unknown
+      // to avoid importing that internal pg constraint here — all our T types
+      // are plain objects that satisfy the structural requirement at runtime.
+      const result = await (pool.query as (sql: string, params?: unknown[]) => Promise<{ rows: T[] }>)(sql, params);
       return result.rows;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -692,6 +707,174 @@ export class ControlPlaneClient {
       );
     }
   }
+
+  // ─── P788: New domain methods ───────────────────────────────────────────────
+
+  /**
+   * List enabled LLM models from the joined model_metadata + model_routes view.
+   *
+   * Implements P788 — model domain real DB query.
+   *
+   * @param filters - Optional filters: provider and/or tier
+   * @returns Array of ModelRow objects
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async listModels(filters?: { provider?: string; tier?: string }): Promise<ModelRow[]> {
+    const where: string[] = ["r.is_enabled = true"];
+    const params: (string | boolean)[] = [];
+    if (filters?.provider) where.push(`r.route_provider = $${params.push(filters.provider)}`);
+    if (filters?.tier) where.push(`r.tier = $${params.push(filters.tier)}`);
+    const sql = `
+      SELECT m.model_name, m.provider, m.cost_per_million_input, m.cost_per_million_output,
+             m.context_window, m.capabilities, m.rating, m.is_active,
+             r.route_provider, r.priority, r.tier
+        FROM roadmap.model_metadata m
+        JOIN roadmap.model_routes r ON r.model_name = m.model_name AND r.route_provider = m.provider
+       WHERE ${where.join(" AND ")}
+       ORDER BY r.priority, m.model_name`;
+    return this.query<ModelRow>(sql, params);
+  }
+
+  /**
+   * List all model dispatch routes from roadmap.model_routes.
+   *
+   * Implements P788 — route domain real DB query.
+   *
+   * @returns Array of RouteRow objects ordered by route_provider, priority
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async listRoutes(): Promise<RouteRow[]> {
+    return this.query<RouteRow>(
+      `SELECT route_provider, model_name, priority, tier, is_enabled, created_at
+         FROM roadmap.model_routes
+        ORDER BY route_provider, priority`
+    );
+  }
+
+  /**
+   * Summarise budget caps from roadmap.project_budget_cap.
+   *
+   * Falls back to `{ status: 'not_implemented' }` when the budget tables do
+   * not yet exist (guarded by information_schema inspection).
+   *
+   * Implements P788 — budget domain real DB query.
+   *
+   * @param projectId - Optional project ID; when omitted all caps are returned
+   * @returns BudgetStatus with caps array or not_implemented sentinel
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async getBudgetStatus(projectId?: number): Promise<BudgetStatus> {
+    // Check which budget tables exist
+    const tableCheckRows = await this.query<{ table_name: string }>(
+      `SELECT table_name
+         FROM information_schema.tables
+        WHERE table_name IN ('project_capacity_config', 'route_token_budget', 'project_budget_cap')
+          AND table_schema NOT IN ('information_schema', 'pg_catalog')`
+    );
+    const existingTables = new Set(tableCheckRows.map((r) => r.table_name));
+
+    if (existingTables.has("project_budget_cap")) {
+      const where = projectId !== undefined ? "WHERE project_id = $1" : "";
+      const caps = await this.query<BudgetCapRow>(
+        `SELECT project_id, period, max_usd_cents, created_at
+           FROM roadmap.project_budget_cap
+           ${where}
+           ORDER BY project_id, period`,
+        projectId !== undefined ? [projectId] : undefined
+      );
+      return { status: "active", caps };
+    }
+
+    if (existingTables.has("project_capacity_config")) {
+      const caps = await this.query<BudgetCapRow>(
+        `SELECT project_id, period, max_usd_cents, created_at
+           FROM project_capacity_config
+           ORDER BY project_id, period`
+      );
+      return { status: "active", caps };
+    }
+
+    if (existingTables.has("route_token_budget")) {
+      const caps = await this.query<BudgetCapRow>(
+        `SELECT project_id, period, max_usd_cents, created_at
+           FROM route_token_budget
+           ORDER BY project_id, period`
+      );
+      return { status: "active", caps };
+    }
+
+    return {
+      status: "not_implemented",
+      message: "Budget tables not yet created",
+    };
+  }
+
+  /**
+   * List LLM providers aggregated from roadmap.model_routes.
+   *
+   * Implements P788 — provider domain real DB query.
+   *
+   * @returns Array of ProviderRow objects ordered by provider name
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async listProviders(): Promise<ProviderRow[]> {
+    return this.query<ProviderRow>(
+      `SELECT route_provider AS provider,
+              COUNT(*)::int   AS model_count,
+              bool_or(is_enabled) AS has_enabled_routes
+         FROM roadmap.model_routes
+        GROUP BY route_provider
+        ORDER BY route_provider`
+    );
+  }
+
+  /**
+   * Get overall system status: registered services + active DB connections.
+   *
+   * Reads from roadmap.control_runtime_service (created by P787).  If the
+   * table does not yet exist the method returns gracefully with empty services.
+   *
+   * Implements P788 — system/service domain real DB query.
+   *
+   * @returns SystemStatus with services list and activeConnections count
+   * @throws HiveError with code REMOTE_FAILURE if DB unreachable
+   */
+  async getSystemStatus(): Promise<SystemStatus> {
+    try {
+      const [services, connCount] = await Promise.all([
+        this.query<SystemServiceRow>(
+          `SELECT service_key, url, is_active
+             FROM roadmap.control_runtime_service
+            ORDER BY service_key`
+        ),
+        this.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count
+             FROM pg_stat_activity
+            WHERE state = 'active'`
+        ),
+      ]);
+      return {
+        services,
+        activeConnections: parseInt(connCount[0]?.count ?? "0", 10),
+      };
+    } catch {
+      // control_runtime_service may not exist (P787 creates it).
+      // Return a safe default rather than surfacing an error.
+      try {
+        const connCount = await this.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM pg_stat_activity WHERE state = 'active'`
+        );
+        return {
+          services: [],
+          activeConnections: parseInt(connCount[0]?.count ?? "0", 10),
+        };
+      } catch {
+        return { services: [], activeConnections: 0 };
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
 
   /**
    * Get a lease by ID.

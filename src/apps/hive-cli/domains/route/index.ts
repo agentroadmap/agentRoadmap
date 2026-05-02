@@ -121,9 +121,7 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listRoutes on ControlPlaneClient
-  // Query roadmap.model_routes
-  return [];
+  return client.listRoutes();
 }
 
 async function handleInfo(routeId: string, options: Record<string, unknown>) {

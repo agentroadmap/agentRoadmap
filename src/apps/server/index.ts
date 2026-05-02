@@ -997,6 +997,8 @@ export class RoadmapServer {
 				return await this.handleListRoutes();
 			if (pathname === "/api/dispatches" && method === "GET")
 				return await this.handleListDispatches(req);
+			if (pathname === "/api/board/stages" && method === "GET")
+				return await this.handleGetBoardStages();
 
 			if (pathname === "/api/mcp/sse" && method === "GET") {
 				try { appendFileSync("/tmp/mcp-debug.log", "[Server] MCP SSE request\n"); } catch {}

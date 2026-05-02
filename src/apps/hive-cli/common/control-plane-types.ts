@@ -196,6 +196,97 @@ export interface PaginationCursor {
   id_after: number;
 }
 
+// ─── P788: New domain row types ──────────────────────────────────────────────
+
+/**
+ * A model row returned by `listModels()`.
+ *
+ * Sourced from a JOIN of `roadmap.model_metadata` (m) and
+ * `roadmap.model_routes` (r).  Columns from `model_routes` may be null when
+ * a model has no enabled routes.
+ */
+export interface ModelRow {
+  model_name: string;
+  provider: string;
+  cost_per_million_input: number | null;
+  cost_per_million_output: number | null;
+  context_window: number | null;
+  capabilities: unknown; // jsonb — shape varies by provider
+  rating: number | null;
+  is_active: boolean;
+  route_provider: string | null;
+  priority: number | null;
+  tier: string | null;
+}
+
+/**
+ * A route row from `roadmap.model_routes`.
+ *
+ * Note: `model_routes` has `created_at` but no `updated_at`.
+ */
+export interface RouteRow {
+  route_provider: string;
+  model_name: string;
+  priority: number;
+  tier: string | null;
+  is_enabled: boolean;
+  created_at: string; // ISO 8601; model_routes has no updated_at column
+}
+
+/**
+ * A provider summary row returned by `listProviders()`.
+ *
+ * Aggregated from `roadmap.model_routes` via GROUP BY route_provider.
+ */
+export interface ProviderRow {
+  provider: string;
+  model_count: number;
+  has_enabled_routes: boolean;
+}
+
+/**
+ * A single runtime service entry from `roadmap.control_runtime_service`.
+ */
+export interface SystemServiceRow {
+  service_key: string;
+  url: string;
+  is_active: boolean;
+}
+
+/**
+ * Composite return type for `getSystemStatus()`.
+ *
+ * Combines control_runtime_service rows with the current pg_stat_activity
+ * active-connection count.
+ */
+export interface SystemStatus {
+  services: SystemServiceRow[];
+  activeConnections: number;
+}
+
+/**
+ * A single budget cap entry from `roadmap.project_budget_cap`.
+ */
+export interface BudgetCapRow {
+  project_id: number;
+  period: string; // 'day' | 'week' | 'month'
+  max_usd_cents: number;
+  created_at: string;
+}
+
+/**
+ * Return type for `getBudgetStatus()`.
+ *
+ * Returns `status: 'not_implemented'` when neither budget table exists yet.
+ */
+export interface BudgetStatus {
+  status: "active" | "not_implemented";
+  message?: string;
+  caps?: BudgetCapRow[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Helper to encode a cursor to base64.
  *

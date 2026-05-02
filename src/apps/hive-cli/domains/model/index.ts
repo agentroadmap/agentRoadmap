@@ -115,9 +115,10 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listModels on ControlPlaneClient
-  // Query roadmap.model_routes
-  return [];
+  const filters: { provider?: string; tier?: string } = {};
+  if (typeof options.provider === "string") filters.provider = options.provider;
+  if (typeof options.tier === "string") filters.tier = options.tier;
+  return client.listModels(Object.keys(filters).length > 0 ? filters : undefined);
 }
 
 async function handleInfo(modelId: string, options: Record<string, unknown>) {

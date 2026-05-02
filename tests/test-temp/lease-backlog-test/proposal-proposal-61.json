@@ -1,0 +1,27 @@
+{
+  "proposalId": "proposal-61",
+  "title": "Test Proposal",
+  "proposer": "agent-1",
+  "proposedAt": "2026-05-01T23:51:58.833Z",
+  "status": "Approved",
+  "reviews": [
+    {
+      "reviewer": "pm-user",
+      "role": "pm",
+      "decision": "approved",
+      "comments": "OK",
+      "timestamp": "2026-05-01T23:51:58.833Z"
+    },
+    {
+      "reviewer": "arch-user",
+      "role": "architect",
+      "decision": "approved",
+      "comments": "OK",
+      "timestamp": "2026-05-01T23:51:58.834Z"
+    }
+  ],
+  "notes": "Proposed by agent-1",
+  "approvedBy": "arch-user",
+  "approvedAt": "2026-05-01T23:51:58.834Z",
+  "addedToBacklogAt": "2026-05-01T23:51:58.836Z"
+}

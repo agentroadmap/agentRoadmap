@@ -84,9 +84,7 @@ const domainSchema: DomainSchema = {
 
 async function handleList(options: Record<string, unknown>) {
   const client = getControlPlaneClient();
-  // TODO: Implement listProviders method on ControlPlaneClient
-  // Query roadmap_workforce.provider_registry
-  return [];
+  return client.listProviders();
 }
 
 async function handleInfo(providerId: string, options: Record<string, unknown>) {
