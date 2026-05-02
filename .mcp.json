@@ -3,6 +3,11 @@
     "agenthive": {
       "type": "sse",
       "url": "http://localhost:6421/sse"
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--browser", "chromium", "--headless"]
     }
   }
 }

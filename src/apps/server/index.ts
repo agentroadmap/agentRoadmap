@@ -521,8 +521,8 @@ export class RoadmapServer {
 			repositoryPath: p.filePath || null,
 			budgetLimitUsd: p.budgetLimitUsd || 0,
 			tags: sanitizedLabels.length > 0 ? sanitizedLabels.join(",") : null,
-			createdAt: p.createdDate || p.createdAt || "",
-			updatedAt: p.updatedDate || p.updatedAt || "",
+			createdAt: p.createdDate || p.createdAt || null,
+			updatedAt: p.updatedDate || p.updatedAt || null,
 		};
 	}
 
