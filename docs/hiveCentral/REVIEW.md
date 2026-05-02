@@ -1,98 +1,164 @@
 # hiveCentral Database Review — P429/P755 Status
 
-## Summary ✅
+⚠️ **ACCURACY CORRECTION:** Previous review contained hallucinated table names. This version reflects actual schema introspection.
 
-The **hiveCentral** control-plane database is fully designed, created, and populated with all control-plane schema.
+## Summary ⏳ PARTIAL
 
-### Key Facts
+The **hiveCentral** control-plane database is **deployed with DDL** but has **significant gaps**:
+- ✅ All 17 schemas created
+- ✅ Base table structure in place (40 logical tables)
+- ❌ **Partition counting inflated metrics** — system shows 160+ "tables" but ~100 are partition children (_p* partitions + _default parent templates)
+- ❌ **Missing tables cited in P787/P788:** No `control_runtime_service`, no `agency_service_definition`, no `workforce.agent_capability`
+- ⏳ **Baseline seed data not populated** — blocking P429 multi-project integration tests
+
+### Key Facts (Corrected)
 - **Database Name:** `hiveCentral` (live @ 127.0.0.1:5432)
-- **Design Doc:** `data-model.md` (950 lines)
-- **DDL Files:** 17 files in `database/ddl/hivecentral/` (001-015 + 000-roles)
+- **Design Doc:** `data-model.md` (950 lines, contains outdated table names)
+- **DDL Files:** ~17 files in `database/ddl/hivecentral/` (001-015 + 000-roles)
 - **Schemas Created:** 17 (core, agency, control_identity, control_model, control_project, control_credential, workforce, template, tooling, sandbox, dependency, messaging, observability, governance, efficiency, partman, public)
-- **Tables:** 160+ across all schemas
-- **Distribution:**
-  - `observability` — 35 tables (high-volume telemetry/traces)
-  - `governance` — 22 tables (proposals, gate decisions, policy, audit)
-  - `efficiency` — 22 tables (cost attribution, token budgets, traces)
-  - `messaging` — 17 tables (chat, liaison, notifications)
-  - `agency` — 18 tables (agencies, agents, teams, capabilities)
-  - Others: 46 tables across infrastructure, identity, models, projects, etc.
+- **Logical Base Tables:** 40 across all schemas (excluding partitions and _default tables)
+- **Partition Inflation:** System shows 160+ due to time-series partitioning (_p20260501, _p20260601, _default parent templates)
+- **Distribution (Base Tables Only):**
+  - `governance` — 3 logical tables (decision_log, event_log, policy_version + 10 partitions each)
+  - `observability` — 1 logical table (model_routing_outcome, no time-series partitions yet)
+  - `efficiency` — 3 logical tables (cost_ledger_summary, efficiency_metric, route_token_budget + 10 partitions each)
+  - `control_model` — 2 logical tables (model, model_route)
+  - `control_project` — 5 logical tables (project, project_db, project_host, project_member, project_sandbox_grant, project_worktree)
+  - Others: 20 tables across core, agency, credential, identity, messaging, tooling, sandbox, workforce, template
 
 ---
 
 ## Design Highlights
 
-### Architectural Patterns Applied Consistently
+## Design Highlights & Gaps
+
+### Architectural Patterns Applied ✅
 1. **Catalog Hygiene Block** — Every table has `owner_did`, `lifecycle_status`, `deprecated_at`, `retire_after`, `notes`, `created_at`, `updated_at`
 2. **Append-Only Immutability** — Audit and observability tables block UPDATE/DELETE via triggers + REVOKE
-3. **Partitioned Time-Series** — High-volume tables partition monthly via pg_partman with configurable retention
-4. **Tenant Scope Invariants** — All multi-tenant tables enforce scope='global'|'tenant' with `project_id IS NULL`|`NOT NULL` checks
+3. **Time-Series Partitioning** — High-volume tables partitioned monthly via pg_partman (note: inflates table count)
 
-### Key Tables by Functional Area
+### Actual Tables (Corrected from Schema Introspection)
 
-#### Infrastructure & Governance
-- `core.installation` — hiveCentral metadata
-- `core.host` — compute hosts, max spawns, lifecycle
-- `core.runtime_flag` — platform-wide feature flags
-- `core.service_heartbeat` — service health monitoring
+#### Core Infrastructure
+✅ `core.installation` — hiveCentral metadata
+✅ `core.host` — compute hosts, max spawns, lifecycle
+✅ `core.runtime_flag` — platform-wide feature flags
+✅ `core.service_heartbeat` — service health monitoring
+✅ `core.os_user` — OS user mappings
 
 #### Identity & Access
-- `control_identity.principal` — agents, humans, services (canonical identity)
-- `control_identity.did_document` — W3C DIDs for every principal
-- `control_identity.principal_key` — cryptographic credentials per principal
-- `control_identity.audit_action` — immutable audit log
+✅ `control_identity.audit_action` — immutable audit log
+✅ `control_identity.did_document` — W3C DIDs for every principal
+⚠️ **MISSING:** `control_identity.principal` — agent/human/service identity registry (referenced in design but not created)
+⚠️ **MISSING:** `control_identity.principal_key` — cryptographic credentials per principal
 
 #### Agency & Workforce
-- `agency.agency` — agent agencies (providers like "Anthropic")
-- `agency.agency_service_definition` — agency service offerings
-- `workforce.agent_registry` — live agent registration
-- `workforce.agent_capability` — declared capabilities per agent
-- `workforce.agent_trust` — trust levels + audit trail
+✅ `agency.agency` — agent agencies (providers like "Anthropic")
+✅ `agency.agency_session` — time-series, partitioned
+✅ `agency.liaison_message` — time-series, partitioned
+✅ `agency.liaison_message_kind_catalog` — liaison message types
+✅ `workforce.agent` — live agent registration
+✅ `workforce.agent_skill` — agent capabilities/skills
+✅ `workforce.skill` — skill catalog
+✅ `workforce.skill_grant_log` — audit trail
+⚠️ **MISSING:** `workforce.agent_capability` (design called this out; actual schema uses `agent_skill`)
+⚠️ **MISSING:** `workforce.agent_trust` — trust levels + audit trail
 
 #### Model Routing & Dispatch
-- `control_model.model_metadata` — model catalog (Claude, GPT-4, etc.)
-- `control_model.model_route` — enabled routes (model+provider+host)
-- `control_model.model_routing_outcome` — dispatch audit trail
+✅ `control_model.model` — model catalog (Claude, GPT-4, etc.)
+✅ `control_model.model_route` — enabled routes (model+provider+host)
+✅ `control_model.host_model_policy` — routing policy per host
+⚠️ **MISSING:** `control_runtime_service` (P787 requires this but doesn't exist; code currently uses env vars)
 
 #### Project & Cost Management
-- `control_project.project` — project registry (pointer to tenant DB)
-- `control_project.project_route_policy` — per-project route allowlist
-- `control_project.project_sandbox_grant` — sandbox access per project
+✅ `control_project.project` — project registry (pointer to tenant DB)
+✅ `control_project.project_db` — tenant DB connection metadata
+✅ `control_project.project_host` — host assignments
+✅ `control_project.project_member` — project team/roles
+✅ `control_project.project_sandbox_grant` — sandbox access
+✅ `control_project.project_worktree` — worktree assignments
 
 #### Observability & Efficiency
-- `observability.trace_span` — distributed traces (time-series partitioned)
-- `efficiency.token_budget_ledger` — token spend tracking
-- `efficiency.cost_attribution` — cost rollup per project/agent
+✅ `observability.model_routing_outcome` — dispatch audit trail (no time-series yet)
+✅ `efficiency.cost_ledger_summary` — cost rollup per project/agent, time-series
+✅ `efficiency.efficiency_metric` — efficiency metrics, time-series
+✅ `efficiency.route_token_budget` — token spend tracking
+⚠️ **MISSING:** `efficiency.token_budget_ledger` (design cited this; actual table is `route_token_budget`)
 
 #### Governance & Decision Logs
-- `governance.proposal_decision_log` — immutable gate decisions
-- `governance.policy_version` — versioned policies
-- `governance.compliance_audit` — compliance check trail
+✅ `governance.decision_log` — immutable gate decisions, time-series
+✅ `governance.event_log` — event stream, time-series
+✅ `governance.policy_version` — versioned policies
+⚠️ **MISSING:** `governance.compliance_audit` (design cited this; actual table is `compliance_check` but not found in introspection)
+
+#### Credentials
+✅ `control_credential.credential` — credential storage
+✅ `control_credential.credential_grant` — credential access grants
+✅ `control_credential.rotation_log` — rotation audit trail
+
+#### Messaging
+✅ `messaging.a2a_message` — agent-to-agent messages
+✅ `messaging.a2a_dlq` — dead-letter queue
+✅ `messaging.a2a_message_archive` — message archive
+
+#### Sandbox & Tooling
+✅ `sandbox.sandbox_definition` — sandbox environment specs
+✅ `sandbox.egress_rule` — egress firewall rules
+✅ `sandbox.mount_grant` — volume mount access
+✅ `tooling.tool` — tool registry
+✅ `tooling.cli_tool` — CLI tool definitions
+✅ `tooling.tool_grant` — tool access grants
+
+#### Templates
+✅ `template.gate_definition` — gate workflow templates
+✅ `template.state_name` — state name registry
 
 ---
 
-## P755 (Umbrella B, B1) Alignment
+## P755 (Umbrella B, B1) & P429 Status
 
-**Status:** ✅ **COMPLETE**
+### Critical Issues Blocking Integration
 
-The control-plane boundary classification (P755) correctly identifies all 160+ hiveCentral tables as **control-plane** (shared across projects) versus the 140+ tables in **project tenant databases** as **tenant-scoped**.
+**Status:** ⏳ **NOT COMPLETE — P787/P788/P501 blockers remain**
 
-- **Control-plane tables migrate to hiveCentral:** ✅ Done (already deployed)
-- **Tenant-scoped tables stay in per-project DBs:** ✅ agenthive (first tenant), future tenants (monkeyKing-audio, georgia-singer, etc.)
-- **Database-level isolation:** ✅ Enforced by role-based access (agenthive_orchestrator, agenthive_agency, agenthive_observability)
+#### 1. Missing `control_runtime_service` Table
+- **Impact:** P787 (runtime endpoint resolution) already committed code expecting this table, but it doesn't exist in hiveCentral
+- **Status:** Codex flagged this gap; Copilot's review missed it
+- **Action Required:** Add to DDL or update P787 to use placeholder until P501 seeding
+
+#### 2. Table Name Drift
+- Design doc cited outdated names; actual schema differs (e.g., `route_token_budget` vs `token_budget_ledger`)
+- `data-model.md` (950 lines) needs audit and correction before it can serve as source of truth
+
+#### 3. Missing Identity Registry
+- `control_identity.principal` (agent/human/service canonical identity) not created
+- Required for agent trust/authorization across projects
+- Only `did_document` created; principal registry missing
+
+#### 4. Workforce & Agency Gaps
+- `workforce.agent_trust` not created (required for per-project agent authorization)
+- `agency_service_definition` missing (blocks service capability discovery)
+- These are structural blockers for P748+ (role-based assignment)
+
+#### 5. Partition Counting Inflates Metrics
+- Reported "160+ tables" but only ~40 logical base tables
+- Remaining entries are partition children (_p20260501, _default parents)
+- Partition scheme is correct; metrics reporting is misleading
+- System is actually **smaller than initially believed** and requires more schema extension for P501
+
+### P755 Classification (Corrected)
+
+**Control-Plane Tables (hiveCentral):** 40 base tables across 17 schemas
+- ✅ Correctly isolated from tenant databases
+- ✅ Role-based access control in place (agenthive_orchestrator, agenthive_agency, agenthive_observability)
+- ⚠️ Incomplete — missing 4-5 tables required by dependent proposals (P787, P748+)
+
+**Tenant-Scoped Tables (per-project DB):** ~140 tables in `agenthive` (first tenant)
+- ✅ Schema design exists
+- ⏳ P501 must migrate these without mixing with control-plane
+- ⏳ New tenant databases not yet provisioned
 
 ---
-
-## P429 (Multi-Project) Alignment
-
-**Status:** ✅ **READY FOR P501 MIGRATION WAVE**
-
-The schema supports the target topology:
-1. **hiveCentral (singleton)** — contains all 160+ control-plane tables
-2. **agenthive (first tenant)** — contains all 140+ tenant-scoped tables
-3. **Future tenants** (monkeyKing-audio, georgia-singer, ...) — each with identical schema, data-isolated
-
-**Cross-DB FKs:** Currently use soft references (string pointers); P501 will validate FK semantics at the application layer and enforce at DB layer once all tenants are online.
 
 ---
 
@@ -102,87 +168,54 @@ The schema supports the target topology:
 |---|---|---|
 | Database creation | ✅ | `CREATE DATABASE hiveCentral;` |
 | Roles & permissions | ✅ | 000-roles.sql applied (agenthive_orchestrator, agenthive_agency, agenthive_observability) |
-| Schema 001-015 DDL | ✅ | All tables, indexes, constraints, triggers applied |
-| pg_partman extension | ✅ | Installed; high-volume tables partitioned monthly |
-| Seed data | ⏳ | Control-plane data (agencies, models, hosts, policies) — seeded by P501 migration |
-| Access control validation | ⏳ | Test role-based query access (role_rbac tests) |
-| Cross-tenant FK validation | ⏳ | Verify soft-reference semantics in P501 integration tests |
+| Schema 001-015 DDL | ⚠️ PARTIAL | 40 base tables deployed; 4-5 required tables missing (control_runtime_service, principal, agent_trust, compliance_check) |
+| pg_partman extension | ✅ | Installed; time-series tables partitioned monthly |
+| **Baseline seed data** | ❌ | **BLOCKING:** Control-plane seed (agencies, models, routes, hosts, projects) — required by P501 migration |
+| **Missing tables** | ❌ | control_runtime_service (P787), principal registry (identity), agent_trust (workforce), compliance_check (governance) |
+| Cross-tenant FK validation | ⏳ | Deferred to P501 integration tests |
 
 ---
 
-## Known Issues & Cutover Notes
+## What Actually Works vs What's Missing
 
-### 1. Legacy `agenthive` Database
-The current `agenthive` database contains a **mixed schema** with both control-plane and tenant-scoped tables. During P501 migration:
-- **Extract:** Copy 160+ control-plane tables → hiveCentral (already there)
-- **Rename:** `agenthive` → `agenthive_tenant_project_1` (or drop and rebuild)
-- **Recycle:** Create new `agenthive` with tenant-scoped schema only
+### ✅ Working
+- Time-series infrastructure (partman, monthly rotation)
+- Role-based access control (RBAC schema)
+- Core infrastructure (hosts, flags, heartbeats)
+- Model routing core (model, model_route tables)
+- Project metadata (project, project_db, project_member tables)
+- Message queuing (a2a_message, DLQ)
+- Basic governance (decision_log, event_log)
 
-### 2. Soft FKs During Transition
-Cross-DB FKs cannot be enforced by PostgreSQL directly. Current DDL uses:
-```sql
--- Example: control_project.project -> project_id (reference to tenant DB)
-project_id BIGINT NOT NULL,  -- FK is semantic only; validated by app layer
-```
-This is **intentional** during the transition. Once all tenants are online (P501), add app-layer validation or use event-driven consistency.
+### ❌ Blocking P787/P788/P748+
+- `control_runtime_service` table — P787 code expects this; doesn't exist
+- `control_identity.principal` — canonical agent identity missing
+- `workforce.agent_trust` — agent authorization per project missing
+- `governance.compliance_check` — table appears in design but not created
 
-### 3. Baseline Data
-Control-plane seed data (agencies, models, host policies) must be inserted by a P501-driven migration script. Currently not seeded:
-- `agency.agency` — must insert "Anthropic", "OpenAI", etc.
-- `control_model.model_metadata` — must insert Claude, GPT-4, etc.
-- `control_model.model_route` — must insert enabled routes per host
-- `control_project.project` — pointer to agenthive tenant DB
-
----
-
-## Verification
-
-### Schema Integrity Check
-```bash
-# Verify all schemas exist
-PGPASSWORD=YMA3peHGLi6shUTr psql -h 127.0.0.1 -U admin -d hiveCentral -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_*', 'information_schema')"
-# Expected: 160+
-
-# Verify key tables exist
-PGPASSWORD=YMA3peHGLi6shUTr psql -h 127.0.0.1 -U admin -d hiveCentral -c "\dt governance.proposal_decision_log"
-# Expected: Found
-
-# Verify partman is active
-PGPASSWORD=YMA3peHGLi6shUTr psql -h 127.0.0.1 -U admin -d hiveCentral -c "SELECT * FROM partman.part_config;"
-```
-
-### Access Control Check
-```bash
-# Test orchestrator role can read observability
-PGPASSWORD=YMA3peHGLi6shUTr psql -h 127.0.0.1 -U admin -d hiveCentral -U agenthive_orchestrator -c "SELECT COUNT(*) FROM observability.trace_span LIMIT 1;"
-# Expected: 0 (no data yet, but no permission error)
-```
+### ⏳ Needs P501 Data Migration
+- **Agency seed data** — "Anthropic", "OpenAI", etc. not inserted
+- **Model seed data** — Claude, GPT-4, etc. not inserted
+- **Host routing policy** — no default routes assigned
+- **Project references** — no tenant DB pointers
 
 ---
 
-## Next Steps
+## Root Causes of Accuracy Issues
 
-### P501 Migration Wave
-1. Extract all control-plane tables from `agenthive` → verify in `hiveCentral`
-2. Seed baseline data (agencies, models, hosts, projects) into hiveCentral
-3. Validate cross-DB FK semantics
-4. Recycle `agenthive` as first tenant database
+1. **Design-Implementation Gap**
+   - `data-model.md` designed with 12 schemas + 160+ conceptual entities
+   - Actual DDL deployed 17 schemas with 40 base tables
+   - Many proposed tables (principal, agent_trust, compliance_audit) not yet created
 
-### P748+ Features
-Once P501 is complete:
-- P747/P748 (agent_role_profile by workflow) → implement queue-role assignment logic
-- P787 (runtime endpoints) → point to hiveCentral control_runtime_service
-- P797 (multi-platform routing) → reference hiveCentral model_route
+2. **Partition Inflation in Metrics**
+   - Time-series tables expanded to ~10 partition children each
+   - `pg_partman` creates parent + _default template + monthly children
+   - Reporting system counted all as "tables" instead of "logical partitions"
 
----
-
-## Conclusion
-
-✅ **hiveCentral is production-ready for P501 integration.** The schema is comprehensive, well-partitioned, immutable where required, and supports the target multi-project topology. All architectural patterns are applied consistently. The next phase (P501) focuses on data migration and cross-DB validation.
+3. **Soft FKs During Transition**
+   - Cross-DB references cannot be enforced by PostgreSQL
+   - Application layer must validate `project_id` pointers to tenant DBs
+   - Actual enforcement deferred to P501 when all tenants online
 
 ---
-
-**Related Documents:**
-- `data-model.md` — Full logical and physical design
-- `control-plane-multi-project-architecture.md` — Architecture overview
-- `../database/control-plane-tables.md` — Table classification register (P755)
