@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PulseEvent } from "../../../shared/types";
 import { apiClient } from "../lib/api";
 
@@ -37,7 +37,14 @@ const formatEventType = (type: string) => {
 	return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
+const normalizeProposalId = (value: string) =>
+	value.trim().toLowerCase().replace(/^p0*/, "");
+
 const ActivityFeed: React.FC = () => {
+	const proposalFilter = useMemo(() => {
+		if (typeof window === "undefined") return "";
+		return new URLSearchParams(window.location.search).get("proposal") ?? "";
+	}, []);
 	const [events, setEvents] = useState<PulseEvent[]>([]);
 	const [filteredEvents, setFilteredEvents] = useState<PulseEvent[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -71,16 +78,27 @@ const ActivityFeed: React.FC = () => {
 		else if (timeRange === "7d") rangeMs = 7 * 24 * 60 * 60 * 1000;
 
 		if (timeRange === "all") {
-			setFilteredEvents(events);
+			setFilteredEvents(
+				proposalFilter
+					? events.filter(
+							(event) =>
+								normalizeProposalId(event.id) ===
+								normalizeProposalId(proposalFilter),
+						)
+					: events,
+			);
 		} else {
 			setFilteredEvents(
 				events.filter((e) => {
 					const eventTime = new Date(e.timestamp).getTime();
-					return now - eventTime <= rangeMs;
+					const matchesProposal = proposalFilter
+						? normalizeProposalId(e.id) === normalizeProposalId(proposalFilter)
+						: true;
+					return matchesProposal && now - eventTime <= rangeMs;
 				}),
 			);
 		}
-	}, [events, timeRange]);
+	}, [events, proposalFilter, timeRange]);
 
 	// Auto-scroll to top on new events
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Trigger scroll when events change
@@ -95,7 +113,9 @@ const ActivityFeed: React.FC = () => {
 			<div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50">
 				<div className="flex items-center space-x-4">
 					<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-						Activity Feed
+						{proposalFilter
+							? `Activity Feed: ${proposalFilter}`
+							: "Activity Feed"}
 					</h2>
 					<select
 						value={timeRange}
@@ -120,7 +140,9 @@ const ActivityFeed: React.FC = () => {
 			) : filteredEvents.length === 0 ? (
 				<div className="p-8 text-center">
 					<p className="text-sm text-gray-500 dark:text-gray-400">
-						No activity in this time range
+						{proposalFilter
+							? "No activity for this proposal in this time range"
+							: "No activity in this time range"}
 					</p>
 				</div>
 			) : (

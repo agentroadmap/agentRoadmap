@@ -1,5 +1,11 @@
 import { execSync } from "node:child_process";
-import { appendFileSync, createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import {
+	appendFileSync,
+	createReadStream,
+	existsSync,
+	readFileSync,
+	statSync,
+} from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -24,11 +30,9 @@ import type {
 } from "../../types/index.ts";
 import { watchConfig } from "../../utils/config-watcher.ts";
 import { formatVersionLabel, getVersionInfo } from "../../utils/version.ts";
-import { query } from "../../infra/postgres/pool.ts";
-import {
-	hashOperatorToken,
-	requireOperator,
-} from "./operator-auth.ts";
+import { getPool, query } from "../../infra/postgres/pool.ts";
+import type { PoolClient } from "pg";
+import { hashOperatorToken, requireOperator } from "./operator-auth.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
@@ -148,6 +152,9 @@ export class RoadmapServer {
 	private mcpServer: McpServer | null = null;
 	private sseTransports = new Map<string, SSEServerTransport>();
 	private relayService: RelayService | null = null;
+	private roadmapEventsClient: PoolClient | null = null;
+	private roadmapEventsReconnectTimer: ReturnType<typeof setTimeout> | null =
+		null;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -375,7 +382,7 @@ export class RoadmapServer {
 		setInterval(async () => {
 			try {
 				const result = await query(
-					`SELECT MAX(updated_at) as latest FROM roadmap_proposal.proposal`
+					`SELECT MAX(updated_at) as latest FROM roadmap_proposal.proposal`,
 				);
 				const latest = result.rows[0]?.latest;
 				if (latest && new Date(latest) > this.lastProposalCheck) {
@@ -386,7 +393,7 @@ export class RoadmapServer {
 				// Silently continue on polling errors
 			}
 		}, POLL_INTERVAL);
-		console.log(`📊 Change polling started (every ${POLL_INTERVAL/1000}s)`);
+		console.log(`📊 Change polling started (every ${POLL_INTERVAL / 1000}s)`);
 	}
 
 	private async handleSubscribe(ws: WebSocket, channel: string) {
@@ -473,8 +480,7 @@ export class RoadmapServer {
 			? p.labels
 					.map((label: unknown) => String(label).trim())
 					.filter(
-						(label: string) =>
-							label.length > 0 && label !== "[object Object]",
+						(label: string) => label.length > 0 && label !== "[object Object]",
 					)
 			: [];
 		return {
@@ -504,13 +510,59 @@ export class RoadmapServer {
 			needsCapabilities: p.needs_capabilities || [],
 			liveActivity: p.liveActivity || null,
 			maturity: p.maturity || null,
-			maturityLevel: p.maturity === "new" ? 0 : p.maturity === "mature" ? 5 : p.maturity === "obsolete" ? 10 : null,
+			maturityLevel:
+				p.maturity === "new"
+					? 0
+					: p.maturity === "mature"
+						? 5
+						: p.maturity === "obsolete"
+							? 10
+							: null,
 			repositoryPath: p.filePath || null,
 			budgetLimitUsd: p.budgetLimitUsd || 0,
 			tags: sanitizedLabels.length > 0 ? sanitizedLabels.join(",") : null,
 			createdAt: p.createdDate || p.createdAt || "",
 			updatedAt: p.updatedDate || p.updatedAt || "",
 		};
+	}
+
+	private scheduleRoadmapEventsReconnect() {
+		if (this._stopping || this.roadmapEventsReconnectTimer) return;
+		this.roadmapEventsReconnectTimer = setTimeout(() => {
+			this.roadmapEventsReconnectTimer = null;
+			void this.startRoadmapEventsListener();
+		}, 3000);
+	}
+
+	private async startRoadmapEventsListener(): Promise<void> {
+		if (this._stopping || this.roadmapEventsClient) return;
+		try {
+			const client = await getPool().connect();
+			this.roadmapEventsClient = client;
+			client.on("error", (err) => {
+				console.error("[WS] roadmap_events listener error:", err.message);
+				if (this.roadmapEventsClient === client) {
+					this.roadmapEventsClient = null;
+				}
+				try {
+					client.release(true);
+				} catch {}
+				this.scheduleRoadmapEventsReconnect();
+			});
+			await client.query("LISTEN roadmap_events");
+			client.on("notification", (notification) => {
+				if (notification.channel !== "roadmap_events") return;
+				this.broadcastProposalsUpdated();
+			});
+			console.log("[WS] Listening for roadmap_events");
+		} catch (err) {
+			console.warn(
+				"[WS] roadmap_events listener unavailable:",
+				(err as Error).message,
+			);
+			this.roadmapEventsClient = null;
+			this.scheduleRoadmapEventsReconnect();
+		}
 	}
 
 	// Send proposal snapshot to a WebSocket client
@@ -526,7 +578,9 @@ export class RoadmapServer {
 				`[WS] Sending proposal snapshot (project=${projectScope ?? "*"})...`,
 			);
 			const store = await this.getContentStoreInstance();
-			const proposals = await this.core.queryProposals({ includeCrossBranch: true });
+			const proposals = await this.core.queryProposals({
+				includeCrossBranch: true,
+			});
 			console.log(`[WS] Got ${proposals.length} proposals from query`);
 			const wsProposals = proposals.map((p) => this.proposalToWsFormat(p));
 			console.log(`[WS] Transformed to ${wsProposals.length} WS proposals`);
@@ -541,10 +595,12 @@ export class RoadmapServer {
 		} catch (err) {
 			console.error("[WS] Failed to send proposal snapshot:", err);
 			// Send empty snapshot on error so frontend doesn't hang
-			ws.send(JSON.stringify({
-				type: "proposal_snapshot",
-				data: [],
-			}));
+			ws.send(
+				JSON.stringify({
+					type: "proposal_snapshot",
+					data: [],
+				}),
+			);
 		}
 	}
 
@@ -553,8 +609,12 @@ export class RoadmapServer {
 	// so we cannot filter per recipient. Once tenant-DB routing lands the
 	// payload will carry project_id and we will skip clients whose
 	// wsProjectScope(ws) does not match.
-	private broadcastProposalUpdate(type: "proposal_update" | "proposal_insert" | "proposal_delete", data: any) {
-		const wsData = type === "proposal_delete" ? data : this.proposalToWsFormat(data);
+	private broadcastProposalUpdate(
+		type: "proposal_update" | "proposal_insert" | "proposal_delete",
+		data: any,
+	) {
+		const wsData =
+			type === "proposal_delete" ? data : this.proposalToWsFormat(data);
 		const dataProjectId =
 			typeof (data as Record<string, unknown> | null)?.project_id === "number"
 				? ((data as Record<string, unknown>).project_id as number)
@@ -571,7 +631,9 @@ export class RoadmapServer {
 				const scope = this.wsProjectScope.get(ws) ?? null;
 				if (scope != null && scope !== dataProjectId) continue;
 			}
-			try { ws.send(msg); } catch {}
+			try {
+				ws.send(msg);
+			} catch {}
 		}
 	}
 
@@ -687,6 +749,7 @@ export class RoadmapServer {
 
 			// Start polling for external DB changes (cron, MCP, direct SQL)
 			this.startChangePolling();
+			void this.startRoadmapEventsListener();
 		} catch (error) {
 			// Handle port already in use error
 			const errorCode = (error as { code?: string })?.code;
@@ -739,6 +802,20 @@ export class RoadmapServer {
 		this.searchService = null;
 		this.contentStore = null;
 		this.storeReadyBroadcasted = false;
+		if (this.roadmapEventsReconnectTimer) {
+			clearTimeout(this.roadmapEventsReconnectTimer);
+			this.roadmapEventsReconnectTimer = null;
+		}
+		if (this.roadmapEventsClient) {
+			const client = this.roadmapEventsClient;
+			this.roadmapEventsClient = null;
+			try {
+				await client.query("UNLISTEN roadmap_events");
+			} catch {}
+			try {
+				client.release();
+			} catch {}
+		}
 
 		// Proactively close WebSocket connections
 		for (const ws of this.sockets) {
@@ -798,7 +875,9 @@ export class RoadmapServer {
 			req.url || "/",
 			`http://${req.headers.host || "localhost"}`,
 		);
-		try { appendFileSync("/tmp/mcp-debug.log", `[HTTP] ${req.method} ${req.url}\n`); } catch {}
+		try {
+			appendFileSync("/tmp/mcp-debug.log", `[HTTP] ${req.method} ${req.url}\n`);
+		} catch {}
 		const _pathname = url.pathname;
 		const method = req.method || "GET";
 
@@ -849,68 +928,85 @@ export class RoadmapServer {
 		const pathname = url.pathname;
 		const method = req.method;
 
-	// Static file serving from webDir
-	const staticExtensions = [".js", ".mjs", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".json"];
-	if (method === "GET" && staticExtensions.some(ext => pathname.endsWith(ext))) {
-		const staticPath = join(webDir, pathname);
-		console.log(`[Static] Looking for: ${staticPath}, exists: ${existsSync(staticPath)}`);
-		if (existsSync(staticPath) && statSync(staticPath).isFile()) {
-			const ext = staticPath.split(".").pop() || "";
-			const mimeTypes: Record<string, string> = {
-				js: "application/javascript",
-				mjs: "application/javascript",
-				css: "text/css",
-				html: "text/html",
-				json: "application/json",
-				png: "image/png",
-				jpg: "image/jpeg",
-				jpeg: "image/jpeg",
-				svg: "image/svg+xml",
-				ico: "image/x-icon",
-				woff: "font/woff",
-				woff2: "font/woff2",
-			};
-			const content = readFileSync(staticPath);
-			return new Response(content, {
-				headers: { "Content-Type": mimeTypes[ext] || "application/octet-stream" },
+		// Static file serving from webDir
+		const staticExtensions = [
+			".js",
+			".mjs",
+			".css",
+			".png",
+			".jpg",
+			".jpeg",
+			".svg",
+			".ico",
+			".woff",
+			".woff2",
+			".json",
+		];
+		if (
+			method === "GET" &&
+			staticExtensions.some((ext) => pathname.endsWith(ext))
+		) {
+			const staticPath = join(webDir, pathname);
+			console.log(
+				`[Static] Looking for: ${staticPath}, exists: ${existsSync(staticPath)}`,
+			);
+			if (existsSync(staticPath) && statSync(staticPath).isFile()) {
+				const ext = staticPath.split(".").pop() || "";
+				const mimeTypes: Record<string, string> = {
+					js: "application/javascript",
+					mjs: "application/javascript",
+					css: "text/css",
+					html: "text/html",
+					json: "application/json",
+					png: "image/png",
+					jpg: "image/jpeg",
+					jpeg: "image/jpeg",
+					svg: "image/svg+xml",
+					ico: "image/x-icon",
+					woff: "font/woff",
+					woff2: "font/woff2",
+				};
+				const content = readFileSync(staticPath);
+				return new Response(content, {
+					headers: {
+						"Content-Type": mimeTypes[ext] || "application/octet-stream",
+					},
+				});
+			}
+		}
+
+		// Static routes returning indexHtml
+		if (
+			method === "GET" &&
+			(pathname === "/" ||
+				[
+					"/board",
+					"/proposals",
+					"/directives",
+					"/drafts",
+					"/documentation",
+					"/decisions",
+					"/statistics",
+					"/settings",
+					"/dashboard",
+					"/agents",
+					"/teams",
+					"/channels",
+					"/agent-dashboard",
+					"/knowledge",
+					"/documents",
+					"/map",
+					"/routes",
+					"/achievements",
+					"/activity",
+				].some((p) => pathname === p || pathname.startsWith(`${p}/`)))
+		) {
+			return new Response(indexHtml, {
+				headers: { "Content-Type": "text/html" },
 			});
 		}
-	}
 
-	// Static routes returning indexHtml
-	if (
-		method === "GET" &&
-		(pathname === "/" ||
-			[
-				"/board",
-				"/proposals",
-				"/directives",
-				"/drafts",
-				"/documentation",
-				"/decisions",
-				"/statistics",
-				"/settings",
-				"/dashboard",
-				"/agents",
-				"/teams",
-				"/channels",
-				"/agent-dashboard",
-				"/knowledge",
-				"/documents",
-				"/map",
-				"/routes",
-				"/achievements",
-			].some((p) => pathname === p || pathname.startsWith(`${p}/`)))
-	) {
-		return new Response(indexHtml, {
-			headers: { "Content-Type": "text/html" },
-		});
-	}
-
-		if (
-			method === "POST" &&
-			(pathname === "/mcp" || pathname === "/api/mcp")
-		) {
+		if (method === "POST" && (pathname === "/mcp" || pathname === "/api/mcp")) {
 			return await this.handleDirectMcp(req);
 		}
 
@@ -961,14 +1057,20 @@ export class RoadmapServer {
 					return await this.handleStopCubic(cubicId, req);
 				}
 			}
-			if (pathname.startsWith("/api/proposals/") && pathname.endsWith("/state-machine/halt")) {
+			if (
+				pathname.startsWith("/api/proposals/") &&
+				pathname.endsWith("/state-machine/halt")
+			) {
 				const parts = pathname.split("/").filter(Boolean);
 				const id = parts[2] ? decodeURIComponent(parts[2]) : "";
 				if (method === "POST" && id) {
 					return await this.handleHaltProposalGate(id, req);
 				}
 			}
-			if (pathname.startsWith("/api/proposals/") && pathname.endsWith("/state-machine/resume")) {
+			if (
+				pathname.startsWith("/api/proposals/") &&
+				pathname.endsWith("/state-machine/resume")
+			) {
 				const parts = pathname.split("/").filter(Boolean);
 				const id = parts[2] ? decodeURIComponent(parts[2]) : "";
 				if (method === "POST" && id) {
@@ -999,11 +1101,15 @@ export class RoadmapServer {
 				return await this.handleListDispatches(req);
 
 			if (pathname === "/api/mcp/sse" && method === "GET") {
-				try { appendFileSync("/tmp/mcp-debug.log", "[Server] MCP SSE request\n"); } catch {}
+				try {
+					appendFileSync("/tmp/mcp-debug.log", "[Server] MCP SSE request\n");
+				} catch {}
 				return await this.handleMcpSse(req);
 			}
 			if (pathname === "/api/mcp/message" && method === "POST") {
-				try { appendFileSync("/tmp/mcp-debug.log", "[Server] MCP POST request\n"); } catch {}
+				try {
+					appendFileSync("/tmp/mcp-debug.log", "[Server] MCP POST request\n");
+				} catch {}
 				return await this.handleMcpMessage(req);
 			}
 
@@ -1488,7 +1594,9 @@ export class RoadmapServer {
 			let sql = `SELECT id, proposal_id, author_identity, context_prefix, COALESCE(body, body_markdown) as body_markdown, created_at
 				FROM roadmap_proposal.proposal_discussions
 				WHERE proposal_id = ${isNumeric ? "$1" : "(SELECT id FROM roadmap_proposal.proposal WHERE display_id = $1)"}`;
-			const params: unknown[] = [isNumeric ? parseInt(proposalId, 10) : proposalId];
+			const params: unknown[] = [
+				isNumeric ? parseInt(proposalId, 10) : proposalId,
+			];
 			if (noteType) {
 				sql += ` AND context_prefix = $2`;
 				params.push(noteType);
@@ -1501,7 +1609,9 @@ export class RoadmapServer {
 		}
 	}
 
-	private async handleGetProposalDecisions(proposalId: string): Promise<Response> {
+	private async handleGetProposalDecisions(
+		proposalId: string,
+	): Promise<Response> {
 		try {
 			const isNumeric = /^\d+$/.test(proposalId);
 			const { rows } = await query(
@@ -1517,7 +1627,9 @@ export class RoadmapServer {
 		}
 	}
 
-	private async handleGetProposalReviews(proposalId: string): Promise<Response> {
+	private async handleGetProposalReviews(
+		proposalId: string,
+	): Promise<Response> {
 		try {
 			const isNumeric = /^\d+$/.test(proposalId);
 			const { rows } = await query(
@@ -2544,12 +2656,19 @@ export class RoadmapServer {
 		req: Request,
 	): Promise<Response> {
 		let body: { reason?: unknown } = {};
-		try { body = (await req.json()) as { reason?: unknown }; } catch { /* empty body ok */ }
+		try {
+			body = (await req.json()) as { reason?: unknown };
+		} catch {
+			/* empty body ok */
+		}
 		const auth = await requireOperator(req, {
 			action: "agent.stop",
 			targetKind: "agent",
 			targetIdentity: identity,
-			requestSummary: { reason: typeof body.reason === "string" ? body.reason.slice(0, 200) : null },
+			requestSummary: {
+				reason:
+					typeof body.reason === "string" ? body.reason.slice(0, 200) : null,
+			},
 		});
 		if (auth.rejected) return auth.rejected;
 
@@ -2600,12 +2719,19 @@ export class RoadmapServer {
 		req: Request,
 	): Promise<Response> {
 		let body: { reason?: unknown } = {};
-		try { body = (await req.json()) as { reason?: unknown }; } catch { /* empty body ok */ }
+		try {
+			body = (await req.json()) as { reason?: unknown };
+		} catch {
+			/* empty body ok */
+		}
 		const auth = await requireOperator(req, {
 			action: "cubic.stop",
 			targetKind: "cubic",
 			targetIdentity: cubicId,
-			requestSummary: { reason: typeof body.reason === "string" ? body.reason.slice(0, 200) : null },
+			requestSummary: {
+				reason:
+					typeof body.reason === "string" ? body.reason.slice(0, 200) : null,
+			},
 		});
 		if (auth.rejected) return auth.rejected;
 
@@ -2668,12 +2794,19 @@ export class RoadmapServer {
 		req: Request,
 	): Promise<Response> {
 		let body: { reason?: unknown } = {};
-		try { body = (await req.json()) as { reason?: unknown }; } catch { /* empty body ok */ }
+		try {
+			body = (await req.json()) as { reason?: unknown };
+		} catch {
+			/* empty body ok */
+		}
 		const auth = await requireOperator(req, {
 			action: "state-machine.halt",
 			targetKind: "proposal",
 			targetIdentity: displayOrNumericId,
-			requestSummary: { reason: typeof body.reason === "string" ? body.reason.slice(0, 200) : null },
+			requestSummary: {
+				reason:
+					typeof body.reason === "string" ? body.reason.slice(0, 200) : null,
+			},
 		});
 		if (auth.rejected) return auth.rejected;
 
@@ -2695,7 +2828,11 @@ export class RoadmapServer {
 				        gate_paused_reason  = $3
 				  WHERE ${isNumeric ? "id = $1" : "display_id = $1"}
 				  RETURNING id, display_id, gate_scanner_paused`,
-				[isNumeric ? Number(displayOrNumericId) : displayOrNumericId, auth.outcome.operatorName, reason],
+				[
+					isNumeric ? Number(displayOrNumericId) : displayOrNumericId,
+					auth.outcome.operatorName,
+					reason,
+				],
 			);
 			if (rows.length === 0) {
 				return Response.json({ error: "Proposal not found" }, { status: 404 });
@@ -2707,8 +2844,14 @@ export class RoadmapServer {
 				operator: auth.outcome.operatorName,
 			});
 		} catch (err) {
-			console.error(`[state-machine.halt] ${displayOrNumericId}:`, (err as Error).message);
-			return Response.json({ error: "Failed to halt gate scanner" }, { status: 500 });
+			console.error(
+				`[state-machine.halt] ${displayOrNumericId}:`,
+				(err as Error).message,
+			);
+			return Response.json(
+				{ error: "Failed to halt gate scanner" },
+				{ status: 500 },
+			);
 		}
 	}
 
@@ -2752,8 +2895,14 @@ export class RoadmapServer {
 				operator: auth.outcome.operatorName,
 			});
 		} catch (err) {
-			console.error(`[state-machine.resume] ${displayOrNumericId}:`, (err as Error).message);
-			return Response.json({ error: "Failed to resume gate scanner" }, { status: 500 });
+			console.error(
+				`[state-machine.resume] ${displayOrNumericId}:`,
+				(err as Error).message,
+			);
+			return Response.json(
+				{ error: "Failed to resume gate scanner" },
+				{ status: 500 },
+			);
 		}
 	}
 
@@ -2764,7 +2913,10 @@ export class RoadmapServer {
 		try {
 			const url = new URL(req.url);
 			const limit = Math.min(
-				Math.max(Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 1),
+				Math.max(
+					Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
+					1,
+				),
 				500,
 			);
 			const { rows } = await query(
@@ -2794,7 +2946,8 @@ export class RoadmapServer {
 		try {
 			const body = await req.json();
 			const operatorName =
-				typeof body.operator_name === "string" && body.operator_name.trim().length > 0
+				typeof body.operator_name === "string" &&
+				body.operator_name.trim().length > 0
 					? body.operator_name.trim()
 					: null;
 			if (!operatorName) {
@@ -2803,16 +2956,16 @@ export class RoadmapServer {
 					{ status: 400 },
 				);
 			}
-			const allowedActions = Array.isArray(body.allowed_actions) &&
+			const allowedActions =
+				Array.isArray(body.allowed_actions) &&
 				body.allowed_actions.every((s: unknown) => typeof s === "string")
-				? (body.allowed_actions as string[])
-				: ["*"];
+					? (body.allowed_actions as string[])
+					: ["*"];
 			const expiresAt =
 				typeof body.expires_at === "string" && body.expires_at.length > 0
 					? body.expires_at
 					: null;
-			const notes =
-				typeof body.notes === "string" ? body.notes : null;
+			const notes = typeof body.notes === "string" ? body.notes : null;
 
 			// Strong random token. crypto.randomUUID is fine; we hash + store.
 			const raw = `op_${crypto.randomUUID().replace(/-/g, "")}${crypto
@@ -2886,7 +3039,10 @@ export class RoadmapServer {
 			});
 		} catch (err) {
 			console.error("[projects] list failed:", (err as Error).message);
-			return Response.json({ error: "Failed to list projects" }, { status: 500 });
+			return Response.json(
+				{ error: "Failed to list projects" },
+				{ status: 500 },
+			);
 		}
 	}
 
@@ -2897,7 +3053,11 @@ export class RoadmapServer {
 	// resolved id along with metadata used to render the active-scope chip.
 	private async resolveProjectScope(
 		req: Request,
-	): Promise<{ project_id: number; project_slug: string; project_name: string }> {
+	): Promise<{
+		project_id: number;
+		project_slug: string;
+		project_name: string;
+	}> {
 		const url = new URL(req.url);
 		const headerVal = req.headers.get("x-project-id") ?? "";
 		const queryVal = url.searchParams.get("project_id") ?? "";
@@ -3222,8 +3382,7 @@ export class RoadmapServer {
 				requestSummary: {
 					message_type:
 						typeof body.message_type === "string" ? body.message_type : null,
-					length:
-						typeof body.text === "string" ? body.text.length : null,
+					length: typeof body.text === "string" ? body.text.length : null,
 				},
 			});
 			if (auth.rejected) return auth.rejected;
@@ -3253,7 +3412,8 @@ export class RoadmapServer {
 				"event",
 			]);
 			const requestedIntent =
-				typeof body.message_type === "string" && body.message_type.trim().length > 0
+				typeof body.message_type === "string" &&
+				body.message_type.trim().length > 0
 					? body.message_type.trim()
 					: "reminder";
 			const messageType = ALLOWED_TYPES.has(requestedIntent)
@@ -3478,15 +3638,15 @@ export class RoadmapServer {
 			     ON p.id = d.proposal_id`;
 			const { rows } = all
 				? await query(
-					`${baseSelect}
+						`${baseSelect}
 					  ORDER BY d.assigned_at DESC NULLS LAST, d.id DESC`,
-				)
+					)
 				: await query(
-					`${baseSelect}
+						`${baseSelect}
 					  WHERE d.project_id = $1
 					  ORDER BY d.assigned_at DESC NULLS LAST, d.id DESC`,
-					[scope.project_id],
-				);
+						[scope.project_id],
+					);
 			return Response.json({
 				dispatches: rows ?? [],
 				project: {
@@ -3558,7 +3718,9 @@ export class RoadmapServer {
 	}
 
 	private async handleMcpMessage(req: Request): Promise<Response> {
-		try { appendFileSync("/tmp/mcp-debug.log", "[MCP] handleMcpMessage called\n"); } catch {}
+		try {
+			appendFileSync("/tmp/mcp-debug.log", "[MCP] handleMcpMessage called\n");
+		} catch {}
 		await this.ensureServicesReady();
 		if (!this.mcpServer) {
 			return Response.json(
@@ -3596,17 +3758,21 @@ export class RoadmapServer {
 				? parsedBody.method
 				: "unknown";
 
-	try { appendFileSync(
-		"/tmp/mcp-debug.log",
-		`[MCP] POST message: ${parsedMethod} sessionId: ${sessionId}\n`,
-	); } catch {}
+		try {
+			appendFileSync(
+				"/tmp/mcp-debug.log",
+				`[MCP] POST message: ${parsedMethod} sessionId: ${sessionId}\n`,
+			);
+		} catch {}
 
 		// Handle message through SSE transport
 		try {
-			try { appendFileSync(
-				"/tmp/mcp-debug.log",
-				"[MCP] Calling transport.handlePostMessage\n",
-			); } catch {}
+			try {
+				appendFileSync(
+					"/tmp/mcp-debug.log",
+					"[MCP] Calling transport.handlePostMessage\n",
+				);
+			} catch {}
 
 			// Create mock response that captures status
 			let responseStatus = 202;
@@ -3622,10 +3788,12 @@ export class RoadmapServer {
 				},
 				end: (chunk?: any) => {
 					if (chunk) responseBody += Buffer.from(chunk).toString();
-					try { appendFileSync(
-						"/tmp/mcp-debug.log",
-						`[MCP] Response status: ${responseStatus} body: ${responseBody.slice(0, 100)}\n`,
-					); } catch {}
+					try {
+						appendFileSync(
+							"/tmp/mcp-debug.log",
+							`[MCP] Response status: ${responseStatus} body: ${responseBody.slice(0, 100)}\n`,
+						);
+					} catch {}
 					return mockRes;
 				},
 				flushHeaders: () => {},
@@ -3653,7 +3821,12 @@ export class RoadmapServer {
 			}
 			return Response.json({ ok: true });
 		} catch (e) {
-			try { appendFileSync("/tmp/mcp-debug.log", `[MCP] POST error: ${String(e)}\n`); } catch {}
+			try {
+				appendFileSync(
+					"/tmp/mcp-debug.log",
+					`[MCP] POST error: ${String(e)}\n`,
+				);
+			} catch {}
 			return Response.json({ error: String(e) }, { status: 500 });
 		}
 	}

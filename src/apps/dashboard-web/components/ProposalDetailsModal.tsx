@@ -1,5 +1,16 @@
 import MDEditor from "@uiw/react-md-editor";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import {
+	buildProposalMarkdown,
+	type ProposalExportBundle,
+	proposalExportFilename,
+} from "../../../shared/proposal-markdown-export";
 import type {
 	AcceptanceCriterion,
 	Directive,
@@ -7,10 +18,9 @@ import type {
 } from "../../../shared/types";
 import { apiClient } from "../lib/api";
 import {
-	buildProposalMarkdown,
-	proposalExportFilename,
-	type ProposalExportBundle,
-} from "../../../shared/proposal-markdown-export";
+	describeProposalEvent,
+	formatLocalActivityTimestamp,
+} from "../lib/proposal-activity";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import ChipInput from "./ChipInput";
@@ -136,7 +146,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		proposal?.design || proposal?.implementationPlan || "",
 	);
 	const [drawbacks, setDrawbacks] = useState(proposal?.drawbacks || "");
-	const [alternatives, setAlternatives] = useState(proposal?.alternatives || "");
+	const [alternatives, setAlternatives] = useState(
+		proposal?.alternatives || "",
+	);
 	const [dependencyNote, setDependencyNote] = useState(
 		proposal?.dependency_note || "",
 	);
@@ -150,15 +162,36 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		proposal?.acceptanceCriteriaItems || [],
 	);
 	const criteriaRef = useRef<AcceptanceCriterion[]>(criteria);
-	const [decisions, setDecisions] = useState<Array<{
-		id: number; decision: string; authority: string; rationale: string | null; binding: boolean; decided_at: string;
-	}>>([]);
-	const [reviews, setReviews] = useState<Array<{
-		id: number; reviewer_identity: string; verdict: string; notes: string | null; findings: string | null; is_blocking: boolean; reviewed_at: string;
-	}>>([]);
-	const [discussions, setDiscussions] = useState<Array<{
-		id: number; author_identity: string; context_prefix: string | null; body_markdown: string; created_at: string;
-	}>>([]);
+	const [decisions, setDecisions] = useState<
+		Array<{
+			id: number;
+			decision: string;
+			authority: string;
+			rationale: string | null;
+			binding: boolean;
+			decided_at: string;
+		}>
+	>([]);
+	const [reviews, setReviews] = useState<
+		Array<{
+			id: number;
+			reviewer_identity: string;
+			verdict: string;
+			notes: string | null;
+			findings: string | null;
+			is_blocking: boolean;
+			reviewed_at: string;
+		}>
+	>([]);
+	const [discussions, setDiscussions] = useState<
+		Array<{
+			id: number;
+			author_identity: string;
+			context_prefix: string | null;
+			body_markdown: string;
+			created_at: string;
+		}>
+	>([]);
 	const resolveDirectiveToId = useCallback(
 		(value?: string | null): string => {
 			const normalized = (value ?? "").trim();
@@ -390,37 +423,40 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 		createSnapshot(proposal),
 	);
 
-	const applySnapshot = useCallback((snapshot: ProposalFormSnapshot) => {
-		const preserveCurrentCriteria =
-			activeProposalIdRef.current === proposalId &&
-			criteriaRef.current.length > 0 &&
-			snapshot.criteria.length === 0;
-		const nextCriteria = preserveCurrentCriteria
-			? criteriaRef.current
-			: snapshot.criteria;
-		setTitle(snapshot.title);
-		setSummary(snapshot.summary);
-		setMotivation(snapshot.motivation);
-		setDesign(snapshot.design);
-		setDrawbacks(snapshot.drawbacks);
-		setAlternatives(snapshot.alternatives);
-		setDependencyNote(snapshot.dependencyNote);
-		setDescription(snapshot.description);
-		setPlan(snapshot.plan);
-		setNotes(snapshot.notes);
-		setFinalSummary(snapshot.finalSummary);
-		setCriteria(nextCriteria);
-		setStatus(snapshot.status);
-		setAssignee(snapshot.assignee);
-		setLabels(snapshot.labels);
-		setPriority(snapshot.priority);
-		setDependencies(snapshot.dependencies);
-		setReferences(snapshot.references);
-		setRequiredCapabilities(snapshot.requiredCapabilities);
-		setDirective(snapshot.directive);
-		activeProposalIdRef.current = proposalId;
-		return { ...snapshot, criteria: nextCriteria };
-	}, [proposalId]);
+	const applySnapshot = useCallback(
+		(snapshot: ProposalFormSnapshot) => {
+			const preserveCurrentCriteria =
+				activeProposalIdRef.current === proposalId &&
+				criteriaRef.current.length > 0 &&
+				snapshot.criteria.length === 0;
+			const nextCriteria = preserveCurrentCriteria
+				? criteriaRef.current
+				: snapshot.criteria;
+			setTitle(snapshot.title);
+			setSummary(snapshot.summary);
+			setMotivation(snapshot.motivation);
+			setDesign(snapshot.design);
+			setDrawbacks(snapshot.drawbacks);
+			setAlternatives(snapshot.alternatives);
+			setDependencyNote(snapshot.dependencyNote);
+			setDescription(snapshot.description);
+			setPlan(snapshot.plan);
+			setNotes(snapshot.notes);
+			setFinalSummary(snapshot.finalSummary);
+			setCriteria(nextCriteria);
+			setStatus(snapshot.status);
+			setAssignee(snapshot.assignee);
+			setLabels(snapshot.labels);
+			setPriority(snapshot.priority);
+			setDependencies(snapshot.dependencies);
+			setReferences(snapshot.references);
+			setRequiredCapabilities(snapshot.requiredCapabilities);
+			setDirective(snapshot.directive);
+			activeProposalIdRef.current = proposalId;
+			return { ...snapshot, criteria: nextCriteria };
+		},
+		[proposalId],
+	);
 
 	const isDirty = useMemo(() => {
 		return (
@@ -731,7 +767,7 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 				design: design ?? proposal.design,
 				drawbacks: drawbacks ?? proposal.drawbacks,
 				alternatives: alternatives ?? proposal.alternatives,
-				dependencyNote: dependencyNote ?? proposal.dependencyNote,
+				dependency_note: dependencyNote ?? proposal.dependency_note,
 				description: description ?? proposal.description,
 				implementationPlan: plan ?? proposal.implementationPlan,
 			};
@@ -741,7 +777,9 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 			};
 			const markdown = buildProposalMarkdown(bundle);
 			const filename = proposalExportFilename(merged as never);
-			const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+			const blob = new Blob([markdown], {
+				type: "text/markdown;charset=utf-8",
+			});
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
@@ -833,6 +871,15 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 	const displayId = proposalId;
 	const documentation = proposal?.documentation ?? [];
+	const lastActivity = proposal?.liveActivity?.lastEventAt
+		? {
+				timestamp: formatLocalActivityTimestamp(
+					proposal.liveActivity.lastEventAt,
+				),
+				description: describeProposalEvent(proposal.liveActivity.lastEventType),
+			}
+		: null;
+	const activityFeedHref = `/activity?proposal=${encodeURIComponent(displayId)}`;
 	const renderMarkdownField = (
 		fieldTitle: string,
 		value: string,
@@ -1071,7 +1118,13 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 						</div>
 					)}
 					{/* Description */}
-					{renderMarkdownField("Summary", summary, setSummary, "No summary", 220)}
+					{renderMarkdownField(
+						"Summary",
+						summary,
+						setSummary,
+						"No summary",
+						220,
+					)}
 					{renderMarkdownField(
 						"Motivation",
 						motivation,
@@ -1361,22 +1414,40 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					{/* Decisions */}
 					{mode === "preview" && decisions.length > 0 && (
 						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
-							<SectionHeader title="Decisions" right={`${decisions.length} recorded`} />
+							<SectionHeader
+								title="Decisions"
+								right={`${decisions.length} recorded`}
+							/>
 							<div className="space-y-3">
 								{decisions.map((d) => (
-									<div key={d.id} className="border-l-2 border-blue-400 dark:border-blue-500 pl-3">
+									<div
+										key={d.id}
+										className="border-l-2 border-blue-400 dark:border-blue-500 pl-3"
+									>
 										<div className="flex items-center gap-2 text-sm">
-											<span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
-												d.binding ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
-											}`}>
+											<span
+												className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+													d.binding
+														? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
+														: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
+												}`}
+											>
 												{d.binding ? "binding" : "non-binding"}
 											</span>
-											<span className="text-gray-500 dark:text-gray-400">by {d.authority}</span>
-											<span className="text-gray-400 dark:text-gray-500 text-xs">{formatStoredUtcDateForDisplay(d.decided_at)}</span>
+											<span className="text-gray-500 dark:text-gray-400">
+												by {d.authority}
+											</span>
+											<span className="text-gray-400 dark:text-gray-500 text-xs">
+												{formatStoredUtcDateForDisplay(d.decided_at)}
+											</span>
 										</div>
-										<div className="text-sm text-gray-800 dark:text-gray-200 mt-1">{d.decision}</div>
+										<div className="text-sm text-gray-800 dark:text-gray-200 mt-1">
+											{d.decision}
+										</div>
 										{d.rationale && (
-											<div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Rationale: {d.rationale}</div>
+											<div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+												Rationale: {d.rationale}
+											</div>
 										)}
 									</div>
 								))}
@@ -1386,42 +1457,64 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					{/* Reviews */}
 					{mode === "preview" && reviews.length > 0 && (
 						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
-							<SectionHeader title="Reviews" right={`${reviews.length} recorded`} />
+							<SectionHeader
+								title="Reviews"
+								right={`${reviews.length} recorded`}
+							/>
 							<div className="space-y-3">
 								{reviews.map((r) => (
-									<div key={r.id} className={`border-l-2 pl-3 ${
-										r.verdict === "approve" ? "border-green-400 dark:border-green-500" :
-										r.verdict === "request_changes" ? "border-yellow-400 dark:border-yellow-500" :
-										"border-red-400 dark:border-red-500"
-									}`}>
+									<div
+										key={r.id}
+										className={`border-l-2 pl-3 ${
+											r.verdict === "approve"
+												? "border-green-400 dark:border-green-500"
+												: r.verdict === "request_changes"
+													? "border-yellow-400 dark:border-yellow-500"
+													: "border-red-400 dark:border-red-500"
+										}`}
+									>
 										<div className="flex items-center gap-2 text-sm">
-											<span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
-												r.verdict === "approve" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
-												r.verdict === "request_changes" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
-												"bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300"
-											}`}>
+											<span
+												className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+													r.verdict === "approve"
+														? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
+														: r.verdict === "request_changes"
+															? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300"
+															: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300"
+												}`}
+											>
 												{r.verdict}
 											</span>
-											<span className="text-gray-500 dark:text-gray-400">by {r.reviewer_identity}</span>
-											<span className="text-gray-400 dark:text-gray-500 text-xs">{formatStoredUtcDateForDisplay(r.reviewed_at)}</span>
+											<span className="text-gray-500 dark:text-gray-400">
+												by {r.reviewer_identity}
+											</span>
+											<span className="text-gray-400 dark:text-gray-500 text-xs">
+												{formatStoredUtcDateForDisplay(r.reviewed_at)}
+											</span>
 										</div>
 										{r.notes && (
-											<div className="text-sm text-gray-700 dark:text-gray-300 mt-1">{r.notes}</div>
+											<div className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+												{r.notes}
+											</div>
 										)}
-						{r.findings && (
-									<div className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono bg-gray-50 dark:bg-gray-900 rounded p-1.5 overflow-x-auto">
-										{(() => {
-											try {
-												if (typeof r.findings === "string") {
-													return JSON.stringify(JSON.parse(r.findings), null, 2);
-												}
-												return JSON.stringify(r.findings, null, 2);
-											} catch {
-												return String(r.findings);
-											}
-										})()}
-									</div>
-								)}
+										{r.findings && (
+											<div className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono bg-gray-50 dark:bg-gray-900 rounded p-1.5 overflow-x-auto">
+												{(() => {
+													try {
+														if (typeof r.findings === "string") {
+															return JSON.stringify(
+																JSON.parse(r.findings),
+																null,
+																2,
+															);
+														}
+														return JSON.stringify(r.findings, null, 2);
+													} catch {
+														return String(r.findings);
+													}
+												})()}
+											</div>
+										)}
 									</div>
 								))}
 							</div>
@@ -1430,18 +1523,28 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 					{/* Discussions */}
 					{mode === "preview" && discussions.length > 0 && (
 						<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-4 pt-3 sm:pt-4 pb-3 sm:pb-4">
-							<SectionHeader title="Discussions" right={`${discussions.length} entries`} />
+							<SectionHeader
+								title="Discussions"
+								right={`${discussions.length} entries`}
+							/>
 							<div className="space-y-2 max-h-96 overflow-y-auto">
 								{discussions.map((d) => (
-									<div key={d.id} className="border-l-2 border-purple-400 dark:border-purple-500 pl-3 py-1">
+									<div
+										key={d.id}
+										className="border-l-2 border-purple-400 dark:border-purple-500 pl-3 py-1"
+									>
 										<div className="flex items-center gap-2 text-xs">
 											{d.context_prefix && (
 												<span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
 													{d.context_prefix}
 												</span>
 											)}
-											<span className="text-gray-600 dark:text-gray-400 font-medium">{d.author_identity}</span>
-											<span className="text-gray-400 dark:text-gray-500">{formatStoredUtcDateForDisplay(d.created_at)}</span>
+											<span className="text-gray-600 dark:text-gray-400 font-medium">
+												{d.author_identity}
+											</span>
+											<span className="text-gray-400 dark:text-gray-500">
+												{formatStoredUtcDateForDisplay(d.created_at)}
+											</span>
 										</div>
 										<div className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">
 											{d.body_markdown.length > 500
@@ -1478,6 +1581,24 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 									</span>
 								</div>
 							)}
+							<a
+								href={activityFeedHref}
+								className="block rounded-sm -mx-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700/60 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400"
+								title="Open activity feed filtered to this proposal"
+							>
+								<span className="font-semibold text-gray-800 dark:text-gray-100">
+									Last activity:
+								</span>{" "}
+								{lastActivity ? (
+									<span className="text-gray-700 dark:text-gray-200">
+										{lastActivity.timestamp} — {lastActivity.description}
+									</span>
+								) : (
+									<span className="text-gray-500 dark:text-gray-400">
+										No activity yet
+									</span>
+								)}
+							</a>
 						</div>
 					)}
 					{/* Title (editable for existing proposals) */}
@@ -1619,7 +1740,10 @@ export const ProposalDetailsModal: React.FC<Props> = ({
 
 					{/* Dependencies */}
 					<div className="border-t-2 sm:border sm:border-t border-gray-300 dark:border-gray-600 sm:border-gray-200 sm:dark:border-gray-700 bg-transparent sm:bg-white sm:dark:bg-gray-800 sm:rounded-lg px-0 sm:px-3 pt-3 sm:pt-3 pb-3 sm:pb-3">
-						<SectionHeader title="Dependencies" right="Type to search proposals" />
+						<SectionHeader
+							title="Dependencies"
+							right="Type to search proposals"
+						/>
 						<DependencyInput
 							value={dependencies}
 							onChange={(value) =>

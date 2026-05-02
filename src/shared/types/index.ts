@@ -162,6 +162,8 @@ export interface Proposal {
 		heartbeatAgeSeconds?: number;
 		/** Most recent proposal_event type (e.g. lease_claimed, stage_transition) */
 		lastEventType?: string;
+		/** Timestamp for the most recent proposal_event. */
+		lastEventAt?: string;
 	};
 }
 
@@ -254,6 +256,7 @@ export interface ProposalCreateInput {
 	references?: string[];
 	documentation?: string[];
 	needs_capabilities?: string[];
+	required_capabilities?: string[];
 	external_injections?: string[];
 	unlocks?: string[];
 	parentProposalId?: string;
