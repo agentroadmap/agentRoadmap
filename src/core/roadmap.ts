@@ -784,14 +784,18 @@ export class Core {
 			auditNotes: this.getPgTagString(row.tags, "auditNotes"),
 			finalSummary: this.getPgTagString(row.tags, "finalSummary"),
 			scopeSummary: this.getPgTagString(row.tags, "scopeSummary"),
-			createdDate: new Date(row.created_at)
-				.toISOString()
-				.slice(0, 16)
-				.replace("T", " "),
-			updatedDate: new Date(row.modified_at)
-				.toISOString()
-				.slice(0, 16)
-				.replace("T", " "),
+			createdDate: row.created_at
+				? new Date(row.created_at)
+						.toISOString()
+						.slice(0, 16)
+						.replace("T", " ")
+				: undefined,
+			updatedDate: row.modified_at || row.created_at
+				? new Date(row.modified_at || row.created_at)
+						.toISOString()
+						.slice(0, 16)
+						.replace("T", " ")
+				: undefined,
 			proposalType: row.type,
 			domainId: this.getPgTagString(row.tags, "domainId"),
 			category: this.getPgTagString(row.tags, "category"),
